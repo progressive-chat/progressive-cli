@@ -1,0 +1,196 @@
+#pragma once
+
+#include <string>
+#include <memory>
+#include <functional>
+#include <vector>
+#include <atomic>
+
+#include "../http/http.hpp"
+#include "auth.hpp"
+#include "events.hpp"
+#include "error.hpp"
+
+namespace matrixcli { namespace matrix {
+
+class Client {
+public:
+    Client();
+    ~Client();
+    Client(const Client&) = delete;
+    Client& operator=(const Client&) = delete;
+    Client(Client&&) = delete;
+    Client& operator=(Client&&) = delete;
+
+    // Connection settings
+    void setHomeserverURL(const std::string& url);
+    std::string homeserverURL() const;
+    void setProxy(const http::ProxyConfig& config);
+    void setTimeout(int seconds);
+
+    // Access token
+    void setAccessToken(const std::string& token);
+
+    // Server discovery
+    ServerVersions getServerVersions();
+    WellKnown getWellKnown(const std::string& server_name);
+
+    // Auth
+    LoginFlowsResult getLoginFlows();
+    Credentials loginPassword(const std::string& username,
+                              const std::string& password,
+                              const std::string& device_name = "");
+    Credentials loginToken(const std::string& token,
+                           const std::string& device_name = "");
+    Credentials loginSSO(const std::string& token,
+                         const std::string& device_name = "");
+    SessionInfo whoAmI();
+    bool logout();
+    bool logoutAll();
+
+    // Sync
+    using EventCallback = std::function<void(const Event&)>;
+    void startSync(EventCallback onEvent, const std::string& filter = "",
+                   int poll_timeout_ms = 30000);
+    void stopSync();
+    SyncResponse syncOnce(const std::string& filter = "",
+                          const std::string& since = "",
+                          int timeout_ms = 30000);
+    std::string nextBatch() const;
+
+    // Messages
+    std::string sendMessage(const std::string& room_id,
+                            const std::string& body,
+                            const std::string& msgtype = "m.text");
+    std::string sendTextMessage(const std::string& room_id,
+                                const std::string& body);
+    std::string sendNotice(const std::string& room_id,
+                           const std::string& body);
+    std::string sendEmote(const std::string& room_id,
+                          const std::string& body);
+    std::string sendImageMessage(const std::string& room_id,
+                                 const std::string& mxc_url,
+                                 const std::string& filename,
+                                 int64_t size,
+                                 const std::string& mimetype,
+                                 int width = 0, int height = 0);
+    std::string sendFileMessage(const std::string& room_id,
+                                const std::string& mxc_url,
+                                const std::string& filename,
+                                int64_t size,
+                                const std::string& mimetype);
+    std::string sendEvent(const std::string& room_id,
+                          const std::string& event_type,
+                          const json& content);
+    std::string sendStateEvent(const std::string& room_id,
+                               const std::string& event_type,
+                               const std::string& state_key,
+                               const json& content);
+    std::string redactEvent(const std::string& room_id,
+                            const std::string& event_id,
+                            const std::string& reason = "");
+
+    // Room operations
+    std::string createRoom(const std::string& name = "",
+                           const std::string& topic = "",
+                           bool is_direct = false,
+                           const std::vector<std::string>& invite_users = {});
+    bool joinRoom(const std::string& room_id, const std::string& reason = "");
+    bool leaveRoom(const std::string& room_id);
+    bool inviteUser(const std::string& room_id, const std::string& user_id,
+                    const std::string& reason = "");
+    bool kickUser(const std::string& room_id, const std::string& user_id,
+                  const std::string& reason = "");
+    bool banUser(const std::string& room_id, const std::string& user_id,
+                 const std::string& reason = "");
+    bool unbanUser(const std::string& room_id, const std::string& user_id);
+
+    // Room state
+    std::string setRoomName(const std::string& room_id, const std::string& name);
+    std::string setRoomTopic(const std::string& room_id, const std::string& topic);
+    std::vector<Event> getRoomState(const std::string& room_id);
+    std::vector<Event> getRoomMembers(const std::string& room_id);
+    std::vector<Event> getRoomMessages(const std::string& room_id,
+                                       const std::string& from = "",
+                                       const std::string& dir = "b",
+                                       int limit = 20);
+
+    // Profile
+    UserInfo getProfile(const std::string& user_id);
+    std::string getDisplayName(const std::string& user_id);
+    bool setDisplayName(const std::string& display_name);
+    std::string getAvatarUrl(const std::string& user_id);
+    bool setAvatarUrl(const std::string& avatar_url);
+
+    // Devices
+    json getDevices();
+    bool deleteDevices(const std::vector<std::string>& device_ids);
+
+    // Push rules
+    json getPushRules();
+
+    // Filters
+    std::string createFilter(const std::string& filter_json);
+
+    // Public rooms
+    json getPublicRooms(const std::string& server = "",
+                        const std::string& search_term = "",
+                        int limit = 20);
+
+    // Search
+    json searchMessages(const std::string& search_term,
+                        const std::string& room_id = "",
+                        int limit = 10);
+
+    // Account
+    bool changePassword(const std::string& old_password,
+                        const std::string& new_password);
+    bool deactivateAccount(const std::string& auth_json = "{}");
+
+    // Presence
+    bool setPresence(const std::string& presence);
+    json getPresence(const std::string& user_id);
+
+    // Notifications
+    json getNotifications(const std::string& from = "",
+                          int limit = 20,
+                          const std::string& only = "");
+
+    // Media
+    std::string uploadMedia(const std::string& file_path,
+                            const std::string& content_type = "");
+
+    // Utility
+    bool isLoggedIn() const;
+    std::string userId() const;
+    Credentials credentials() const;
+    std::string generateTxnId() const;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+
+    std::string buildUrl(const std::string& path) const;
+    std::string buildUrl(const std::string& path,
+                         const std::map<std::string, std::string>& params) const;
+
+    http::Response authGet(const std::string& path, int timeout = 30000);
+    http::Response authGet(const std::string& path,
+                           const std::map<std::string, std::string>& params,
+                           int timeout = 30000);
+
+    http::Response authPost(const std::string& path,
+                            const std::string& json_body,
+                            int timeout = 30000);
+
+    http::Response authPut(const std::string& path,
+                           const std::string& json_body,
+                           int timeout = 30000);
+
+    http::Response authDelete(const std::string& path, int timeout = 30000);
+
+    void checkResponse(const http::Response& resp);
+    MatrixError makeMatrixError(const http::Response& resp);
+};
+
+}} // namespace matrixcli::matrix

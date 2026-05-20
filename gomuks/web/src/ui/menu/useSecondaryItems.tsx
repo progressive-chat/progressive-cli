@@ -1,0 +1,177 @@
+// gomuks - A Matrix client written in Go.
+// Copyright (C) 2024 Tulir Asokan
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+import { use } from "react"
+import Client from "@/api/client.ts"
+import { useRoomMember, useRoomState } from "@/api/statestore"
+import { MemDBEvent } from "@/api/types"
+import { quote } from "@/api/types/commands.ts"
+import { displayAsRedacted } from "@/util/displayAsRedacted.ts"
+import { getEventLevel } from "@/util/powerlevel.ts"
+import { ConfirmWithMessageModal, ModalCloseContext, ModalContext, modals } from "../modal"
+import { RoomContext, RoomContextData } from "../roomview/roomcontext.ts"
+import JSONView from "../util/JSONView.tsx"
+import { getPending, getPowerLevels } from "./util.ts"
+import ViewSourceIcon from "@/icons/code.svg?react"
+import DeleteIcon from "@/icons/delete.svg?react"
+import EmojiIcon from "@/icons/emoji-categories/smileys-emotion.svg?react"
+import PinIcon from "@/icons/pin.svg?react"
+import RefreshIcon from "@/icons/refresh.svg?react"
+import ReportIcon from "@/icons/report.svg?react"
+import RestoreTrashIcon from "@/icons/restore-trash.svg?react"
+import ShareIcon from "@/icons/share.svg?react"
+import UnpinIcon from "@/icons/unpin.svg?react"
+
+export const useSecondaryItems = (
+	client: Client,
+	roomCtx: RoomContextData,
+	evt: MemDBEvent,
+	names = true,
+) => {
+	const closeModal = use(ModalCloseContext)
+	const openModal = use(ModalContext)
+	const onClickViewSource = () => {
+		const copyRawCommand = () => {
+			const contentJSON = JSON.stringify(evt.content, null, "  ")
+			if (evt.state_key !== undefined) {
+				navigator.clipboard.writeText(`/rawstate ${evt.type} ${quote(evt.state_key)} ${contentJSON}`)
+			} else {
+				navigator.clipboard.writeText(`/raw ${evt.type} ${contentJSON}`)
+			}
+			closeModal()
+		}
+		openModal({
+			dimmed: true,
+			boxed: true,
+			content: <div>
+				<JSONView data={evt}/>
+				<hr/>
+				<button style={{ padding: ".5rem" }} onClick={copyRawCommand}>Copy /raw command</button>
+			</div>,
+		})
+	}
+	const onClickViewReactions = () => {
+		openModal(modals.eventReactions(roomCtx, evt))
+	}
+	const onClickReport = () => {
+		openModal({
+			dimmed: true,
+			boxed: true,
+			content: <RoomContext value={roomCtx}>
+				<ConfirmWithMessageModal
+					evt={evt}
+					title="Report Message"
+					description="Report this message to your homeserver administrator?"
+					placeholder="Reason for report"
+					confirmButton="Send report"
+					onConfirm={reason => client.rpc.reportEvent(evt.room_id, evt.event_id, reason)}
+				/>
+			</RoomContext>,
+		})
+	}
+	const onClickRedact = () => {
+		openModal({
+			dimmed: true,
+			boxed: true,
+			content: <RoomContext value={roomCtx}>
+				<ConfirmWithMessageModal
+					evt={evt}
+					title="Remove Message"
+					description="Permanently remove the content of this event?"
+					placeholder="Reason for removal"
+					confirmButton="Remove"
+					onConfirm={reason => client.rpc.redactEvent(evt.room_id, evt.event_id, reason)}
+				/>
+			</RoomContext>,
+		})
+	}
+	const onClickHideUnredacted = () => {
+		closeModal()
+		roomCtx.store.setViewingRedacted(evt, false)
+	}
+	const onClickUnredact = () => {
+		closeModal()
+		if (Object.entries(evt.content).length > 0) {
+			roomCtx.store.setViewingRedacted(evt, true)
+		} else {
+			client.requestEvent(roomCtx.store, evt.event_id, true)
+		}
+	}
+	const onClickPin = (pin: boolean) => () => {
+		closeModal()
+		client.pinMessage(roomCtx.store, evt.event_id, pin)
+			.catch(err => window.alert(`Failed to ${pin ? "pin" : "unpin"} message: ${err}`))
+	}
+
+	const onClickShareEvent = () => {
+		openModal(modals.shareEvent(roomCtx, evt))
+	}
+	const onClickRerequestSession = () => {
+		closeModal()
+		client.rpc.rerequestSession(evt.room_id, evt.content.session_id, evt.sender).then(
+			() => window.alert("Key re-requested successfully"),
+			err => window.alert(`Failed to re-request key: ${err}`),
+		)
+	}
+
+	const [isPending, pendingTitle] = getPending(evt)
+	useRoomState(roomCtx.store, "m.room.power_levels", "")
+	// We get pins from getPinnedEvents, but use the hook anyway to subscribe to changes
+	useRoomState(roomCtx.store, "m.room.pinned_events", "")
+	const memberEvt = useRoomMember(client, roomCtx.store, evt.sender)
+	const [pls, ownPL] = getPowerLevels(roomCtx.store, client)
+	const pins = roomCtx.store.getPinnedEvents()
+	const pinPL = getEventLevel(pls, "m.room.pinned_events", true)
+	const redactEvtPL = getEventLevel(pls, "m.room.redaction", false)
+	const redactOtherPL = pls.redact ?? 50
+	// Note: Both canRedact and canUnredact can be true at the same time if the event was "redacted" by a ban event.
+	const canRedact = !evt.redacted_by
+		&& ownPL >= redactEvtPL
+		&& (evt.sender === client.userID || ownPL >= redactOtherPL)
+	// TODO check server admin status and room PLs
+	const canUnredact = displayAsRedacted(evt, memberEvt, roomCtx.store)
+
+	return <>
+		<button onClick={onClickViewSource}><ViewSourceIcon/>{names && "View source"}</button>
+		{evt.reactions &&
+			<button onClick={onClickViewReactions}>
+				<EmojiIcon/>{names && "Reactions"}
+			</button>}
+		{evt.decryption_error && evt.content.session_id &&
+			<button onClick={onClickRerequestSession}><RefreshIcon/>{names && "Request key"}</button>}
+		<button onClick={onClickShareEvent}><ShareIcon/>{names && "Share"}</button>
+		{ownPL >= pinPL && (pins.includes(evt.event_id)
+			? <button onClick={onClickPin(false)}>
+				<UnpinIcon/>{names && "Unpin message"}
+			</button>
+			: <button onClick={onClickPin(true)} title={pendingTitle} disabled={isPending}>
+				<PinIcon/>{names && "Pin message"}
+			</button>)}
+		<button onClick={onClickReport} disabled={isPending} title={pendingTitle}>
+			<ReportIcon/>{names && "Report"}
+		</button>
+		{canRedact && <button
+			onClick={onClickRedact}
+			disabled={isPending}
+			title={pendingTitle}
+			className="redact-button"
+		><DeleteIcon/>{names && "Remove"}</button>}
+		{canUnredact && (evt.viewing_redacted ? <button onClick={onClickHideUnredacted}>
+			<DeleteIcon/>{names && "Hide content"}
+		</button> : <button onClick={onClickUnredact}>
+			<RestoreTrashIcon/>{names && "View content"}
+		</button>)}
+	</>
+}

@@ -1,0 +1,3 @@
+add_library(matrixcli_json INTERFACE)
+target_include_directories(matrixcli_json INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(matrixcli_json INTERFACE nlohmann_json::nlohmann_json)

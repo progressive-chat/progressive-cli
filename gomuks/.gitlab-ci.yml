@@ -1,0 +1,318 @@
+stages:
+- frontend
+- build
+- build desktop
+- docker
+
+default:
+  before_script:
+  - mkdir -p .cache
+  - export GOPATH="$CI_PROJECT_DIR/.cache"
+
+cache:
+  paths:
+  - .cache
+
+variables:
+  GOTOOLCHAIN: local
+  MAU_VERSION_PACKAGE: go.mau.fi/gomuks/version
+
+wasm:
+  image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/golang:1.26-alpine
+  stage: frontend
+  cache:
+    paths:
+    - .cache
+  before_script:
+  - mkdir -p .cache
+  - export GOPATH="$CI_PROJECT_DIR/.cache"
+  - export GOCACHE="$CI_PROJECT_DIR/.cache/build"
+  - apk add --no-cache git
+  script:
+  - cd web
+  - go run ../pkg/hicli/cmdspec/print src/api/types/stdcommands.json src/api/types/stdcommands.d.ts
+  - ./build-wasm.sh
+  artifacts:
+    paths:
+    - web/src/api/wasm/_gomuks.wasm
+    - web/src/api/types/stdcommands.json
+    expire_in: 1 hour
+
+frontend:
+  image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/node:24-alpine
+  stage: frontend
+  cache:
+    paths:
+    - web/node_modules
+  script:
+  - cd web
+  - npm ci --include=dev
+  - npm run build
+  artifacts:
+    paths:
+    - web/dist
+    expire_in: 1 hour
+  dependencies:
+  - wasm
+  needs:
+  - wasm
+
+deploy wasmuks:
+  image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/golang:1.26-alpine
+  stage: frontend
+  tags:
+  - webdeploy
+  script:
+  - apk add --no-cache rsync git
+  - mkdir -p web/dist/_gomuks/codeblock
+  - go run ./cmd/chromagen web/dist/_gomuks/codeblock/
+  - |
+    if [[ "$CI_COMMIT_BRANCH" == "main" ]]; then
+      rsync -rcthvl --delete web/dist/ /srv/web/demo.gomuks.app/
+    else
+      mkdir -p /srv/web/branch.gomuks.app/$CI_COMMIT_BRANCH/
+      rsync -rcthvl --delete web/dist/ /srv/web/branch.gomuks.app/$CI_COMMIT_BRANCH/
+    fi
+  dependencies:
+  - frontend
+  needs:
+  - frontend
+
+.build-linux: &build-linux
+  stage: build
+  cache:
+    paths:
+    - .cache
+  before_script:
+  - mkdir -p .cache
+  - export GOPATH="$CI_PROJECT_DIR/.cache"
+  - export GOCACHE="$CI_PROJECT_DIR/.cache/build"
+  - export MAU_STATIC_BUILD=true
+  # go tool is dumb and doesn't realize it needs to always compile for the host OS/arch
+  # The maubuild tool will use TARGET_GOOS/GOARCH env vars for the actual build
+  - export GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH)
+  script:
+  - BINARY_NAME=gomuks go tool maubuild
+  - BINARY_NAME=gomuks-terminal go tool maubuild
+  artifacts:
+    paths:
+    - gomuks
+    - gomuks-terminal
+  dependencies:
+  - frontend
+  needs:
+  - frontend
+
+.build-docker: &build-docker
+  image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/docker:latest
+  stage: docker
+  before_script:
+  - docker login -u "$CI_DEPENDENCY_PROXY_USER" -p "$CI_DEPENDENCY_PROXY_PASSWORD" "$CI_DEPENDENCY_PROXY_SERVER"
+  - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+  script:
+  - docker pull $CI_REGISTRY_IMAGE:latest || true
+  - |
+    docker build \
+      --pull --cache-from $CI_REGISTRY_IMAGE:latest \
+      --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-$DOCKER_ARCH \
+      --build-arg DOCKER_HUB=$CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX \
+      . --file Dockerfile.ci
+  - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-$DOCKER_ARCH
+  after_script:
+  - docker rmi $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-$DOCKER_ARCH
+
+linux/amd64:
+  <<: *build-linux
+  image: dock.mau.dev/tulir/gomuks-build-docker:linux-amd64
+  tags:
+  - linux
+  - amd64
+
+linux/arm:
+  <<: *build-linux
+  image: dock.mau.dev/tulir/gomuks-build-docker:linux-arm
+  tags:
+  - linux
+  - amd64
+
+linux/arm64:
+  <<: *build-linux
+  image: dock.mau.dev/tulir/gomuks-build-docker:linux-arm64-native
+  tags:
+  - linux
+  - arm64
+
+windows/amd64:
+  <<: *build-linux
+  image: dock.mau.dev/tulir/gomuks-build-docker:windows-amd64
+  artifacts:
+    paths:
+    - gomuks.exe
+  tags:
+  - linux
+  - amd64
+
+macos/arm64:
+  stage: build
+  tags:
+  - macos
+  - arm64
+  before_script:
+  - export PATH=/opt/homebrew/bin:$PATH
+  script:
+  - CGO_LDFLAGS="-Wl,-headerpad_max_install_names" BINARY_NAME=gomuks go tool maubuild
+  - BINARY_NAME=gomuks-terminal go tool maubuild
+  - install_name_tool -change $(brew --prefix)/opt/libolm/lib/libolm.3.dylib @rpath/libolm.3.dylib gomuks
+  - install_name_tool -add_rpath @executable_path gomuks
+  - install_name_tool -add_rpath /opt/homebrew/opt/libolm/lib gomuks
+  - install_name_tool -add_rpath /usr/local/opt/libolm/lib gomuks
+  - cp $(brew --prefix)/opt/libolm/lib/libolm.3.dylib .
+  artifacts:
+    paths:
+    - gomuks
+    - gomuks-terminal
+    - libolm.3.dylib
+  dependencies:
+  - frontend
+  needs:
+  - frontend
+
+docker/amd64:
+  <<: *build-docker
+  tags:
+  - linux
+  - amd64
+  dependencies:
+  - linux/amd64
+  needs:
+  - linux/amd64
+  variables:
+    DOCKER_ARCH: amd64
+
+docker/arm64:
+  <<: *build-docker
+  tags:
+  - linux
+  - arm64
+  dependencies:
+  - linux/arm64
+  needs:
+  - linux/arm64
+  variables:
+    DOCKER_ARCH: arm64
+
+docker/manifest:
+  image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/docker:latest
+  stage: docker
+  variables:
+    GIT_STRATEGY: none
+  before_script:
+  - "mkdir -p $HOME/.docker && echo '{\"experimental\": \"enabled\"}' > $HOME/.docker/config.json"
+  - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+  needs:
+  - docker/amd64
+  - docker/arm64
+  script:
+  - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64
+  - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64
+  - |
+    if [[ "$CI_COMMIT_BRANCH" == "main" ]]; then
+      export MANIFEST_NAME="$CI_REGISTRY_IMAGE:latest"
+    else
+      export MANIFEST_NAME="$CI_REGISTRY_IMAGE:${CI_COMMIT_REF_NAME//\//_}"
+    fi
+    docker manifest create $MANIFEST_NAME $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64
+    docker manifest push $MANIFEST_NAME
+  - |
+    if echo "$CI_COMMIT_TAG" | grep -Eq '^v[0-9]{1}\.[0-9]{4}\.[0-9]+$'; then
+      YYMM=$(echo "$CI_COMMIT_TAG" | cut -d. -f2)
+      PATCH=$(echo "$CI_COMMIT_TAG" | cut -d. -f3)
+      YY=${YYMM%??}
+      MM=${YYMM#??}
+      if [ "$PATCH" = "0" ]; then
+        MANIFEST_NAME="$CI_REGISTRY_IMAGE:v${YY}.${MM}"
+      else
+        MANIFEST_NAME="$CI_REGISTRY_IMAGE:v${YY}.${MM}.${PATCH}"
+      fi
+      docker manifest create $MANIFEST_NAME $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64
+      docker manifest push $MANIFEST_NAME
+      docker manifest rm $MANIFEST_NAME
+    fi
+  - docker rmi $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-amd64 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA-arm64
+
+.build-desktop: &build-desktop
+  image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/node:24-alpine
+  stage: build desktop
+  cache:
+    paths:
+    - .cache
+  before_script:
+  - mkdir -p .cache
+  - export GOPATH="$CI_PROJECT_DIR/.cache"
+  - export GOCACHE="$CI_PROJECT_DIR/.cache/build"
+  script:
+  - cd desktop
+  - npm ci --include=dev
+  - npm run make -- --platform=$PLATFORM --arch=$ARCH
+  - tree out/make/
+  artifacts:
+    paths:
+    - gomuks*desktop*
+
+desktop/linux/amd64:
+  <<: *build-desktop
+  variables:
+    PLATFORM: linux
+    ARCH: x64
+  before_script:
+  - apk add --no-cache fakeroot dpkg
+  after_script:
+  - mv desktop/out/make/deb/x64/gomuks* .
+  dependencies:
+  - linux/amd64
+  needs:
+  - linux/amd64
+
+desktop/linux/arm64:
+  <<: *build-desktop
+  variables:
+    PLATFORM: linux
+    ARCH: arm64
+  before_script:
+  - apk add --no-cache fakeroot dpkg
+  after_script:
+  - mv desktop/out/make/deb/arm64/gomuks* .
+  dependencies:
+  - linux/arm64
+  needs:
+  - linux/arm64
+
+desktop/windows/amd64:
+  <<: *build-desktop
+  variables:
+    PLATFORM: win32
+    ARCH: x64
+  before_script:
+  - apk add --no-cache wine mono
+  after_script:
+  - mv desktop/out/make/squirrel.windows/x64/gomuks* .
+  dependencies:
+  - windows/amd64
+  needs:
+  - windows/amd64
+
+desktop/macos/arm64:
+  <<: *build-desktop
+  cache: {}
+  variables:
+    PLATFORM: darwin
+    ARCH: arm64
+  after_script:
+  - mv desktop/out/make/gomuks* .
+  tags:
+  - macos
+  - arm64
+  dependencies:
+  - macos/arm64
+  needs:
+  - macos/arm64

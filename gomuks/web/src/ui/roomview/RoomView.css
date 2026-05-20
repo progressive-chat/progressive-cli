@@ -1,0 +1,64 @@
+div.room-view {
+	grid-area: roomview;
+	overflow: hidden;
+	height: 100%;
+	display: grid;
+	outline: none;
+	grid-template:
+		"header" var(--window-top-margin)
+		"header" 3.5rem
+		"messageview" 1fr
+		"autocomplete" 0
+		"input" auto
+		"typing" auto
+		/ 1fr;
+	contain: strict;
+
+	&.preview {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+	}
+
+	> div.room-timeline-error, > div.room-header-error {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		height: 100%;
+
+		&.room-timeline-error {
+			grid-area: messageview;
+		}
+
+		&.room-header-error {
+			grid-area: header;
+		}
+	}
+}
+
+div.mobile-event-menu-container {
+	overflow: hidden;
+	border-bottom: 1px solid var(--border-color);
+
+	&:empty {
+		display: none;
+	}
+}
+
+div#mobile-event-menu-container {
+	grid-area: header;
+	padding-top: var(--window-top-margin);
+
+	&:not(:empty) + div.room-header {
+		display: none;
+	}
+}
+
+div#mobile-thread-event-menu-container {
+	height: 3.5rem;
+	box-sizing: border-box;
+
+	&:not(:empty) + div.right-panel-header {
+		display: none;
+	}
+}

@@ -1,0 +1,99 @@
+div.space-view {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+
+	margin: 0 auto;
+	max-width: 40rem;
+	width: 100%;
+}
+
+div.space-adder {
+	display: flex;
+	position: relative;
+	margin: .5rem .5rem .5rem 0;
+
+	> input {
+		padding: .25rem .5rem;
+		outline: none;
+		border-radius: .25rem;
+		border: 1px solid var(--border-color);
+		width: 100%;
+	}
+
+	> div.space-children {
+		position: absolute;
+		top: 2.125rem;
+		border-radius: .25rem;
+		background-color: var(--background-color);
+		border: 1px solid var(--border-color);
+		z-index: 5;
+		padding: .25rem;
+		overflow-y: auto;
+		max-height: calc(100vh - 7rem);
+		box-shadow: 0 0 1rem var(--modal-box-shadow-color);
+		max-width: 30rem;
+		width: 100%;
+
+		&:empty {
+			display: none;
+		}
+	}
+}
+
+div.space-children {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	grid-auto-rows: 3rem;
+	flex-direction: column;
+	overflow-y: auto;
+	flex: 1;
+
+	> div.space-child {
+		display: flex;
+		gap: .25rem;
+		overflow: hidden;
+
+		cursor: var(--clickable-cursor);
+		padding: .25rem;
+		border-radius: .25rem;
+
+		&.existing-edge:hover {
+			background-color: var(--button-hover-color);
+		}
+
+		> div.room-id-and-name {
+			display: flex;
+			flex-direction: column;
+			justify-content: center;
+			overflow: hidden;
+			white-space: nowrap;
+
+			> span.room-id {
+				font-family: var(--monospace-font-stack);
+				opacity: .7;
+				font-size: .75rem;
+			}
+
+			> span.room-name, > span.room-id {
+				text-overflow: ellipsis;
+				overflow: hidden;
+			}
+		}
+	}
+
+	> div.buttons {
+		display: flex;
+		justify-content: right;
+		align-items: center;
+		margin-right: .5rem;
+
+		> button {
+			padding: .5rem;
+
+			&:disabled {
+				padding: .5rem .25rem;
+			}
+		}
+	}
+}

@@ -1,0 +1,49 @@
+# Build artifacts
+gomuks/web/dist/
+gomuks/cmd/gomuks/gomuks
+gomuks/cmd/gomuks-terminal/gomuks-terminal
+gomuks/cmd/wasmuks/wasmuks
+cppcli/build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs and dumps
+*.log
+homeserver.log
+
+# Large unrelated sources
+element-android/
+element-web/
+element-x-android/
+Faraday-android/
+progressive-android/
+progressive-android-experiments/
+progressive-android-next/
+progressive-site/
+yggdrasil-android/
+synapse/
+
+# Temp files
+media_store/
+session-*.md
+patch-*.patch
+
+# Go
+gomuks/.env
+gomuks/*.db
+gomuks/*.db-shm
+gomuks/*.db-wal
+
+# C++
+cppcli/build/
+*.o
+*.a
+*.so
