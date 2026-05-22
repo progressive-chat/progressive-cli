@@ -1,5 +1,6 @@
 add_executable(matrixcli_test
     test_main.cpp
+    ${CMAKE_SOURCE_DIR}/src/config.cpp
 )
 target_include_directories(matrixcli_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(matrixcli_test PRIVATE

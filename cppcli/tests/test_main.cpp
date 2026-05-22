@@ -7,6 +7,8 @@
 #include "../lib/matrix/events.hpp"
 #include "../lib/matrix/error.hpp"
 #include "../lib/http/http.hpp"
+#include "../lib/api/format.hpp"
+#include "../src/config.hpp"
 
 using namespace matrixcli;
 
@@ -63,48 +65,51 @@ static void test_event_from_json() {
         }}
     };
 
-    auto ev = matrix::Event::fromJSON(j);
-    assert(ev.id == "$event1");
+    auto ev = matrix::Event::fromJson(j);
+    assert(ev.event_id == "$event1");
     assert(ev.room_id == "!room1:matrix.org");
     assert(ev.sender == "@user:matrix.org");
     assert(ev.type == "m.room.message");
-    assert(ev.body == "Hello world");
-    assert(ev.msgtype == "m.text");
-    assert(ev.timestamp == 1234567890);
+    assert(ev.content["body"].get<std::string>() == "Hello world");
+    assert(ev.content["msgtype"].get<std::string>() == "m.text");
+    assert(ev.origin_server_ts == 1234567890);
 }
 
 static void test_event_to_json() {
     matrix::Event ev;
-    ev.id = "$event1";
+    ev.event_id = "$event1";
     ev.sender = "@user:matrix.org";
-    ev.body = "Hello";
     ev.type = "m.room.message";
-    ev.msgtype = "m.text";
+    ev.content = {
+        {"body", "Hello"},
+        {"msgtype", "m.text"}
+    };
 
-    auto j = ev.toJSON();
+    auto j = ev.toJson();
     assert(j["event_id"] == "$event1");
     assert(j["content"]["body"] == "Hello");
 }
 
 static void test_matrix_error() {
+    matrix::MatrixError merr;
+    merr.errcode = "M_UNKNOWN";
+    merr.error = "test error";
     try {
-        throw matrix::MatrixError("test error");
+        throw matrix::MatrixException(merr);
     } catch (const std::exception& e) {
-        assert(std::string(e.what()) == "test error");
+        assert(std::string(e.what()) == "[M_UNKNOWN] test error (HTTP 0)");
     }
 }
 
 static void test_format_detection() {
-    using namespace api;
+    assert(api::detectFormat("application/json", "") == api::Format::JSON);
+    assert(api::detectFormat("text/plain", "") == api::Format::Text);
+    assert(api::detectFormat("text/markdown", "") == api::Format::Markdown);
+    assert(api::detectFormat("text/gemini", "") == api::Format::Gemini);
+    assert(api::detectFormat("text/html", "") == api::Format::HTML);
 
-    assert(detectFormat("application/json", "") == Format::JSON);
-    assert(detectFormat("text/plain", "") == Format::Text);
-    assert(detectFormat("text/markdown", "") == Format::Markdown);
-    assert(detectFormat("text/gemini", "") == Format::Gemini);
-    assert(detectFormat("text/html", "") == Format::HTML);
-
-    assert(detectFormat("", "markdown") == Format::Markdown);
-    assert(detectFormat("", "html") == Format::HTML);
+    assert(api::detectFormat("", "markdown") == api::Format::Markdown);
+    assert(api::detectFormat("", "html") == api::Format::HTML);
 }
 
 static void test_http_parse_url() {

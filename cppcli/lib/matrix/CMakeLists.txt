@@ -3,6 +3,8 @@ add_library(matrixcli_matrix STATIC
     events.cpp
     error.cpp
     auth.cpp
+    sync.cpp
+    api.cpp
 )
 target_include_directories(matrixcli_matrix PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(matrixcli_matrix PUBLIC

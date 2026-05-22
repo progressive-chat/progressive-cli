@@ -16,8 +16,8 @@ find_package(OpenSSL REQUIRED)
 if(USE_SYSTEM_OLM)
     find_package(olm REQUIRED)
 else()
-    set(OLM_STATIC_LIB "${CMAKE_SOURCE_DIR}/../libolm/build/libolm.a" CACHE FILEPATH "libolm static library")
-    if(NOT EXISTS "${OLM_STATIC_LIB}")
+    set(OLM_LIB_FILE "${CMAKE_SOURCE_DIR}/../libolm/build/libolm.so" CACHE FILEPATH "libolm shared library")
+    if(NOT EXISTS "${OLM_LIB_FILE}")
         execute_process(
             COMMAND make -C "${CMAKE_SOURCE_DIR}/../libolm" -j
             RESULT_VARIABLE olm_build_result
@@ -32,9 +32,9 @@ else()
         set(OLM_FOUND TRUE)
     endif()
     if(OLM_FOUND)
-        add_library(olm STATIC IMPORTED)
+        add_library(olm SHARED IMPORTED)
         set_target_properties(olm PROPERTIES
-            IMPORTED_LOCATION "${OLM_STATIC_LIB}"
+            IMPORTED_LOCATION "${OLM_LIB_FILE}"
             INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/../libolm/include"
         )
     endif()

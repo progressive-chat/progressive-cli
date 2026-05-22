@@ -1,4 +1,5 @@
 #include "server.hpp"
+#include "format.hpp"
 #include "../util/logger.hpp"
 #include "../util/string_utils.hpp"
 

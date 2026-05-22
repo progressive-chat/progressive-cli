@@ -18,8 +18,6 @@ enum class Format {
     HTML
 };
 
-Format detectFormat(const std::string& accept, const std::string& queryParam);
-
 struct Request {
     std::string method;
     std::string path;

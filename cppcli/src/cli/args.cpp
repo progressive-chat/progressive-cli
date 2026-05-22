@@ -13,6 +13,10 @@ Args parseArgs(int argc, char* argv[]) {
     }
 
     result.command = argv[1];
+    if (result.command.starts_with("--")) {
+        result.options[result.command.substr(2)] = "true";
+        result.command.clear();
+    }
 
     for (int i = 2; i < argc; ++i) {
         std::string arg = argv[i];

@@ -208,7 +208,7 @@ static bool socks5Handshake(int sock, const std::string& host, int port,
                             const std::string& username, const std::string& password) {
     bool has_auth = !username.empty();
 
-    uint8_t greeting[3];
+    uint8_t greeting[4];
     size_t greet_len;
     if (has_auth) {
         greeting[0] = 0x05;

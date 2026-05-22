@@ -41,7 +41,7 @@ void SyncLoop::run(std::function<void(const Event&)> onEvent) {
                     if (room_data.contains("timeline") &&
                         room_data["timeline"].contains("events")) {
                         for (auto& ev : room_data["timeline"]["events"]) {
-                            Event event = Event::fromJSON(ev);
+                            Event event = Event::fromJson(ev);
                             event.room_id = room_id;
                             if (onEvent) {
                                 onEvent(event);

@@ -47,7 +47,7 @@ std::string HTMLRenderer::render(const RenderContext& ctx) const {
             if (!formatted.empty()) {
                 oss << formatted;
             } else {
-                for (auto& line : std::views::split(body, '\n')) {
+                for (auto line : std::views::split(body, '\n')) {
                     std::string l(line.begin(), line.end());
                     while (!l.empty() && l.back() == '\r') l.pop_back();
                     oss << escapeHTML(l) << "<br>";

@@ -16,7 +16,7 @@ std::string GeminiRenderer::render(const RenderContext& ctx) const {
                 sender = msg["sender_name"].get<std::string>();
             }
 
-            for (auto& line : std::views::split(body, '\n')) {
+            for (auto line : std::views::split(body, '\n')) {
                 std::string l(line.begin(), line.end());
                 while (!l.empty() && l.back() == '\r') l.pop_back();
                 oss << "> " << l << "\n";

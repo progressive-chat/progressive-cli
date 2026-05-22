@@ -167,8 +167,9 @@ int cmdTUI(const matrixcli::cli::Args&) {
             main_view.setStatus("Connected as " + creds.user_id);
 
             client.startSync([&](const matrix::Event& ev) {
-                if (ev.type == "m.room.message" && !ev.body.empty()) {
-                    main_view.addMessage(ev.sender, ev.body);
+                if (ev.type == "m.room.message" && ev.content.contains("body") &&
+                    !ev.content["body"].get<std::string>().empty()) {
+                    main_view.addMessage(ev.sender, ev.content["body"].get<std::string>());
                 }
             });
 
@@ -194,12 +195,17 @@ int main(int argc, char* argv[]) {
 
     auto args = matrixcli::cli::parseArgs(argc, argv);
 
+    if (args.options.contains("version")) {
+        matrixcli::cli::printVersion();
+        return 0;
+    }
+
     if (args.command.empty() || args.command == "help" || args.options.contains("help")) {
         matrixcli::cli::printUsage();
         return 0;
     }
 
-    if (args.command == "version" || args.options.contains("version")) {
+    if (args.command == "version") {
         matrixcli::cli::printVersion();
         return 0;
     }

@@ -5,6 +5,8 @@
 #include <ncurses.h>
 #endif
 #include <algorithm>
+#include <thread>
+#include <chrono>
 
 namespace matrixcli { namespace tui {
 
