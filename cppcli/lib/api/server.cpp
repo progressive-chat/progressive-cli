@@ -97,7 +97,7 @@ void Server::handleClient(int client_sock) {
     if (!raw.empty()) {
         try {
             auto req = parseRequest(raw);
-            auto handler = findHandler(req.method, req.path);
+            auto handler = findHandler(req.method, req.path, req.params);
             Response resp;
             if (handler) {
                 resp = handler(req);
@@ -202,11 +202,42 @@ std::string Server::buildResponse(const Response& resp) {
     return oss.str();
 }
 
-Handler Server::findHandler(const std::string& method, const std::string& path) {
+Handler Server::findHandler(const std::string& method, const std::string& path,
+                              std::map<std::string, std::string>& pathParams) {
+    // Exact match first
     auto it = _routes.find({method, path});
     if (it != _routes.end()) {
         return it->second;
     }
+
+    // Try parameterized routes (paths containing ':param')
+    auto req_parts = util::split(path, '/');
+    for (auto& [key, handler] : _routes) {
+        if (key.method != method) continue;
+
+        auto route_parts = util::split(key.path, '/');
+        if (req_parts.size() != route_parts.size()) continue;
+
+        bool match = true;
+        std::map<std::string, std::string> extracted;
+        for (size_t i = 0; i < req_parts.size(); i++) {
+            if (route_parts[i].starts_with(":")) {
+                // C++26-style check for ':' prefix
+                extracted[route_parts[i].substr(1)] = req_parts[i];
+            } else if (route_parts[i] != req_parts[i]) {
+                match = false;
+                break;
+            }
+        }
+
+        if (match) {
+            for (auto& [k, v] : extracted) {
+                pathParams[k] = v;
+            }
+            return handler;
+        }
+    }
+
     return nullptr;
 }
 

@@ -2,25 +2,33 @@
 #include "../../lib/util/logger.hpp"
 #include "../../lib/api/router.hpp"
 #include "../../lib/api/handler.hpp"
+#include "../../lib/api/demo_handler.hpp"
 
 namespace matrixcli { namespace server {
 
-APIServer::APIServer(int port) : _port(port), _server(port) {
+APIServer::APIServer(int port, bool demo_mode) : _port(port), _server(port), _demo(demo_mode) {
     api::Router router;
-    api::MatrixHandler handler(_client);
 
-    router.get("/api/status", [&](const api::Request& req) {
-        return handler.handleStatus(req);
-    });
-    router.post("/api/login", [&](const api::Request& req) {
-        return handler.handleLogin(req);
-    });
-    router.get("/api/sync", [&](const api::Request& req) {
-        return handler.handleSync(req);
-    });
-    router.post("/api/send", [&](const api::Request& req) {
-        return handler.handleSendMessage(req);
-    });
+    if (_demo) {
+        auto demoHandler = std::make_shared<api::DemoHandler>();
+        demoHandler->registerRoutes(router);
+        util::Logger::instance().info("Demo mode enabled — no Matrix account required");
+    } else {
+        api::MatrixHandler handler(_client);
+
+        router.get("/api/status", [&](const api::Request& req) {
+            return handler.handleStatus(req);
+        });
+        router.post("/api/login", [&](const api::Request& req) {
+            return handler.handleLogin(req);
+        });
+        router.get("/api/sync", [&](const api::Request& req) {
+            return handler.handleSync(req);
+        });
+        router.post("/api/send", [&](const api::Request& req) {
+            return handler.handleSendMessage(req);
+        });
+    }
 
     router.apply(_server);
 }

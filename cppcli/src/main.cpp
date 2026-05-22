@@ -41,7 +41,10 @@ int cmdServe(const matrixcli::cli::Args& args) {
         client.setAccessToken(Config::instance().accessToken());
     }
 
-    server::APIServer api_server(port);
+    bool demo_mode = args.options.contains("demo");
+    if (!demo_mode && args.command == "demo") demo_mode = true;
+
+    server::APIServer api_server(port, demo_mode);
     api_server.start();
 
     std::cout << "API server running on http://localhost:" << port << std::endl;
@@ -225,6 +228,10 @@ int main(int argc, char* argv[]) {
     if (args.command == "send") {
         std::cerr << "send: not implemented via CLI yet. Use the API server or TUI." << std::endl;
         return 1;
+    }
+
+    if (args.command == "demo") {
+        return cmdServe(args);
     }
 
 #ifdef BUILD_TUI

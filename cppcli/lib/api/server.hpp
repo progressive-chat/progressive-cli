@@ -53,7 +53,8 @@ private:
     void handleClient(int client_sock);
     Request parseRequest(const std::string& raw);
     std::string buildResponse(const Response& resp);
-    Handler findHandler(const std::string& method, const std::string& path);
+    Handler findHandler(const std::string& method, const std::string& path,
+                        std::map<std::string, std::string>& pathParams);
 
     int _port;
     int _server_sock = -1;
