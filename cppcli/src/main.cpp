@@ -14,6 +14,7 @@
 #include "../lib/tui/screen.hpp"
 #include "../lib/tui/login.hpp"
 #include "../lib/tui/main_view.hpp"
+#include "../lib/tui/chat_view.hpp"
 #endif
 
 namespace {
@@ -221,17 +222,67 @@ int cmdTUI(const matrixcli::cli::Args&) {
             sacc.device_id = creds.device_id;
             dbi.saveAccount(sacc);
 
-            tui::MainView main_view;
-            main_view.setStatus("Connected as " + creds.user_id);
+            // Init crypto
+            client.initCrypto(creds.user_id, creds.device_id);
 
-            client.startSync([&](const matrix::Event& ev) {
-                if (ev.type == "m.room.message" && ev.content.contains("body") &&
-                    !ev.content["body"].get<std::string>().empty()) {
-                    main_view.addMessage(ev.sender, ev.content["body"].get<std::string>());
+            tui::ChatView chat;
+            chat.setStatus("Connected as " + creds.user_id);
+
+            // Load rooms from DB
+            auto rooms = dbi.listRooms();
+            std::vector<tui::RoomInfo> roomInfos;
+            for (auto& r : rooms) {
+                tui::RoomInfo ri;
+                ri.id = r.value("room_id", "");
+                ri.name = r.value("name", "");
+                if (ri.name.empty()) ri.name = ri.id;
+                ri.is_encrypted = r.value("is_encrypted", false);
+                roomInfos.push_back(ri);
+            }
+            if (roomInfos.empty()) {
+                // Add a placeholder
+                tui::RoomInfo ri;
+                ri.id = "!welcome:demo.local";
+                ri.name = "#welcome";
+                roomInfos.push_back(ri);
+            }
+            chat.setRooms(roomInfos);
+
+            // Set up send callback
+            chat.setSendCallback([&](const std::string& body) {
+                std::string roomId = chat.activeRoomId();
+                if (!roomId.empty()) {
+                    try {
+                        client.sendTextMessage(roomId, body);
+                    } catch (...) {}
                 }
             });
 
-            main_view.run(screen);
+            // Start sync: feed events to chat
+            client.startSync([&](const matrix::Event& ev) {
+                tui::RoomInfo ri;
+                ri.id = ev.room_id;
+                ri.name = ev.room_id; // Will be updated from room state
+                chat.addRoom(ri);
+
+                if (ev.type == "m.room.name" && ev.content.contains("name")) {
+                    // Update room name
+                }
+
+                if (ev.type == "m.room.message" && ev.content.contains("body")) {
+                    tui::MessageInfo mi;
+                    mi.sender = ev.sender;
+                    mi.body = ev.content["body"].get<std::string>();
+                    mi.event_id = ev.event_id;
+                    std::string mt = ev.content.value("msgtype", "m.text");
+                    mi.is_notice = (mt == "m.notice");
+                    mi.is_emote = (mt == "m.emote");
+                    chat.addMessage(ev.room_id, mi);
+                }
+                chat.requestRedraw();
+            });
+
+            chat.run(screen);
             client.stopSync();
         } catch (const std::exception& e) {
             screen.shutdown();
