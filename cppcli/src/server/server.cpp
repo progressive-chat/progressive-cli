@@ -10,8 +10,10 @@ APIServer::APIServer(int port, bool demo_mode) : _port(port), _server(port), _de
     api::Router router;
 
     if (_demo) {
-        auto demoHandler = std::make_shared<api::DemoHandler>();
-        demoHandler->registerRoutes(router);
+        _demoHandler = std::make_shared<api::DemoHandler>();
+        _demoHandler->setPersistPath("demo.json");
+        _demoHandler->load();
+        _demoHandler->registerRoutes(router);
         util::Logger::instance().info("Demo mode enabled — no Matrix account required");
     } else {
         api::MatrixHandler handler(_client);
@@ -33,7 +35,12 @@ APIServer::APIServer(int port, bool demo_mode) : _port(port), _server(port), _de
     router.apply(_server);
 }
 
-APIServer::~APIServer() { stop(); }
+APIServer::~APIServer() {
+    stop();
+    if (_demoHandler) {
+        _demoHandler->save();
+    }
+}
 
 void APIServer::start() {
     _server.start();

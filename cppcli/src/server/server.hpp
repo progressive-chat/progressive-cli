@@ -5,6 +5,7 @@
 #include "../../lib/api/handler.hpp"
 #include "../../lib/api/demo_handler.hpp"
 #include "../../lib/matrix/client.hpp"
+#include <memory>
 
 namespace matrixcli { namespace server {
 
@@ -23,6 +24,7 @@ private:
     bool _demo;
     matrix::Client _client;
     api::Server _server;
+    std::shared_ptr<api::DemoHandler> _demoHandler;
 };
 
 }} // namespace matrixcli::server

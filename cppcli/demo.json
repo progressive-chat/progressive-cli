@@ -1,0 +1,1012 @@
+{
+  "messages": [
+    {
+      "content": {
+        "body": "persist-test-1779445730",
+        "msgtype": "m.text"
+      },
+      "event_id": "$demo_1779445730",
+      "is_encrypted": false,
+      "origin_server_ts": 1779445730,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!general:demo.local",
+      "sender": "@demo:demo.local",
+      "sender_name": "You (demo)",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "body": "Welcome everyone! This is a demo of matrixcli — a terminal Matrix client.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt1",
+      "is_encrypted": false,
+      "origin_server_ts": 1779359389,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!general:demo.local",
+      "sender": "alice",
+      "sender_name": "Alice",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "body": "Hey Alice! The C++ rewrite is impressive. Raw sockets + OpenSSL for HTTP, no libcurl dependency.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt2",
+      "is_encrypted": false,
+      "origin_server_ts": 1779359449,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!general:demo.local",
+      "sender": "bob",
+      "sender_name": "Bob",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "m.relates_to": {
+          "event_id": "$evt2",
+          "key": "👍",
+          "rel_type": "m.annotation"
+        }
+      },
+      "event_id": "$reaction3",
+      "is_encrypted": false,
+      "origin_server_ts": 1779359509,
+      "relates_to": "$evt2",
+      "relation_type": "m.annotation",
+      "room_id": "!general:demo.local",
+      "sender": "charlie",
+      "sender_name": "Charlie",
+      "type": "m.reaction"
+    },
+    {
+      "content": {
+        "body": "Thanks! It supports 5 output formats: JSON, text, Markdown, Gemini, and HTML. Try ?format=html on the API!",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt4",
+      "is_encrypted": false,
+      "origin_server_ts": 1779359569,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!general:demo.local",
+      "sender": "alice",
+      "sender_name": "Alice",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "body": "Does it support end-to-end encryption?",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt5",
+      "is_encrypted": false,
+      "origin_server_ts": 1779359629,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!general:demo.local",
+      "sender": "charlie",
+      "sender_name": "Charlie",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "body": "Yes! Full libolm bindings — Olm for 1-to-1 and Megolm for group encryption. Check the #dev room for details.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt6",
+      "is_encrypted": false,
+      "origin_server_ts": 1779359689,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!general:demo.local",
+      "sender": "alice",
+      "sender_name": "Alice",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "m.relates_to": {
+          "event_id": "$evt6",
+          "key": "🔥",
+          "rel_type": "m.annotation"
+        }
+      },
+      "event_id": "$reaction7",
+      "is_encrypted": false,
+      "origin_server_ts": 1779359749,
+      "relates_to": "$evt6",
+      "relation_type": "m.annotation",
+      "room_id": "!general:demo.local",
+      "sender": "bob",
+      "sender_name": "Bob",
+      "type": "m.reaction"
+    },
+    {
+      "content": {
+        "body": "Screenshot of matrixcli TUI in action",
+        "info": {
+          "h": 800,
+          "w": 1200
+        },
+        "msgtype": "m.image",
+        "url": "mxc://demo.local/$evt8"
+      },
+      "event_id": "$evt8",
+      "is_encrypted": false,
+      "origin_server_ts": 1779359809,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!general:demo.local",
+      "sender": "bob",
+      "sender_name": "Bob",
+      "type": "m.image"
+    },
+    {
+      "content": {
+        "body": "Also check out the demo mode — start with `matrixcli demo` and access everything without a Matrix account.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt9",
+      "is_encrypted": false,
+      "origin_server_ts": 1779359869,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!general:demo.local",
+      "sender": "alice",
+      "sender_name": "Alice",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "body": "",
+        "m.relates_to": {
+          "event_id": "$evt9",
+          "rel_type": "m.replace"
+        },
+        "msgtype": "m.text"
+      },
+      "event_id": "$edit10",
+      "is_encrypted": false,
+      "origin_server_ts": 1779359929,
+      "relates_to": "$evt9",
+      "relation_type": "m.replace",
+      "room_id": "!general:demo.local",
+      "sender": "alice",
+      "sender_name": "Alice",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "body": "Can I use it with Tor?",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt11",
+      "is_encrypted": false,
+      "origin_server_ts": 1779359989,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!general:demo.local",
+      "sender": "dave",
+      "sender_name": "Dave",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "body": "Absolutely! You can route through Tor, I2P, or Yggdrasil. Just select the connection type at login.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt12",
+      "is_encrypted": false,
+      "origin_server_ts": 1779360049,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!general:demo.local",
+      "sender": "bob",
+      "sender_name": "Bob",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "m.relates_to": {
+          "event_id": "$evt12",
+          "key": "🙏",
+          "rel_type": "m.annotation"
+        }
+      },
+      "event_id": "$reaction13",
+      "is_encrypted": false,
+      "origin_server_ts": 1779360109,
+      "relates_to": "$evt12",
+      "relation_type": "m.annotation",
+      "room_id": "!general:demo.local",
+      "sender": "dave",
+      "sender_name": "Dave",
+      "type": "m.reaction"
+    },
+    {
+      "content": {
+        "body": "The TUI is built with ncurses — full terminal UI with room list, message view, and composer. Try `matrixcli tui`.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt14",
+      "is_encrypted": false,
+      "origin_server_ts": 1779360169,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!general:demo.local",
+      "sender": "alice",
+      "sender_name": "Alice",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "body": "matrixcli-api-spec.md",
+        "info": {
+          "mimetype": "text/markdown",
+          "size": 4521
+        },
+        "msgtype": "m.file",
+        "url": "mxc://demo.local/$evt15"
+      },
+      "event_id": "$evt15",
+      "is_encrypted": false,
+      "origin_server_ts": 1779360229,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!general:demo.local",
+      "sender": "charlie",
+      "sender_name": "Charlie",
+      "type": "m.file"
+    },
+    {
+      "content": {
+        "body": "Just joined! This looks amazing. Can't wait to try the Gemini protocol output.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt16",
+      "is_encrypted": false,
+      "origin_server_ts": 1779360289,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!general:demo.local",
+      "sender": "eve",
+      "sender_name": "Eve",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "body": "Welcome Eve! The Gemini output is at ?format=gemini — pure gemtext, works great in Lagrange.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt17",
+      "is_encrypted": false,
+      "origin_server_ts": 1779360349,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!general:demo.local",
+      "sender": "alice",
+      "sender_name": "Alice",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "m.relates_to": {
+          "event_id": "$evt17",
+          "key": "❤️",
+          "rel_type": "m.annotation"
+        }
+      },
+      "event_id": "$reaction18",
+      "is_encrypted": false,
+      "origin_server_ts": 1779360409,
+      "relates_to": "$evt17",
+      "relation_type": "m.annotation",
+      "room_id": "!general:demo.local",
+      "sender": "eve",
+      "sender_name": "Eve",
+      "type": "m.reaction"
+    },
+    {
+      "content": {
+        "body": "The HTTP client is implemented with raw BSD sockets + OpenSSL — no external dependencies.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt19",
+      "is_encrypted": false,
+      "origin_server_ts": 1779360469,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!dev:demo.local",
+      "sender": "alice",
+      "sender_name": "Alice",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "body": "Nice! For the TUI, ncurses handles the rendering. Anyone looked at Notcurses for better visuals?",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt20",
+      "is_encrypted": false,
+      "origin_server_ts": 1779360529,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!dev:demo.local",
+      "sender": "bob",
+      "sender_name": "Bob",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "body": "Notcurses supports images, video, and multi-threading. Could be a good upgrade path.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt21",
+      "is_encrypted": false,
+      "origin_server_ts": 1779360589,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!dev:demo.local",
+      "sender": "charlie",
+      "sender_name": "Charlie",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "m.relates_to": {
+          "event_id": "$evt21",
+          "key": "🤔",
+          "rel_type": "m.annotation"
+        }
+      },
+      "event_id": "$reaction22",
+      "is_encrypted": false,
+      "origin_server_ts": 1779360649,
+      "relates_to": "$evt21",
+      "relation_type": "m.annotation",
+      "room_id": "!dev:demo.local",
+      "sender": "alice",
+      "sender_name": "Alice",
+      "type": "m.reaction"
+    },
+    {
+      "content": {
+        "body": "The crypto layer (lib/e2ee/) is complete: OlmAccount, OlmSession, MegolmOutbound/Inbound, CryptoManager orchestrating them all.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt23",
+      "is_encrypted": false,
+      "origin_server_ts": 1779360709,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!dev:demo.local",
+      "sender": "bob",
+      "sender_name": "Bob",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "algorithm": "m.megolm.v1.aes-sha2",
+        "ciphertext": "[demo encrypted payload — ]",
+        "device_id": "DEMODEVICE",
+        "sender_key": "demo_sender_key",
+        "session_id": "demo_session_$evt24"
+      },
+      "event_id": "$evt24",
+      "is_encrypted": true,
+      "origin_server_ts": 1779360769,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!dev:demo.local",
+      "sender": "charlie",
+      "sender_name": "Charlie",
+      "type": "m.room.encrypted"
+    },
+    {
+      "content": {
+        "body": "The cmdspec system auto-generates TypeScript type declarations from Go code — we could do similar for C++.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt25",
+      "is_encrypted": false,
+      "origin_server_ts": 1779360829,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!dev:demo.local",
+      "sender": "alice",
+      "sender_name": "Alice",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "body": "NOTICE: CI pipeline now builds cppcli on every push. Tests: 12/12 passing.",
+        "msgtype": "m.notice"
+      },
+      "event_id": "$evt26",
+      "is_encrypted": false,
+      "origin_server_ts": 1779360889,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!dev:demo.local",
+      "sender": "admin",
+      "sender_name": "matrixcli-bot",
+      "type": "m.notice"
+    },
+    {
+      "content": {
+        "body": "build.log",
+        "info": {
+          "mimetype": "text/plain",
+          "size": 12480
+        },
+        "msgtype": "m.file",
+        "url": "mxc://demo.local/$evt27"
+      },
+      "event_id": "$evt27",
+      "is_encrypted": false,
+      "origin_server_ts": 1779360949,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!dev:demo.local",
+      "sender": "bob",
+      "sender_name": "Bob",
+      "type": "m.file"
+    },
+    {
+      "content": {
+        "body": "pushes a commit at 3am",
+        "msgtype": "m.emote"
+      },
+      "event_id": "$evt28",
+      "is_encrypted": false,
+      "origin_server_ts": 1779361009,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!dev:demo.local",
+      "sender": "charlie",
+      "sender_name": "Charlie",
+      "type": "m.emote"
+    },
+    {
+      "content": {
+        "body": "Key architecture: lib/http (transport) → lib/matrix (protocol) → lib/api (REST server) → lib/formats (renderers). Clean separation.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt29",
+      "is_encrypted": false,
+      "origin_server_ts": 1779361069,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!dev:demo.local",
+      "sender": "alice",
+      "sender_name": "Alice",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "m.relates_to": {
+          "event_id": "$evt29",
+          "key": "💯",
+          "rel_type": "m.annotation"
+        }
+      },
+      "event_id": "$reaction30",
+      "is_encrypted": false,
+      "origin_server_ts": 1779361129,
+      "relates_to": "$evt29",
+      "relation_type": "m.annotation",
+      "room_id": "!dev:demo.local",
+      "sender": "bob",
+      "sender_name": "Bob",
+      "type": "m.reaction"
+    },
+    {
+      "content": {
+        "body": "Why did the C++ developer break up with the Java developer? Too many exceptions! 😄",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt31",
+      "is_encrypted": false,
+      "origin_server_ts": 1779361189,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!random:demo.local",
+      "sender": "bob",
+      "sender_name": "Bob",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "m.relates_to": {
+          "event_id": "$evt31",
+          "key": "😂",
+          "rel_type": "m.annotation"
+        }
+      },
+      "event_id": "$reaction32",
+      "is_encrypted": false,
+      "origin_server_ts": 1779361249,
+      "relates_to": "$evt31",
+      "relation_type": "m.annotation",
+      "room_id": "!random:demo.local",
+      "sender": "alice",
+      "sender_name": "Alice",
+      "type": "m.reaction"
+    },
+    {
+      "content": {
+        "body": "A SQL query walks into a bar, joins two tables and asks... can I get a date?",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt33",
+      "is_encrypted": false,
+      "origin_server_ts": 1779361309,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!random:demo.local",
+      "sender": "alice",
+      "sender_name": "Alice",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "m.relates_to": {
+          "event_id": "$evt33",
+          "key": "🤣",
+          "rel_type": "m.annotation"
+        }
+      },
+      "event_id": "$reaction34",
+      "is_encrypted": false,
+      "origin_server_ts": 1779361369,
+      "relates_to": "$evt33",
+      "relation_type": "m.annotation",
+      "room_id": "!random:demo.local",
+      "sender": "charlie",
+      "sender_name": "Charlie",
+      "type": "m.reaction"
+    },
+    {
+      "content": {
+        "body": "Programmer: I have a problem. I'll use threads.\nProblem solved!\n... Now I have tow prblmes.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt35",
+      "is_encrypted": false,
+      "origin_server_ts": 1779361429,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!random:demo.local",
+      "sender": "charlie",
+      "sender_name": "Charlie",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "body": "Why do Python programmers wear glasses? Because they don't see sharp.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt36",
+      "is_encrypted": false,
+      "origin_server_ts": 1779361489,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!random:demo.local",
+      "sender": "eve",
+      "sender_name": "Eve",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "m.relates_to": {
+          "event_id": "$evt36",
+          "key": "🤓",
+          "rel_type": "m.annotation"
+        }
+      },
+      "event_id": "$reaction37",
+      "is_encrypted": false,
+      "origin_server_ts": 1779361549,
+      "relates_to": "$evt36",
+      "relation_type": "m.annotation",
+      "room_id": "!random:demo.local",
+      "sender": "bob",
+      "sender_name": "Bob",
+      "type": "m.reaction"
+    },
+    {
+      "content": {
+        "body": "dank-meme.png",
+        "info": {
+          "h": 480,
+          "w": 640
+        },
+        "msgtype": "m.image",
+        "url": "mxc://demo.local/$evt38"
+      },
+      "event_id": "$evt38",
+      "is_encrypted": false,
+      "origin_server_ts": 1779361609,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!random:demo.local",
+      "sender": "dave",
+      "sender_name": "Dave",
+      "type": "m.image"
+    },
+    {
+      "content": {
+        "body": "📣 [ANN] matrixcli v0.1.0 released — First C++ release with full Matrix CS API, E2EE, ncurses TUI.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt39",
+      "is_encrypted": false,
+      "origin_server_ts": 1779361669,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!announcements:demo.local",
+      "sender": "admin",
+      "sender_name": "matrixcli-bot",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "body": "📣 [ANN] New feature: multi-format REST API — JSON, plain text, Markdown, Gemtext, HTML.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt40",
+      "is_encrypted": false,
+      "origin_server_ts": 1779361729,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!announcements:demo.local",
+      "sender": "admin",
+      "sender_name": "matrixcli-bot",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "body": "📣 [ANN] Security: TLS certificate pinning now available for all connections.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt41",
+      "is_encrypted": false,
+      "origin_server_ts": 1779361789,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!announcements:demo.local",
+      "sender": "admin",
+      "sender_name": "matrixcli-bot",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "body": "📣 [ANN] Demo mode released! Try `matrixcli demo` to explore without a Matrix account.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt42",
+      "is_encrypted": false,
+      "origin_server_ts": 1779361849,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!announcements:demo.local",
+      "sender": "admin",
+      "sender_name": "matrixcli-bot",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "algorithm": "m.megolm.v1.aes-sha2",
+        "ciphertext": "[demo encrypted payload — ]",
+        "device_id": "DEMODEVICE",
+        "sender_key": "demo_sender_key",
+        "session_id": "demo_session_$evt43"
+      },
+      "event_id": "$evt43",
+      "is_encrypted": true,
+      "origin_server_ts": 1779361909,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!security:demo.local",
+      "sender": "alice",
+      "sender_name": "Alice",
+      "type": "m.room.encrypted"
+    },
+    {
+      "content": {
+        "algorithm": "m.megolm.v1.aes-sha2",
+        "ciphertext": "[demo encrypted payload — ]",
+        "device_id": "DEMODEVICE",
+        "sender_key": "demo_sender_key",
+        "session_id": "demo_session_$evt44"
+      },
+      "event_id": "$evt44",
+      "is_encrypted": true,
+      "origin_server_ts": 1779361969,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!security:demo.local",
+      "sender": "bob",
+      "sender_name": "Bob",
+      "type": "m.room.encrypted"
+    },
+    {
+      "content": {
+        "algorithm": "m.megolm.v1.aes-sha2",
+        "ciphertext": "[demo encrypted payload — ]",
+        "device_id": "DEMODEVICE",
+        "sender_key": "demo_sender_key",
+        "session_id": "demo_session_$evt45"
+      },
+      "event_id": "$evt45",
+      "is_encrypted": true,
+      "origin_server_ts": 1779362029,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!security:demo.local",
+      "sender": "charlie",
+      "sender_name": "Charlie",
+      "type": "m.room.encrypted"
+    },
+    {
+      "content": {
+        "algorithm": "m.megolm.v1.aes-sha2",
+        "ciphertext": "[demo encrypted payload — ]",
+        "device_id": "DEMODEVICE",
+        "sender_key": "demo_sender_key",
+        "session_id": "demo_session_$evt46"
+      },
+      "event_id": "$evt46",
+      "is_encrypted": true,
+      "origin_server_ts": 1779362089,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!security:demo.local",
+      "sender": "alice",
+      "sender_name": "Alice",
+      "type": "m.room.encrypted"
+    },
+    {
+      "content": {
+        "m.relates_to": {
+          "event_id": "$evt45",
+          "key": "✅",
+          "rel_type": "m.annotation"
+        }
+      },
+      "event_id": "$reaction47",
+      "is_encrypted": false,
+      "origin_server_ts": 1779362149,
+      "relates_to": "$evt45",
+      "relation_type": "m.annotation",
+      "room_id": "!security:demo.local",
+      "sender": "charlie",
+      "sender_name": "Charlie",
+      "type": "m.reaction"
+    },
+    {
+      "content": {
+        "algorithm": "m.megolm.v1.aes-sha2",
+        "ciphertext": "[demo encrypted payload — ]",
+        "device_id": "DEMODEVICE",
+        "sender_key": "demo_sender_key",
+        "session_id": "demo_session_$evt48"
+      },
+      "event_id": "$evt48",
+      "is_encrypted": true,
+      "origin_server_ts": 1779362209,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!security:demo.local",
+      "sender": "charlie",
+      "sender_name": "Charlie",
+      "type": "m.room.encrypted"
+    },
+    {
+      "content": {
+        "body": "[SYSTEM] Device @charlie:demo.local (CHARLIEPHONE) is now verified",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt49",
+      "is_encrypted": false,
+      "origin_server_ts": 1779362269,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!security:demo.local",
+      "sender": "admin",
+      "sender_name": "matrixcli-bot",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "algorithm": "m.megolm.v1.aes-sha2",
+        "ciphertext": "[demo encrypted payload — ]",
+        "device_id": "DEMODEVICE",
+        "sender_key": "demo_sender_key",
+        "session_id": "demo_session_$evt50"
+      },
+      "event_id": "$evt50",
+      "is_encrypted": true,
+      "origin_server_ts": 1779362329,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!dm_alice:demo.local",
+      "sender": "alice",
+      "sender_name": "Alice",
+      "type": "m.room.encrypted"
+    },
+    {
+      "content": {
+        "body": "Cool! So the Olm session is established between our devices?",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt51",
+      "is_encrypted": false,
+      "origin_server_ts": 1779362389,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!dm_alice:demo.local",
+      "sender": "demo",
+      "sender_name": "You (demo)",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "algorithm": "m.megolm.v1.aes-sha2",
+        "ciphertext": "[demo encrypted payload — ]",
+        "device_id": "DEMODEVICE",
+        "sender_key": "demo_sender_key",
+        "session_id": "demo_session_$evt52"
+      },
+      "event_id": "$evt52",
+      "is_encrypted": true,
+      "origin_server_ts": 1779362449,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!dm_alice:demo.local",
+      "sender": "alice",
+      "sender_name": "Alice",
+      "type": "m.room.encrypted"
+    },
+    {
+      "content": {
+        "body": "And the keys are stored in SQLite for offline access?",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt53",
+      "is_encrypted": false,
+      "origin_server_ts": 1779362509,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!dm_alice:demo.local",
+      "sender": "demo",
+      "sender_name": "You (demo)",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "algorithm": "m.megolm.v1.aes-sha2",
+        "ciphertext": "[demo encrypted payload — ]",
+        "device_id": "DEMODEVICE",
+        "sender_key": "demo_sender_key",
+        "session_id": "demo_session_$evt54"
+      },
+      "event_id": "$evt54",
+      "is_encrypted": true,
+      "origin_server_ts": 1779362569,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!dm_alice:demo.local",
+      "sender": "alice",
+      "sender_name": "Alice",
+      "type": "m.room.encrypted"
+    },
+    {
+      "content": {
+        "m.relates_to": {
+          "event_id": "$evt54",
+          "key": "👌",
+          "rel_type": "m.annotation"
+        }
+      },
+      "event_id": "$reaction55",
+      "is_encrypted": false,
+      "origin_server_ts": 1779362629,
+      "relates_to": "$evt54",
+      "relation_type": "m.annotation",
+      "room_id": "!dm_alice:demo.local",
+      "sender": "alice",
+      "sender_name": "Alice",
+      "type": "m.reaction"
+    },
+    {
+      "content": {
+        "body": "Have you seen the new ncurses login screen? It supports Direct, Tor, I2P, Yggdrasil, Custom.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt56",
+      "is_encrypted": false,
+      "origin_server_ts": 1779362689,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!dm_bob:demo.local",
+      "sender": "bob",
+      "sender_name": "Bob",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "body": "Not yet! I'm testing through the HTTP API right now.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt57",
+      "is_encrypted": false,
+      "origin_server_ts": 1779362749,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!dm_bob:demo.local",
+      "sender": "demo",
+      "sender_name": "You (demo)",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "body": "Try `matrixcli tui` — it's the full terminal experience with room switching and message composer.",
+        "msgtype": "m.text"
+      },
+      "event_id": "$evt58",
+      "is_encrypted": false,
+      "origin_server_ts": 1779362809,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!dm_bob:demo.local",
+      "sender": "bob",
+      "sender_name": "Bob",
+      "type": "m.text"
+    },
+    {
+      "content": {
+        "body": "tui-screenshot.png",
+        "info": {
+          "h": 1080,
+          "w": 1920
+        },
+        "msgtype": "m.image",
+        "url": "mxc://demo.local/$evt59"
+      },
+      "event_id": "$evt59",
+      "is_encrypted": false,
+      "origin_server_ts": 1779362869,
+      "relates_to": "",
+      "relation_type": "",
+      "room_id": "!dm_bob:demo.local",
+      "sender": "bob",
+      "sender_name": "Bob",
+      "type": "m.image"
+    },
+    {
+      "content": {
+        "m.relates_to": {
+          "event_id": "$evt59",
+          "key": "🔥",
+          "rel_type": "m.annotation"
+        }
+      },
+      "event_id": "$reaction60",
+      "is_encrypted": false,
+      "origin_server_ts": 1779362929,
+      "relates_to": "$evt59",
+      "relation_type": "m.annotation",
+      "room_id": "!dm_bob:demo.local",
+      "sender": "demo",
+      "sender_name": "You (demo)",
+      "type": "m.reaction"
+    }
+  ],
+  "saved_at": 1779445754
+}
