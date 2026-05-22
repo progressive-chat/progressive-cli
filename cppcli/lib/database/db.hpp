@@ -48,6 +48,9 @@ public:
                                           const std::string& before_event = "");
     int getEventCount(const std::string& room_id);
 
+    // Full-text search
+    std::vector<json> search(const std::string& query, int limit = 20);
+
 private:
     void migrate();
     bool exec(const std::string& sql);

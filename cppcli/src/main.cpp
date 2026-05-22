@@ -7,8 +7,10 @@
 #include "cli/args.hpp"
 #include "server/server.hpp"
 #include "../lib/matrix/client.hpp"
+#include "../lib/matrix/pushrules.hpp"
 #include "../lib/database/db.hpp"
 #include "../lib/util/logger.hpp"
+#include "../lib/util/notifications.hpp"
 
 #ifdef BUILD_TUI
 #include "../lib/tui/screen.hpp"
@@ -262,12 +264,17 @@ int cmdTUI(const matrixcli::cli::Args&) {
             client.startSync([&](const matrix::Event& ev) {
                 tui::RoomInfo ri;
                 ri.id = ev.room_id;
-                ri.name = ev.room_id; // Will be updated from room state
+                ri.name = ev.room_id;
                 chat.addRoom(ri);
 
-                if (ev.type == "m.room.name" && ev.content.contains("name")) {
-                    // Update room name
-                }
+                // Evaluate push rules for notification
+                nlohmann::json jev;
+                jev["event_id"] = ev.event_id;
+                jev["room_id"] = ev.room_id;
+                jev["sender"] = ev.sender;
+                jev["type"] = ev.type;
+                jev["content"] = ev.content;
+                auto pr = client.evaluatePush(jev);
 
                 if (ev.type == "m.room.message" && ev.content.contains("body")) {
                     tui::MessageInfo mi;
@@ -277,8 +284,21 @@ int cmdTUI(const matrixcli::cli::Args&) {
                     std::string mt = ev.content.value("msgtype", "m.text");
                     mi.is_notice = (mt == "m.notice");
                     mi.is_emote = (mt == "m.emote");
+                    mi.is_highlight = pr.highlight;
+
+                    // Desktop notification for highlights and DMs
+                    if (pr.highlight || client.isDirectChat(ev.room_id)) {
+                        util::Notifications::send(ev.sender, mi.body);
+                    }
+
                     chat.addMessage(ev.room_id, mi);
                 }
+
+                // Track reactions (handled in chat view via event decoding)
+                if (ev.type == "m.reaction" && ev.content.contains("m.relates_to")) {
+                    // Reactions are tracked by the sync loop decryption already
+                }
+
                 chat.requestRedraw();
             });
 

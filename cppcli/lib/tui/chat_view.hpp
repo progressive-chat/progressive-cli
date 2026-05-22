@@ -23,6 +23,15 @@ struct MessageInfo {
     bool is_encrypted = false;
     bool is_notice = false;
     bool is_emote = false;
+    std::string reaction; // emoji reaction key
+    bool is_highlight = false; // push rule match
+};
+
+struct MemberInfo {
+    std::string user_id;
+    std::string display_name;
+    int power_level = 0;
+    std::string membership; // join, invite, leave
 };
 
 class ChatView {
@@ -43,6 +52,8 @@ public:
     void setSendCallback(SendCallback cb) { _sendCb = std::move(cb); }
     void setRoomSwitchCallback(RoomSwitchCallback cb) { _roomSwitchCb = std::move(cb); }
     void setStatus(const std::string& status) { _status = status; }
+    void setMembers(const std::string& room_id, const std::vector<MemberInfo>& members);
+    void setNotificationCallback(std::function<void(const std::string&)> cb) { _notifyCb = std::move(cb); }
 
     // Main loop
     void run(Screen& screen);
@@ -55,9 +66,11 @@ public:
 private:
     void draw(Screen& screen);
     void drawRoomList(Screen& screen, int x, int y, int w, int h);
+    void drawMemberList(Screen& screen, int x, int y, int w, int h);
     void drawMessages(Screen& screen, int x, int y, int w, int h);
     void drawInput(Screen& screen, int x, int y, int w);
     void drawStatus(Screen& screen, int y, int w);
+    void drawSearch(Screen& screen, int w, int h);
     void handleKey(Screen& screen, int key);
 
     void loadMessagesForActiveRoom();
@@ -65,18 +78,24 @@ private:
     // State
     std::vector<RoomInfo> _rooms;
     std::map<std::string, std::vector<MessageInfo>> _messages;
+    std::map<std::string, std::vector<MemberInfo>> _members;
     std::string _activeRoom;
     int _roomScroll = 0;
     int _msgScroll = 0;
     std::string _input;
     int _cursorPos = 0;
-    enum { FOCUS_INPUT, FOCUS_ROOMS } _focus = FOCUS_INPUT;
+    enum { FOCUS_INPUT, FOCUS_ROOMS, FOCUS_SEARCH } _focus = FOCUS_INPUT;
+    enum { PANE_ROOMS, PANE_MEMBERS } _leftPane = PANE_ROOMS;
+    bool _showHelp = false;
+    bool _showSearch = false;
+    std::string _searchQuery;
     std::string _status;
     bool _running = true;
     bool _needsRedraw = true;
 
     SendCallback _sendCb;
     RoomSwitchCallback _roomSwitchCb;
+    std::function<void(const std::string&)> _notifyCb;
     mutable std::mutex _mutex;
 };
 

@@ -1,5 +1,6 @@
 #include "client.hpp"
 #include "error.hpp"
+#include "pushrules.hpp"
 #include "../database/db.hpp"
 #include "../e2ee/crypto.hpp"
 #include "../util/logger.hpp"
@@ -27,6 +28,9 @@ struct Client::Impl {
     db::Database* db = nullptr;
     std::unique_ptr<e2ee::CryptoManager> crypto;
     std::map<std::string, bool> encrypted_rooms;
+    PushRules pushRules;
+    std::map<std::string, std::string> directChats; // room_id -> user_id
+    bool pushRulesLoaded = false;
 };
 
 Client::Client() : impl(std::make_unique<Impl>()) {}
@@ -82,6 +86,46 @@ bool Client::enableEncryption(const std::string& roomId) {
 bool Client::isRoomEncrypted(const std::string& roomId) const {
     auto it = impl->encrypted_rooms.find(roomId);
     return it != impl->encrypted_rooms.end() && it->second;
+}
+
+void Client::loadPushRules() {
+    try {
+        auto rules = getPushRules();
+        impl->pushRules.load(rules.dump());
+        impl->pushRulesLoaded = true;
+    } catch (...) {
+        impl->pushRulesLoaded = true; // Use defaults
+    }
+}
+
+PushResult Client::evaluatePush(const json& event) {
+    if (!impl->pushRulesLoaded) loadPushRules();
+    return impl->pushRules.evaluate(event);
+}
+
+void Client::loadDirectChats() {
+    try {
+        auto resp = authGet("/_matrix/client/r0/user/" +
+            http::urlEncode(impl->creds.user_id) + "/account_data/m.direct");
+        if (!resp.ok()) return;
+        auto j = json::parse(resp.body);
+        impl->directChats.clear();
+        for (auto& [userId, rooms] : j.items()) {
+            if (rooms.is_array() && !rooms.empty()) {
+                std::string roomId = rooms[0];
+                impl->directChats[roomId] = userId;
+            }
+        }
+    } catch (...) {}
+}
+
+bool Client::isDirectChat(const std::string& room_id) const {
+    return impl->directChats.count(room_id) > 0;
+}
+
+std::string Client::dmUserId(const std::string& room_id) const {
+    auto it = impl->directChats.find(room_id);
+    return it != impl->directChats.end() ? it->second : "";
 }
 
 std::string Client::buildUrl(const std::string& path) const {
@@ -766,7 +810,22 @@ void Client::startSync(EventCallback onEvent, const std::string& filter,
                     impl->db->saveAccount(acc);
                 }
 
-                for (auto& ev : sr.account_data) onEvent(ev);
+                // Handle account_data (m.direct, push rules, etc.)
+                for (auto& ev : sr.account_data) {
+                    if (ev.type == "m.direct") {
+                        impl->directChats.clear();
+                        for (auto& [userId, rooms] : ev.content.items()) {
+                            if (rooms.is_array() && !rooms.empty()) {
+                                impl->directChats[rooms[0].get<std::string>()] = userId;
+                            }
+                        }
+                        util::Logger::instance().info("Loaded " + std::to_string(impl->directChats.size()) + " direct chats");
+                    }
+                    if (ev.type == "m.push_rules") {
+                        try { impl->pushRules.load(ev.content.dump()); impl->pushRulesLoaded = true; } catch (...) {}
+                    }
+                    onEvent(ev);
+                }
                 for (auto& ev : sr.presence) onEvent(ev);
 
                 // Handle to-device events (m.room_key, m.room.encrypted Olm)

@@ -1,4 +1,5 @@
 #include "chat_view.hpp"
+#include "help_screen.hpp"
 
 #ifdef HAS_NCURSES
 #include <ncurses.h>
@@ -55,11 +56,24 @@ std::string ChatView::activeRoomId() const {
     return _activeRoom;
 }
 
+void ChatView::setMembers(const std::string& room_id, const std::vector<MemberInfo>& members) {
+    std::lock_guard<std::mutex> lock(_mutex);
+    _members[room_id] = members;
+    _needsRedraw = true;
+}
+
 void ChatView::run(Screen& screen) {
     _running = true;
     _needsRedraw = true;
 
     while (_running) {
+        if (_showHelp) {
+            HelpScreen::show(screen);
+            _showHelp = false;
+            _needsRedraw = true;
+            continue;
+        }
+
         draw(screen);
 
         int key = screen.getKey();
@@ -86,10 +100,14 @@ void ChatView::draw(Screen& screen) {
     // Status bar (line 0)
     drawStatus(screen, 0, w);
 
-    // Room list (left panel)
+    // Room list or Member list (left panel)
     int room_w = std::min(25, w / 4);
-    int room_h = h - 3; // minus status + input
-    drawRoomList(screen, 1, 1, room_w, room_h);
+    int room_h = h - 3;
+    if (_leftPane == PANE_MEMBERS) {
+        drawMemberList(screen, 1, 1, room_w, room_h);
+    } else {
+        drawRoomList(screen, 1, 1, room_w, room_h);
+    }
 
     // Messages (right panel)
     int msg_x = room_w + 2;
@@ -185,6 +203,39 @@ void ChatView::drawRoomList(Screen& screen, int x, int y, int w, int h) {
 #endif
 }
 
+void ChatView::drawMemberList(Screen& screen, int x, int y, int w, int h) {
+    std::lock_guard<std::mutex> lock(_mutex);
+
+#ifdef HAS_NCURSES
+    attron(A_BOLD);
+    mvaddstr(y, x, "Members");
+    attroff(A_BOLD);
+
+    auto it = _members.find(_activeRoom);
+    if (it == _members.end()) {
+        mvaddstr(y + 1, x, "(sync first)");
+        return;
+    }
+
+    auto& members = it->second;
+    int visible = h - 2;
+    for (int i = 0; i < visible && i < (int)members.size(); i++) {
+        auto& m = members[i];
+        int ry = y + 1 + i;
+        std::string label = m.display_name.empty() ? m.user_id : m.display_name;
+        if (m.power_level >= 100) label = "@" + label;
+        if (label.size() > (size_t)(w - 3)) label = label.substr(0, w - 3);
+        if (m.membership == "join") attron(COLOR_PAIR(2));
+        else attron(A_DIM);
+        mvprintw(ry, x, " %-*s ", w - 2, label.c_str());
+        if (m.membership == "join") attroff(COLOR_PAIR(2));
+        else attroff(A_DIM);
+    }
+#else
+    screen.drawText(x, y, "Members");
+#endif
+}
+
 void ChatView::drawMessages(Screen& screen, int x, int y, int w, int h) {
     std::lock_guard<std::mutex> lock(_mutex);
 
@@ -213,9 +264,12 @@ void ChatView::drawMessages(Screen& screen, int x, int y, int w, int h) {
 
         auto& msg = msgs[idx];
         std::string prefix = msg.sender + ": ";
+        std::string suffix;
         if (msg.is_emote) prefix = "* " + msg.sender + " ";
         else if (msg.is_notice) prefix = "[!] " + msg.sender + ": ";
         else if (msg.is_encrypted) prefix = msg.sender + ": [encrypted] ";
+        if (!msg.reaction.empty()) suffix = "  " + msg.reaction;
+        if (msg.is_highlight) prefix = "★ " + prefix;
 
         int avail = w - (int)prefix.size();
         if (avail <= 0) continue;
@@ -337,6 +391,14 @@ void ChatView::handleKey(Screen& screen, int key) {
                 _needsRedraw = true;
             }
             break;
+        case 'm': case 'M':
+            _leftPane = (_leftPane == PANE_ROOMS) ? PANE_MEMBERS : PANE_ROOMS;
+            _needsRedraw = true;
+            break;
+        case '?':
+            _showHelp = true;
+            _needsRedraw = true;
+            break;
         default:
             if (key >= 32 && key <= 126) {
                 _input.insert(_input.begin() + _cursorPos, (char)key);
@@ -372,6 +434,14 @@ void ChatView::handleKey(Screen& screen, int key) {
             break;
         case 'q': case 'Q':
             _running = false;
+            break;
+        case 'm': case 'M':
+            _leftPane = (_leftPane == PANE_ROOMS) ? PANE_MEMBERS : PANE_ROOMS;
+            _needsRedraw = true;
+            break;
+        case '?':
+            _showHelp = true;
+            _needsRedraw = true;
             break;
         case 'j':
             if (_roomScroll < (int)_rooms.size() - 1) { _roomScroll++; _needsRedraw = true; }

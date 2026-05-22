@@ -78,6 +78,12 @@ void Database::migrate() {
 
         CREATE INDEX IF NOT EXISTS idx_events_room_ts
             ON events(room_id, origin_server_ts DESC);
+
+        -- Full-text search
+        CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(
+            event_id, room_id, sender, body,
+            content='events', content_rowid='rowid'
+        );
     )");
 }
 
@@ -271,6 +277,41 @@ int Database::getEventCount(const std::string& room_id) {
     if (sqlite3_step(stmt) == SQLITE_ROW) count = sqlite3_column_int(stmt, 0);
     sqlite3_finalize(stmt);
     return count;
+}
+
+std::vector<json> Database::search(const std::string& query, int limit) {
+    std::vector<json> result;
+    // Insert pending events into FTS
+    exec("INSERT INTO events_fts(events_fts) VALUES('rebuild')");
+
+    sqlite3_stmt* stmt;
+    std::string sql = "SELECT events.event_id, events.room_id, events.sender, "
+                      "events.content, events.origin_server_ts, rooms.name "
+                      "FROM events_fts "
+                      "JOIN events ON events_fts.rowid = events.rowid "
+                      "LEFT JOIN rooms ON events.room_id = rooms.room_id "
+                      "WHERE events_fts MATCH ? "
+                      "ORDER BY rank LIMIT ?";
+    sqlite3_prepare_v2(_db, sql.c_str(), -1, &stmt, nullptr);
+    sqlite3_bind_text(stmt, 1, query.c_str(), query.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 2, limit);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        json r;
+        r["event_id"] = (const char*)sqlite3_column_text(stmt, 0);
+        r["room_id"] = (const char*)sqlite3_column_text(stmt, 1);
+        r["sender"] = (const char*)sqlite3_column_text(stmt, 2) ?: "";
+        auto ct = (const char*)sqlite3_column_text(stmt, 3);
+        if (ct) {
+            try { r["content"] = json::parse(ct); } catch (...) {}
+        }
+        r["origin_server_ts"] = sqlite3_column_int64(stmt, 4);
+        auto name = (const char*)sqlite3_column_text(stmt, 5);
+        if (name) r["room_name"] = name;
+        result.push_back(r);
+    }
+    sqlite3_finalize(stmt);
+    return result;
 }
 
 }} // namespace matrixcli::db

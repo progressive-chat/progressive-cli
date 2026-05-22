@@ -10,6 +10,7 @@
 #include "auth.hpp"
 #include "events.hpp"
 #include "error.hpp"
+#include "pushrules.hpp"
 
 namespace matrixcli { namespace db { class Database; } }
 namespace matrixcli { namespace e2ee { class CryptoManager; } }
@@ -139,6 +140,13 @@ public:
 
     // Push rules
     json getPushRules();
+    void loadPushRules();
+    PushResult evaluatePush(const json& event);
+
+    // DM tracking
+    void loadDirectChats();
+    bool isDirectChat(const std::string& room_id) const;
+    std::string dmUserId(const std::string& room_id) const;
 
     // Filters
     std::string createFilter(const std::string& filter_json);
