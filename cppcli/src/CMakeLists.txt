@@ -13,6 +13,7 @@ target_link_libraries(matrixcli PRIVATE
     matrixcli_http
     matrixcli_matrix
     matrixcli_e2ee
+    matrixcli_db
     matrixcli_api
     matrixcli_formats
     Threads::Threads

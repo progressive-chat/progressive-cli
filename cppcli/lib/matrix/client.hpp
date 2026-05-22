@@ -11,6 +11,8 @@
 #include "events.hpp"
 #include "error.hpp"
 
+namespace matrixcli { namespace db { class Database; } }
+
 namespace matrixcli { namespace matrix {
 
 class Client {
@@ -30,6 +32,9 @@ public:
 
     // Access token
     void setAccessToken(const std::string& token);
+
+    // Database (optional persistent storage)
+    void setDatabase(db::Database* db);
 
     // Server discovery
     ServerVersions getServerVersions();

@@ -1,5 +1,6 @@
 #include "client.hpp"
 #include "error.hpp"
+#include "../database/db.hpp"
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <thread>
@@ -21,6 +22,7 @@ struct Client::Impl {
     std::atomic<bool> syncing{false};
     std::atomic<int> timeout{30};
     std::thread sync_thread;
+    db::Database* db = nullptr;
 };
 
 Client::Client() : impl(std::make_unique<Impl>()) {}
@@ -45,7 +47,10 @@ void Client::setTimeout(int seconds) {
 
 void Client::setAccessToken(const std::string& token) {
     impl->creds.access_token = token;
-    impl->logged_in = !token.empty();
+}
+
+void Client::setDatabase(db::Database* db) {
+    impl->db = db;
 }
 
 std::string Client::buildUrl(const std::string& path) const {
@@ -698,13 +703,31 @@ void Client::startSync(EventCallback onEvent, const std::string& filter,
             try {
                 SyncResponse sr = syncOnce(filter, "", poll_timeout_ms < 0 ? 30000 : poll_timeout_ms);
 
+                // Save next_batch periodically
+                if (impl->db && impl->logged_in) {
+                    db::StoredAccount acc;
+                    acc.homeserver_url = impl->homeserver_url;
+                    acc.user_id = impl->creds.user_id;
+                    acc.access_token = impl->creds.access_token;
+                    acc.device_id = impl->creds.device_id;
+                    acc.next_batch = impl->next_batch;
+                    impl->db->saveAccount(acc);
+                }
+
                 for (auto& ev : sr.account_data) onEvent(ev);
                 for (auto& ev : sr.presence) onEvent(ev);
                 for (auto& ev : sr.to_device) onEvent(ev);
 
                 for (auto& [room_id, room] : sr.rooms.join) {
-                    for (auto& ev : room.state.events) onEvent(ev);
-                    for (auto& ev : room.timeline.events) onEvent(ev);
+                    if (impl->db) impl->db->upsertRoom(room_id, room);
+                    for (auto& ev : room.state.events) {
+                        if (impl->db) impl->db->insertEvent(ev);
+                        onEvent(ev);
+                    }
+                    for (auto& ev : room.timeline.events) {
+                        if (impl->db) impl->db->insertEvent(ev);
+                        onEvent(ev);
+                    }
                     for (auto& ev : room.ephemeral.events) onEvent(ev);
                     for (auto& ev : room.account_data.events) onEvent(ev);
                 }

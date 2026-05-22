@@ -7,6 +7,7 @@
 #include "cli/args.hpp"
 #include "server/server.hpp"
 #include "../lib/matrix/client.hpp"
+#include "../lib/database/db.hpp"
 #include "../lib/util/logger.hpp"
 
 #ifdef BUILD_TUI
@@ -36,10 +37,19 @@ int cmdServe(const matrixcli::cli::Args& args) {
     Config::instance().load("config.json");
     matrix::Client client;
 
-    if (!Config::instance().homeserverURL().empty()) {
+    // Try loading credentials from database first, fall back to config
+    db::Database dbi;
+    dbi.open("matrixcli.db");
+    auto acc = dbi.loadAccount();
+    if (acc.is_logged_in()) {
+        client.setHomeserverURL(acc.homeserver_url);
+        client.setAccessToken(acc.access_token);
+        util::Logger::instance().info("Loaded saved session for " + acc.user_id);
+    } else if (!Config::instance().homeserverURL().empty()) {
         client.setHomeserverURL(Config::instance().homeserverURL());
         client.setAccessToken(Config::instance().accessToken());
     }
+    client.setDatabase(&dbi);
 
     bool demo_mode = args.options.contains("demo");
     if (!demo_mode && args.command == "demo") demo_mode = true;
@@ -113,6 +123,16 @@ int cmdLogin(const matrixcli::cli::Args& args) {
             Config::instance().set("user_id", creds.user_id);
             Config::instance().set("device_id", creds.device_id);
             Config::instance().save();
+
+            // Save to database for persistent sync state
+            db::Database dbi;
+            dbi.open("matrixcli.db");
+            db::StoredAccount acc;
+            acc.homeserver_url = homeserver;
+            acc.user_id = creds.user_id;
+            acc.access_token = creds.access_token;
+            acc.device_id = creds.device_id;
+            dbi.saveAccount(acc);
         }
     } catch (const std::exception& e) {
         std::cerr << "Login failed: " << e.what() << std::endl;
@@ -127,7 +147,17 @@ int cmdStatus(const matrixcli::cli::Args&) {
 
     Config::instance().load("config.json");
 
-    if (!Config::instance().accessToken().empty()) {
+    // Try DB first
+    db::Database dbi;
+    dbi.open("matrixcli.db");
+    auto acc = dbi.loadAccount();
+
+    if (acc.is_logged_in()) {
+        std::cout << "Logged in as " << acc.user_id << std::endl;
+        std::cout << "Homeserver: " << acc.homeserver_url << std::endl;
+        std::cout << "Device ID: " << acc.device_id << std::endl;
+        std::cout << "Sync token: " << (acc.next_batch.empty() ? "(none)" : acc.next_batch.substr(0, 20) + "...") << std::endl;
+    } else if (!Config::instance().accessToken().empty()) {
         std::cout << "Logged in as " << Config::instance().userId() << std::endl;
         std::cout << "Homeserver: " << Config::instance().homeserverURL() << std::endl;
         std::cout << "Device ID: " << Config::instance().deviceId() << std::endl;
@@ -145,10 +175,17 @@ int cmdTUI(const matrixcli::cli::Args&) {
     Config::instance().load("config.json");
     matrix::Client client;
 
-    if (!Config::instance().homeserverURL().empty()) {
+    db::Database dbi;
+    dbi.open("matrixcli.db");
+    auto acc = dbi.loadAccount();
+    if (acc.is_logged_in()) {
+        client.setHomeserverURL(acc.homeserver_url);
+        client.setAccessToken(acc.access_token);
+    } else if (!Config::instance().homeserverURL().empty()) {
         client.setHomeserverURL(Config::instance().homeserverURL());
         client.setAccessToken(Config::instance().accessToken());
     }
+    client.setDatabase(&dbi);
 
     tui::Screen screen;
     screen.init();
@@ -165,6 +202,14 @@ int cmdTUI(const matrixcli::cli::Args&) {
             Config::instance().set("user_id", creds.user_id);
             Config::instance().set("device_id", creds.device_id);
             Config::instance().save();
+
+            // Save to database for persistent sync state
+            db::StoredAccount sacc;
+            sacc.homeserver_url = login_result.homeserver;
+            sacc.user_id = creds.user_id;
+            sacc.access_token = creds.access_token;
+            sacc.device_id = creds.device_id;
+            dbi.saveAccount(sacc);
 
             tui::MainView main_view;
             main_view.setStatus("Connected as " + creds.user_id);
