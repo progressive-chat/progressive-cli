@@ -1,6 +1,8 @@
 #include "client.hpp"
 #include "error.hpp"
 #include "../database/db.hpp"
+#include "../e2ee/crypto.hpp"
+#include "../util/logger.hpp"
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <thread>
@@ -23,6 +25,8 @@ struct Client::Impl {
     std::atomic<int> timeout{30};
     std::thread sync_thread;
     db::Database* db = nullptr;
+    std::unique_ptr<e2ee::CryptoManager> crypto;
+    std::map<std::string, bool> encrypted_rooms;
 };
 
 Client::Client() : impl(std::make_unique<Impl>()) {}
@@ -51,6 +55,33 @@ void Client::setAccessToken(const std::string& token) {
 
 void Client::setDatabase(db::Database* db) {
     impl->db = db;
+}
+
+bool Client::initCrypto(const std::string& userId, const std::string& deviceId) {
+    try {
+        impl->crypto = std::make_unique<e2ee::CryptoManager>();
+        impl->crypto->initAccount(userId, deviceId);
+        util::Logger::instance().info("Crypto initialized for " + userId + " / " + deviceId);
+        return true;
+    } catch (const std::exception& e) {
+        util::Logger::instance().error(std::string("Crypto init failed: ") + e.what());
+        return false;
+    }
+}
+
+bool Client::enableEncryption(const std::string& roomId) {
+    impl->encrypted_rooms[roomId] = true;
+    if (impl->crypto) {
+        try {
+            impl->crypto->startMegolmOutbound(roomId);
+        } catch (...) {}
+    }
+    return true;
+}
+
+bool Client::isRoomEncrypted(const std::string& roomId) const {
+    auto it = impl->encrypted_rooms.find(roomId);
+    return it != impl->encrypted_rooms.end() && it->second;
 }
 
 std::string Client::buildUrl(const std::string& path) const {
@@ -258,9 +289,30 @@ std::string Client::sendMessage(const std::string& room_id,
         {"body", body}
     };
 
+    std::string event_type = "m.room.message";
+
+    // Encrypt if room is encrypted and crypto is available
+    if (isRoomEncrypted(room_id) && impl->crypto) {
+        try {
+            std::string sessionId, ciphertext;
+            impl->crypto->encryptMegolm(room_id, content.dump(), sessionId, ciphertext);
+            auto dk = impl->crypto->deviceKeys();
+            content = {
+                {"algorithm", "m.megolm.v1.aes-sha2"},
+                {"sender_key", dk.curve25519Key},
+                {"session_id", sessionId},
+                {"ciphertext", ciphertext},
+                {"device_id", dk.deviceId}
+            };
+            event_type = "m.room.encrypted";
+        } catch (const std::exception& e) {
+            util::Logger::instance().warn(std::string("Encryption failed, sending unencrypted: ") + e.what());
+        }
+    }
+
     std::string txn_id = generateTxnId();
     std::string path = "/_matrix/client/r0/rooms/" + room_id +
-                       "/send/m.room.message/" + txn_id;
+                       "/send/" + event_type + "/" + txn_id;
 
     auto resp = authPut(path, content.dump());
     checkResponse(resp);
@@ -716,16 +768,62 @@ void Client::startSync(EventCallback onEvent, const std::string& filter,
 
                 for (auto& ev : sr.account_data) onEvent(ev);
                 for (auto& ev : sr.presence) onEvent(ev);
-                for (auto& ev : sr.to_device) onEvent(ev);
+
+                // Handle to-device events (m.room_key, m.room.encrypted Olm)
+                for (auto& ev : sr.to_device) {
+                    if (impl->crypto && ev.type == "m.room_key" && ev.content.contains("room_id") &&
+                        ev.content.contains("session_key") && ev.content.contains("session_id")) {
+                        try {
+                            std::string src = ev.content.value("sender_key", "");
+                            impl->crypto->receiveMegolmSession(
+                                ev.content["room_id"].get<std::string>(),
+                                src,
+                                ev.content["session_key"].get<std::string>());
+                            util::Logger::instance().debug("Imported megolm session " +
+                                ev.content["session_id"].get<std::string>() + " for room " +
+                                ev.content["room_id"].get<std::string>());
+                        } catch (const std::exception& e) {
+                            util::Logger::instance().warn(std::string("Failed to import megolm session: ") + e.what());
+                        }
+                    }
+                    onEvent(ev);
+                }
 
                 for (auto& [room_id, room] : sr.rooms.join) {
                     if (impl->db) impl->db->upsertRoom(room_id, room);
+
+                    // Track encrypted rooms from state events
                     for (auto& ev : room.state.events) {
+                        if (ev.type == "m.room.encryption") {
+                            impl->encrypted_rooms[room_id] = true;
+                            util::Logger::instance().info("Room " + room_id + " is encrypted (m.megolm.v1.aes-sha2)");
+                        }
                         if (impl->db) impl->db->insertEvent(ev);
                         onEvent(ev);
                     }
                     for (auto& ev : room.timeline.events) {
-                        if (impl->db) impl->db->insertEvent(ev);
+                        // Decrypt m.room.encrypted events
+                        std::string decrypted;
+                        if (impl->crypto && ev.type == "m.room.encrypted" && ev.content.contains("ciphertext") &&
+                            ev.content.contains("session_id") && ev.content.contains("algorithm") &&
+                            ev.content["algorithm"].get<std::string>() == "m.megolm.v1.aes-sha2") {
+                            try {
+                                uint32_t msgIdx = 0;
+                                auto cipher = ev.content["ciphertext"].get<std::string>();
+                                auto sessId = ev.content["session_id"].get<std::string>();
+                                decrypted = impl->crypto->decryptMegolm(room_id, sessId, cipher, msgIdx);
+                                // Parse decrypted JSON back to event content
+                                try {
+                                    auto dj = json::parse(decrypted);
+                                    ev.content = dj;
+                                } catch (...) {
+                                    ev.content["body"] = decrypted;
+                                }
+                            } catch (const std::exception& e) {
+                                util::Logger::instance().warn("Decrypt failed for " + ev.event_id + ": " + e.what());
+                            }
+                        }
+                        if (impl->db) impl->db->insertEvent(ev, decrypted);
                         onEvent(ev);
                     }
                     for (auto& ev : room.ephemeral.events) onEvent(ev);

@@ -51,6 +51,11 @@ int cmdServe(const matrixcli::cli::Args& args) {
     }
     client.setDatabase(&dbi);
 
+    // Initialize crypto if logged in
+    if (acc.is_logged_in()) {
+        client.initCrypto(acc.user_id, acc.device_id);
+    }
+
     bool demo_mode = args.options.contains("demo");
     if (!demo_mode && args.command == "demo") demo_mode = true;
 
@@ -186,6 +191,11 @@ int cmdTUI(const matrixcli::cli::Args&) {
         client.setAccessToken(Config::instance().accessToken());
     }
     client.setDatabase(&dbi);
+
+    // Initialize crypto if logged in from DB
+    if (acc.is_logged_in()) {
+        client.initCrypto(acc.user_id, acc.device_id);
+    }
 
     tui::Screen screen;
     screen.init();

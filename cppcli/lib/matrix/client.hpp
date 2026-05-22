@@ -12,6 +12,7 @@
 #include "error.hpp"
 
 namespace matrixcli { namespace db { class Database; } }
+namespace matrixcli { namespace e2ee { class CryptoManager; } }
 
 namespace matrixcli { namespace matrix {
 
@@ -35,6 +36,11 @@ public:
 
     // Database (optional persistent storage)
     void setDatabase(db::Database* db);
+
+    // Crypto
+    bool initCrypto(const std::string& userId, const std::string& deviceId);
+    bool enableEncryption(const std::string& roomId);
+    bool isRoomEncrypted(const std::string& roomId) const;
 
     // Server discovery
     ServerVersions getServerVersions();
