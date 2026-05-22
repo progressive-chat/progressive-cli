@@ -215,13 +215,13 @@ func parseEventContent(evt *database.Event) (body, format, formattedBody, msgTyp
 		var msg event.MessageEventContent
 		if err := json.Unmarshal(content, &msg); err == nil {
 			body = msg.Body
-			format = msg.Format
+			format = string(msg.Format)
 			formattedBody = msg.FormattedBody
 			msgType = string(msg.MsgType)
 			if msg.URL != "" {
-				url = msg.URL
+				url = string(msg.URL)
 			} else if msg.File != nil && msg.File.URL != "" {
-				url = msg.File.URL.String()
+				url = string(msg.File.URL)
 			}
 		}
 	}

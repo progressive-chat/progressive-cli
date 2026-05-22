@@ -101,7 +101,7 @@ func (ui *GomuksTUI) NewLoginView() mauview.Component {
 	view.password.SetPlaceholder("correct horse battery staple").SetMaskCharacter('*').SetTextColor(tcell.ColorWhite)
 	view.yggAddr.SetPlaceholder("[200::1] or node.ygg").SetTextColor(tcell.ColorWhite)
 
-	view.connTypeBtn = mauview.NewButton(view.connTypeLabel()).SetBackgroundColor(tcell.ColorDarkCyan).SetForegroundColor(tcell.ColorWhite).SetFocusedForegroundColor(tcell.ColorWhite)
+	view.connTypeBtn = mauview.NewButton(view.getConnTypeLabel()).SetBackgroundColor(tcell.ColorDarkCyan).SetForegroundColor(tcell.ColorWhite).SetFocusedForegroundColor(tcell.ColorWhite)
 	view.connTypeBtn.SetOnClick(view.cycleConnType)
 
 	view.proxyTypeBtn = mauview.NewButton("SOCKS5").SetBackgroundColor(tcell.ColorDarkCyan).SetForegroundColor(tcell.ColorWhite).SetFocusedForegroundColor(tcell.ColorWhite)
@@ -140,13 +140,13 @@ func (ui *GomuksTUI) NewLoginView() mauview.Component {
 	return view.container
 }
 
-func (view *LoginView) connTypeLabel() string {
+func (view *LoginView) getConnTypeLabel() string {
 	return connTypes[view.connTypeIdx]
 }
 
 func (view *LoginView) cycleConnType() {
 	view.connTypeIdx = (view.connTypeIdx + 1) % len(connTypes)
-	view.connTypeBtn.SetText(view.connTypeLabel())
+	view.connTypeBtn.SetText(view.getConnTypeLabel())
 	view.updateProxyVisibility()
 	view.parent.Render()
 }

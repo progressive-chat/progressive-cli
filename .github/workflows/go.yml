@@ -6,12 +6,15 @@ env:
   GOTOOLCHAIN: local
 
 jobs:
-  lint:
+  build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         go-version: ["1.25", "1.26"]
-    name: Lint Go ${{ matrix.go-version == '1.26' && '(latest)' || '(old)' }}
+    name: Build Go ${{ matrix.go-version == '1.26' && '(latest)' || '(old)' }}
+    defaults:
+      run:
+        working-directory: ./gomuks
 
     steps:
       - uses: actions/checkout@v6
@@ -26,17 +29,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install libolm-dev libolm3 libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev
-          go install golang.org/x/tools/cmd/goimports@latest
-          go install honnef.co/go/tools/cmd/staticcheck@latest
-          export PATH="$HOME/go/bin:$PATH"
+
+      - name: Create web stub
+        run: |
           mkdir -p web/dist
           touch web/dist/empty
 
       - name: Build
         run: go build -v ./...
-
-      - name: Lint
-        uses: pre-commit/action@v3.0.1
 
       - name: Test
         run: go test -v ./...

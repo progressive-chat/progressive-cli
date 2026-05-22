@@ -84,11 +84,13 @@ func urlEncode(s string) string {
 type ProxySettings struct {
 	mauview.FocusableComponent
 
-	Config      ProxyConfig
-	Visible     bool
-	activeField int
-	fields      []*mauview.InputField
-	labels      []*mauview.TextField
+	Config       ProxyConfig
+	Visible      bool
+	activeField  int
+	fields       []*mauview.InputField
+	labels       []*mauview.TextField
+	labelTexts   []string
+	placeholders []string
 }
 
 var proxyFieldCount = 4
@@ -105,17 +107,20 @@ func NewProxySettings() *ProxySettings {
 	ps.fields = make([]*mauview.InputField, proxyFieldCount)
 	ps.labels = make([]*mauview.TextField, proxyFieldCount)
 
-	ps.labels[0] = mauview.NewTextField().SetText("Proxy Host")
-	ps.fields[0] = mauview.NewInputField().SetPlaceholder("127.0.0.1").SetTextColor(tcell.ColorWhite)
+	ps.labelTexts = []string{"Proxy Host", "Proxy Port", "Username", "Password"}
+	ps.placeholders = []string{"127.0.0.1", "9050", "(optional)", "(optional)"}
 
-	ps.labels[1] = mauview.NewTextField().SetText("Proxy Port")
-	ps.fields[1] = mauview.NewInputField().SetPlaceholder("9050").SetTextColor(tcell.ColorWhite)
+	ps.labels[0] = mauview.NewTextField().SetText(ps.labelTexts[0])
+	ps.fields[0] = mauview.NewInputField().SetPlaceholder(ps.placeholders[0]).SetTextColor(tcell.ColorWhite)
 
-	ps.labels[2] = mauview.NewTextField().SetText("Username")
-	ps.fields[2] = mauview.NewInputField().SetPlaceholder("(optional)").SetTextColor(tcell.ColorWhite)
+	ps.labels[1] = mauview.NewTextField().SetText(ps.labelTexts[1])
+	ps.fields[1] = mauview.NewInputField().SetPlaceholder(ps.placeholders[1]).SetTextColor(tcell.ColorWhite)
 
-	ps.labels[3] = mauview.NewTextField().SetText("Password")
-	ps.fields[3] = mauview.NewInputField().SetPlaceholder("(optional)").SetMaskCharacter('*').SetTextColor(tcell.ColorWhite)
+	ps.labels[2] = mauview.NewTextField().SetText(ps.labelTexts[2])
+	ps.fields[2] = mauview.NewInputField().SetPlaceholder(ps.placeholders[2]).SetTextColor(tcell.ColorWhite)
+
+	ps.labels[3] = mauview.NewTextField().SetText(ps.labelTexts[3])
+	ps.fields[3] = mauview.NewInputField().SetPlaceholder(ps.placeholders[3]).SetMaskCharacter('*').SetTextColor(tcell.ColorWhite)
 
 	box := mauview.NewBox(nil).SetBorder(false)
 	ps.FocusableComponent = box
@@ -128,16 +133,20 @@ func (ps *ProxySettings) SetProxyType(pt ProxyType) {
 	if pt == ProxyTypeSOCKS5 {
 		if ps.fields[0].GetText() == "" {
 			ps.fields[0].SetPlaceholder("127.0.0.1")
+			ps.placeholders[0] = "127.0.0.1"
 		}
 		if ps.fields[1].GetText() == "" {
 			ps.fields[1].SetPlaceholder("9050")
+			ps.placeholders[1] = "9050"
 		}
 	} else {
 		if ps.fields[0].GetText() == "" {
 			ps.fields[0].SetPlaceholder("127.0.0.1")
+			ps.placeholders[0] = "127.0.0.1"
 		}
 		if ps.fields[1].GetText() == "" {
 			ps.fields[1].SetPlaceholder("4444")
+			ps.placeholders[1] = "4444"
 		}
 	}
 }
@@ -207,11 +216,11 @@ func (ps *ProxySettings) Draw(screen mauview.Screen) {
 
 	maxLabelWidth := 12
 	for i := 0; i < proxyFieldCount && i < height; i++ {
-		labelText := ps.labels[i].GetText()
+		labelText := ps.labelTexts[i]
 		WriteLineSimple(screen, labelText, 0, i)
 		inputStart := maxLabelWidth
 		fieldText := ps.fields[i].GetText()
-		placeholder := ps.fields[i].GetPlaceholder()
+		placeholder := ps.placeholders[i]
 		if fieldText == "" && placeholder != "" {
 			WriteLineSimpleColor(screen, placeholder, inputStart, i, tcell.ColorGray)
 		} else {
