@@ -3,24 +3,46 @@ name: JS
 on: [push, pull_request]
 
 jobs:
-  lint:
+  build:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./gomuks/web
-    name: Lint JS
+        working-directory: ./gomuks
+    name: Build & Lint JS
 
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install dependencies
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up Go (for wasm + go-data)
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+
+      - name: Install JS dependencies
+        working-directory: ./gomuks/web
         run: npm ci --include=dev
 
-      - name: Run ESLint
-        run: npm run lint
+      - name: Build Go WASM
+        working-directory: ./gomuks/web
+        run: ./build-wasm.sh
 
       - name: Export Go data
+        working-directory: ./gomuks/web
         run: ./export-go-data.sh
 
+      - name: Build frontend
+        working-directory: ./gomuks/web
+        run: npm run build
+
+      - name: Run ESLint
+        working-directory: ./gomuks/web
+        run: npm run lint
+
       - name: Run vitest
+        working-directory: ./gomuks/web
         run: npm test

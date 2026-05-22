@@ -7,3 +7,11 @@ node_modules
 dist
 dist-ssr
 *.local
+
+# Generated Go data
+src/api/types/stdcommands.json
+src/api/types/stdcommands.d.ts
+src/api/types/commandtestdata/
+
+# Go WASM build artifact
+src/api/wasm/_gomuks.wasm

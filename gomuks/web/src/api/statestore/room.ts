@@ -279,7 +279,7 @@ export class RoomStateStore {
 				})
 				.filter(x => x !== null)
 				.toArray() ?? []
-			this.#allCommandsCache = StandardCommands.map(cmd => {
+			this.#allCommandsCache = StandardCommands.map((cmd: Record<string, unknown>) => {
 				const wrapped = sanitizeCommand(fakeGomuksSender, cmd)
 				if (wrapped === null) {
 					throw new Error("Invalid standard command in JSON")
@@ -287,7 +287,7 @@ export class RoomStateStore {
 				return wrapped
 			}).concat(FakeCommands, roomCommands)
 		}
-		return this.#allCommandsCache
+		return this.#allCommandsCache!
 	}
 
 	#fillMembersCache() {
