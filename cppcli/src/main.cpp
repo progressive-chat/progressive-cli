@@ -289,6 +289,7 @@ int cmdView(const matrixcli::cli::Args& args) {
 
     bool verbose = args.options.count("verbose") || args.options.count("ids");
     bool show_ts = args.options.count("ts") || args.options.count("time");
+    bool debug = args.options.count("debug") || args.options.count("raw");
 
     db::Database dbi;
     if (!dbi.open("matrixcli.db")) { std::cerr << "Cannot open database" << std::endl; return 1; }
@@ -344,7 +345,24 @@ int cmdView(const matrixcli::cli::Args& args) {
         auto at = sender.find(':');
         if (at != std::string::npos && sender.starts_with("@")) sender = sender.substr(1, at - 1);
 
-        // Thread indicators
+        // Member events (join/leave/invite)
+        std::string member_line;
+        if (ev.type == "m.room.member" && ev.content.contains("membership")) {
+            std::string membership = ev.content["membership"].get<std::string>();
+            std::string displayname = ev.content.value("displayname", ev.state_key.empty() ? ev.sender : ev.state_key);
+            if (displayname.starts_with("@")) displayname = displayname.substr(1);
+            if (membership == "join") member_line = "→ " + displayname + " joined";
+            else if (membership == "leave") member_line = "← " + displayname + " left";
+            else if (membership == "invite") member_line = "✉ " + displayname + " invited";
+            else if (membership == "ban") member_line = "⛔ " + displayname + " banned";
+            else if (membership == "knock") member_line = "✊ " + displayname + " knocked";
+        }
+
+        if (!member_line.empty()) {
+            std::cout << "  -- " << member_line << " --" << std::endl;
+            if (debug) std::cout << "       id:" << ev.event_id << " state_key:" << ev.state_key << std::endl;
+            continue;
+        }
         std::string prefix;
         if (ev.content.contains("m.relates_to") &&
             ev.content["m.relates_to"].value("rel_type", "") == "m.thread") {
@@ -384,7 +402,14 @@ int cmdView(const matrixcli::cli::Args& args) {
 
         if (!reply_ctx.empty()) std::cout << "       " << reply_ctx << std::endl;
         std::cout << "  " << prefix << "[" << sender << "]" << ts_str << " " << body << reply_str;
-        if (verbose) std::cout << "\n       id:" << ev.event_id;
+        if (verbose) {
+            std::cout << "\n       id:" << ev.event_id;
+            if (!ev.redacts.empty()) std::cout << " redacts:" << ev.redacts;
+            if (!ev.state_key.empty()) std::cout << " state_key:" << ev.state_key;
+        }
+        if (debug) {
+            std::cout << "\n       raw:" << ev.content.dump();
+        }
         std::cout << std::endl;
     }
     return 0;
