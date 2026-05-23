@@ -100,6 +100,21 @@ int cmdLogin(const matrixcli::cli::Args& args) {
         if (token_it != args.options.end()) {
             auto creds = client.loginToken(token_it->second);
             std::cout << "Logged in as " << creds.user_id << std::endl;
+
+            Config::instance().set("homeserver_url", homeserver);
+            Config::instance().set("access_token", creds.access_token);
+            Config::instance().set("user_id", creds.user_id);
+            Config::instance().set("device_id", creds.device_id);
+            Config::instance().save();
+
+            db::Database dbi;
+            dbi.open("matrixcli.db");
+            db::StoredAccount acc;
+            acc.homeserver_url = homeserver;
+            acc.user_id = creds.user_id;
+            acc.access_token = creds.access_token;
+            acc.device_id = creds.device_id;
+            dbi.saveAccount(acc);
         } else {
             std::string username;
             auto user_it = args.options.find("username");
@@ -212,6 +227,7 @@ int cmdView(const matrixcli::cli::Args& args) {
         return 1;
     }
 
+    // Try DB cache first, fall back to server fetch
     std::string room_id;
     auto rooms = dbi.listRooms();
     for (auto& r : rooms) {
@@ -223,20 +239,44 @@ int cmdView(const matrixcli::cli::Args& args) {
             break;
         }
     }
-    if (room_id.empty()) {
-        room_id = query;
-        std::cout << "=== " << room_id << " ===" << std::endl;
-    }
+    if (room_id.empty()) room_id = query;
 
     auto events = dbi.getEvents(room_id, limit);
-    std::reverse(events.begin(), events.end());
-    for (auto& ev : events) {
-        std::string body = ev.content.value("body", "(no body)");
-        if (body.size() > 120) body = body.substr(0, 120) + "...";
-        std::string sender = ev.sender;
-        auto at = sender.find(':');
-        if (at != std::string::npos && sender.starts_with("@")) sender = sender.substr(1, at - 1);
-        std::cout << "  [" << sender << "] " << body << std::endl;
+    if (!events.empty()) {
+        // Offline cache
+        std::reverse(events.begin(), events.end());
+        for (auto& ev : events) {
+            std::string body = ev.content.value("body", "(no body)");
+            if (body.size() > 120) body = body.substr(0, 120) + "...";
+            std::string sender = ev.sender;
+            auto at = sender.find(':');
+            if (at != std::string::npos && sender.starts_with("@")) sender = sender.substr(1, at - 1);
+            std::cout << "  [" << sender << "] " << body << std::endl;
+        }
+    } else {
+        // Try fetching from server
+        auto acc = dbi.loadAccount();
+        if (!acc.is_logged_in()) {
+            std::cout << "No cached messages. Login first to fetch from server." << std::endl;
+            return 0;
+        }
+        matrix::Client client;
+        client.setHomeserverURL(acc.homeserver_url);
+        client.setAccessToken(acc.access_token);
+        try {
+            auto serverEvents = client.getRoomMessages(room_id, "", "b", limit);
+            for (auto& ev : serverEvents) {
+                std::string body = ev.content.value("body", "(no body)");
+                if (body.size() > 120) body = body.substr(0, 120) + "...";
+                std::string sender = ev.sender;
+                auto at = sender.find(':');
+                if (at != std::string::npos && sender.starts_with("@")) sender = sender.substr(1, at - 1);
+                std::cout << "  [" << sender << "] " << body << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Fetch failed: " << e.what() << std::endl;
+            return 1;
+        }
     }
     return 0;
 }
