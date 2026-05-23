@@ -1,0 +1,102 @@
+name: Arch Linux Package
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+
+    name: Build Arch Package (matrixcli)
+
+    steps:
+      - name: Install build dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed \
+            base-devel git cmake gcc make pkg-config \
+            openssl sqlite3 ncurses nlohmann-json libolm \
+            sudo fakeroot
+
+      - name: Create builder user
+        run: |
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Fix ownership
+        run: chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Build C++ project
+        run: |
+          sudo -u builder bash -c '
+            cd "$1"/cppcli
+            cmake -B build -S . \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DUSE_SYSTEM_OLM=ON \
+              -DBUILD_TESTS=OFF \
+              -DBUILD_TUI=ON
+            cmake --build build -j$(nproc)
+          ' -- "$GITHUB_WORKSPACE"
+
+      - name: Run tests
+        run: |
+          sudo -u builder bash -c '
+            cd "$1"/cppcli/build
+            ctest --output-on-failure
+          ' -- "$GITHUB_WORKSPACE"
+
+      - name: Create Arch package manually
+        run: |
+          REPO="$GITHUB_WORKSPACE"
+          PKGROOT="/tmp/pkg/matrixcli-git"
+          mkdir -p "$PKGROOT"/{usr/bin,usr/share/{licenses/matrixcli-git,doc/matrixcli-git,applications}}
+
+          cp "$REPO/cppcli/build/src/matrixcli" "$PKGROOT/usr/bin/"
+          cp "$REPO/gomuks/LICENSE" "$PKGROOT/usr/share/licenses/matrixcli-git/"
+          cp "$REPO/README.md" "$PKGROOT/usr/share/doc/matrixcli-git/"
+
+          cat > "$PKGROOT/usr/share/applications/matrixcli.desktop" << 'DESKTOP'
+          [Desktop Entry]
+          Name=matrixcli
+          Comment=Terminal Matrix client with E2EE
+          Exec=matrixcli tui
+          Terminal=true
+          Type=Application
+          Categories=Network;InstantMessaging;Chat;
+          DESKTOP
+
+          VERSION=$(git -C "$REPO" describe --tags --always 2>/dev/null || echo "0.1.0")
+          ARCH=$(uname -m)
+
+          cd /tmp/pkg
+          tar -cJf "$REPO/matrixcli-git-${VERSION}-${ARCH}.pkg.tar.xz" matrixcli-git
+
+          echo "Package: matrixcli-git-${VERSION}-${ARCH}.pkg.tar.xz"
+          ls -lh "$REPO"/matrixcli-git-*.pkg.tar.xz
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: arch-package
+          path: '*.pkg.tar.xz'
+          retention-days: 30
+
+      - name: Upload to GitHub Release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: '*.pkg.tar.xz'
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
