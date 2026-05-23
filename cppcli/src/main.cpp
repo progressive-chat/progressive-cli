@@ -237,6 +237,14 @@ int cmdView(const matrixcli::cli::Args& args) {
     auto tr_it = args.options.find("thread");
     if (tr_it != args.options.end()) thread_root = tr_it->second;
 
+    std::string before;
+    auto bf_it = args.options.find("before");
+    if (bf_it != args.options.end()) before = bf_it->second;
+
+    std::string from;
+    auto fm_it = args.options.find("from");
+    if (fm_it != args.options.end()) from = fm_it->second;
+
     db::Database dbi;
     if (!dbi.open("matrixcli.db")) { std::cerr << "Cannot open database" << std::endl; return 1; }
 
@@ -254,8 +262,24 @@ int cmdView(const matrixcli::cli::Args& args) {
     }
     if (room_id.empty()) { room_id = query; std::cout << "=== " << room_id << " ===" << std::endl; }
 
-    auto events = dbi.getEvents(room_id, limit);
+    auto events = dbi.getEvents(room_id, limit, before);
+    if (events.empty() && !before.empty()) {
+        std::cout << "(no older messages)" << std::endl;
+        return 0;
+    }
     std::reverse(events.begin(), events.end());
+
+    // Show pagination hint
+    bool has_newer = !before.empty();
+    bool has_older = (int)events.size() >= limit;
+
+    if (has_newer || has_older) {
+        std::cout << "── ";
+        if (has_newer) std::cout << "view --from " << events.front().event_id << " (newer)  ";
+        if (has_older) std::cout << "view --before " << events.back().event_id << " (older)";
+        std::cout << " ──" << std::endl;
+    }
+
     for (auto& ev : events) {
         // Filter to thread if requested
         bool in_thread = false;
