@@ -469,6 +469,12 @@ int cmdTUI(const matrixcli::cli::Args&) {
                     if (!roomId.empty()) client.leaveRoom(roomId);
                 } else if (cmd == "nick" || cmd == "name") {
                     if (!args.empty()) client.setDisplayName(args);
+                } else if (cmd == "topic" || cmd == "desc") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty()) client.setRoomTopic(roomId, args);
+                } else if (cmd == "roomname") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty()) client.setRoomName(roomId, args);
                 } else if (cmd == "invite") {
                     std::string roomId = chat.activeRoomId();
                     auto sp = args.find(' ');
@@ -817,6 +823,62 @@ int main(int argc, char* argv[]) {
             std::cout << "Reacted [" << eid << "]" << std::endl;
         } catch (const std::exception& e) {
             std::cerr << "Reaction failed: " << e.what() << std::endl;
+            return 1;
+        }
+        return 0;
+    }
+
+    if (args.command == "topic") {
+        if (args.positional.size() < 2) {
+            std::cerr << "Usage: matrixcli topic <room> <topic>" << std::endl;
+            return 1;
+        }
+        using namespace matrixcli;
+        matrix::Client client;
+        db::Database dbi;
+        if (!dbi.open("matrixcli.db")) return 1;
+        auto acc = dbi.loadAccount();
+        if (!acc.is_logged_in()) { std::cerr << "Not logged in" << std::endl; return 1; }
+        client.setHomeserverURL(acc.homeserver_url);
+        client.setAccessToken(acc.access_token);
+
+        std::string body;
+        for (size_t i = 1; i < args.positional.size(); i++) {
+            if (i > 1) body += " "; body += args.positional[i];
+        }
+        try {
+            client.setRoomTopic(args.positional[0], body);
+            std::cout << "Topic set" << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "Failed: " << e.what() << std::endl;
+            return 1;
+        }
+        return 0;
+    }
+
+    if (args.command == "roomname") {
+        if (args.positional.size() < 2) {
+            std::cerr << "Usage: matrixcli roomname <room> <name>" << std::endl;
+            return 1;
+        }
+        using namespace matrixcli;
+        matrix::Client client;
+        db::Database dbi;
+        if (!dbi.open("matrixcli.db")) return 1;
+        auto acc = dbi.loadAccount();
+        if (!acc.is_logged_in()) { std::cerr << "Not logged in" << std::endl; return 1; }
+        client.setHomeserverURL(acc.homeserver_url);
+        client.setAccessToken(acc.access_token);
+
+        std::string body;
+        for (size_t i = 1; i < args.positional.size(); i++) {
+            if (i > 1) body += " "; body += args.positional[i];
+        }
+        try {
+            client.setRoomName(args.positional[0], body);
+            std::cout << "Room name set" << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "Failed: " << e.what() << std::endl;
             return 1;
         }
         return 0;
