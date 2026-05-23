@@ -13,6 +13,7 @@
 #include "../lib/database/db.hpp"
 #include "../lib/util/logger.hpp"
 #include "../lib/util/notifications.hpp"
+#include "../lib/util/string_utils.hpp"
 
 #ifdef BUILD_TUI
 #include "../lib/tui/screen.hpp"
@@ -362,15 +363,26 @@ int cmdView(const matrixcli::cli::Args& args) {
 
         std::string ts_str;
         if (show_ts) {
-            time_t t = ev.origin_server_ts / 1000;
-            char buf[20];
-            strftime(buf, sizeof(buf), "%H:%M", localtime(&t));
-            ts_str = std::string(" ") + buf;
+            ts_str = " " + relativeTime(ev.origin_server_ts);
+        }
+
+        // Reply context
+        std::string reply_ctx;
+        if (ev.content.contains("m.relates_to") &&
+            ev.content["m.relates_to"].value("rel_type", "") == "m.in_reply_to") {
+            reply_ctx = replyContext("(reply)");
+        }
+
+        // Link detection
+        std::string link = extractLink(body);
+        if (!link.empty() && !show_ts) {
+            if (body.size() > 80) body = body.substr(0, 77) + "...";
         }
 
         std::string reply_str;
         if (reply_count > 0) reply_str = " [" + std::to_string(reply_count) + " replies]";
 
+        if (!reply_ctx.empty()) std::cout << "       " << reply_ctx << std::endl;
         std::cout << "  " << prefix << "[" << sender << "]" << ts_str << " " << body << reply_str;
         if (verbose) std::cout << "\n       id:" << ev.event_id;
         std::cout << std::endl;
@@ -1053,6 +1065,12 @@ int cmdTUI(const matrixcli::cli::Args&) {
                         users.push_back(uid.get<std::string>());
                     }
                     chat.setTypingUsers(ev.room_id, users);
+                }
+
+                // Server notices
+                if (ev.type == "m.server_notice") {
+                    std::string body = ev.content.value("body", "");
+                    if (!body.empty()) chat.setConnectionStatus("[SERVER] " + body);
                 }
 
                 chat.requestRedraw();

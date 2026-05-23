@@ -6,6 +6,9 @@
 #include <algorithm>
 #include <cctype>
 #include <iomanip>
+#include <chrono>
+#include <ctime>
+#include <functional>
 
 namespace matrixcli { namespace util {
 
@@ -56,3 +59,42 @@ inline std::string urlEncode(const std::string& value) {
 }
 
 }} // namespace matrixcli::util
+
+// Relative time formatting
+inline std::string relativeTime(int64_t ts_ms) {
+    int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    int64_t diff = now - ts_ms / 1000;
+    if (diff < 60) return "now";
+    if (diff < 3600) return std::to_string(diff / 60) + "m ago";
+    if (diff < 86400) return std::to_string(diff / 3600) + "h ago";
+    if (diff < 604800) return std::to_string(diff / 86400) + "d ago";
+    time_t t = ts_ms / 1000;
+    char buf[12];
+    strftime(buf, sizeof(buf), "%d %b", localtime(&t));
+    return buf;
+}
+
+// User color from user_id
+inline int userColor(const std::string& user_id) {
+    size_t h = std::hash<std::string>{}(user_id);
+    // 7 nice terminal colors
+    int colors[] = {1,2,3,4,5,6,2};
+    return colors[h % 7];
+}
+
+// Link detection
+inline std::string extractLink(const std::string& text) {
+    auto pos = text.find("https://");
+    if (pos == std::string::npos) pos = text.find("http://");
+    if (pos == std::string::npos) return "";
+    auto end = text.find_first_of(" \n\r\t\"'<", pos);
+    if (end == std::string::npos) end = text.size();
+    return text.substr(pos, end - pos);
+}
+
+// Reply context helper
+inline std::string replyContext(const std::string& reply_to_body) {
+    if (reply_to_body.size() > 60) return "↩ \"" + reply_to_body.substr(0, 57) + "...\"";
+    return "↩ \"" + reply_to_body + "\"";
+}
