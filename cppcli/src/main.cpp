@@ -246,6 +246,7 @@ int cmdView(const matrixcli::cli::Args& args) {
     if (fm_it != args.options.end()) from = fm_it->second;
 
     bool verbose = args.options.count("verbose") || args.options.count("ids");
+    bool show_ts = args.options.count("ts") || args.options.count("time");
 
     db::Database dbi;
     if (!dbi.open("matrixcli.db")) { std::cerr << "Cannot open database" << std::endl; return 1; }
@@ -308,7 +309,28 @@ int cmdView(const matrixcli::cli::Args& args) {
             prefix = "↳ ";
         }
 
-        std::cout << "  " << prefix << "[" << sender << "] " << body;
+        // Count thread replies
+        int reply_count = 0;
+        for (auto& other : events) {
+            if (other.content.contains("m.relates_to") &&
+                other.content["m.relates_to"].value("rel_type", "") == "m.thread" &&
+                other.content["m.relates_to"].value("event_id", "") == ev.event_id) {
+                reply_count++;
+            }
+        }
+
+        std::string ts_str;
+        if (show_ts) {
+            time_t t = ev.origin_server_ts / 1000;
+            char buf[20];
+            strftime(buf, sizeof(buf), "%H:%M", localtime(&t));
+            ts_str = std::string(" ") + buf;
+        }
+
+        std::string reply_str;
+        if (reply_count > 0) reply_str = " [" + std::to_string(reply_count) + " replies]";
+
+        std::cout << "  " << prefix << "[" << sender << "]" << ts_str << " " << body << reply_str;
         if (verbose) std::cout << "\n       id:" << ev.event_id;
         std::cout << std::endl;
     }
