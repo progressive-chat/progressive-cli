@@ -75,6 +75,27 @@ inline std::string relativeTime(int64_t ts_ms) {
     return buf;
 }
 
+// Day separator: "── Today ──", "── Yesterday ──", "── Mon 15 May ──"
+inline std::string daySeparator(int64_t ts_ms) {
+    time_t now_t = time(nullptr);
+    time_t msg_t = ts_ms / 1000;
+
+    struct tm now_tm, msg_tm;
+    localtime_r(&now_t, &now_tm);
+    localtime_r(&msg_t, &msg_tm);
+
+    // Same day?
+    if (now_tm.tm_year == msg_tm.tm_year && now_tm.tm_yday == msg_tm.tm_yday)
+        return "── Today ──";
+    // Yesterday?
+    if (now_tm.tm_year == msg_tm.tm_year && now_tm.tm_yday == msg_tm.tm_yday + 1)
+        return "── Yesterday ──";
+
+    char buf[32];
+    strftime(buf, sizeof(buf), "── %a %d %b %Y ──", &msg_tm);
+    return buf;
+}
+
 // User color from user_id
 inline int userColor(const std::string& user_id) {
     size_t h = std::hash<std::string>{}(user_id);

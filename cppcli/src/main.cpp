@@ -345,6 +345,9 @@ int cmdView(const matrixcli::cli::Args& args) {
         auto at = sender.find(':');
         if (at != std::string::npos && sender.starts_with("@")) sender = sender.substr(1, at - 1);
 
+        std::string ts_str;
+        if (show_ts) ts_str = " " + relativeTime(ev.origin_server_ts);
+
         // Member events (join/leave/invite)
         std::string member_line;
         if (ev.type == "m.room.member" && ev.content.contains("membership")) {
@@ -359,9 +362,21 @@ int cmdView(const matrixcli::cli::Args& args) {
         }
 
         if (!member_line.empty()) {
-            std::cout << "  -- " << member_line << " --" << std::endl;
+            std::cout << "  -- " << member_line << " --" << ts_str << std::endl;
             if (debug) std::cout << "       id:" << ev.event_id << " state_key:" << ev.state_key << std::endl;
             continue;
+        }
+
+        // Day separator
+        static int64_t last_day = 0;
+        time_t msg_t = ev.origin_server_ts / 1000;
+        struct tm msg_tm;
+        localtime_r(&msg_t, &msg_tm);
+        msg_tm.tm_hour = 0; msg_tm.tm_min = 0; msg_tm.tm_sec = 0;
+        int64_t msg_day = mktime(&msg_tm);
+        if (msg_day != last_day && msg_day > 0) {
+            last_day = msg_day;
+            std::cout << std::endl << "  " << daySeparator(ev.origin_server_ts) << std::endl << std::endl;
         }
         std::string prefix;
         if (ev.content.contains("m.relates_to") &&
@@ -377,11 +392,6 @@ int cmdView(const matrixcli::cli::Args& args) {
                 other.content["m.relates_to"].value("event_id", "") == ev.event_id) {
                 reply_count++;
             }
-        }
-
-        std::string ts_str;
-        if (show_ts) {
-            ts_str = " " + relativeTime(ev.origin_server_ts);
         }
 
         // Reply context
