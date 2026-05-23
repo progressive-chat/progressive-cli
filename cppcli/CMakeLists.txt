@@ -17,10 +17,12 @@ if(USE_SYSTEM_OLM)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(LIBOLM REQUIRED olm)
     add_library(olm SHARED IMPORTED)
+    find_library(LIBOLM_LIBRARY_PATH olm REQUIRED)
     set_target_properties(olm PROPERTIES
-        IMPORTED_LOCATION "${LIBOLM_LINK_LIBRARIES}"
+        IMPORTED_LOCATION "${LIBOLM_LIBRARY_PATH}"
         INTERFACE_INCLUDE_DIRECTORIES "${LIBOLM_INCLUDE_DIRS}"
     )
+    set(OLM_FOUND TRUE)
 else()
     set(OLM_LIB_FILE "${CMAKE_SOURCE_DIR}/../libolm/build/libolm.so" CACHE FILEPATH "libolm shared library")
     if(NOT EXISTS "${OLM_LIB_FILE}")
