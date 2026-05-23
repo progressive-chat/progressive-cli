@@ -751,7 +751,7 @@ int cmdTUI(const matrixcli::cli::Args&) {
                         }
                     }
                 } else if (cmd == "vote") {
-                    // Vote in a poll: /vote event_id answer1,answer2,...
+                    // Vote in a poll: /vote event_id answer  (or /vote event_id 1 for option number)
                     std::string roomId = chat.activeRoomId();
                     if (!roomId.empty() && !args.empty()) {
                         auto sp = args.find(' ');
@@ -767,6 +767,25 @@ int cmdTUI(const matrixcli::cli::Args&) {
                             ansVec.push_back(answers);
                         }
                         try { client.sendPollResponse(roomId, pollId, ansVec); } catch (...) {}
+                    }
+                } else if (cmd == "poll") {
+                    // Create poll: /poll "Question?" "Option A" "Option B" "Option C"
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty()) {
+                        std::vector<std::string> parts;
+                        bool in_quote = false;
+                        std::string cur;
+                        for (char c : args) {
+                            if (c == '"') { in_quote = !in_quote; continue; }
+                            if (c == ' ' && !in_quote && !cur.empty()) { parts.push_back(cur); cur.clear(); continue; }
+                            cur += c;
+                        }
+                        if (!cur.empty()) parts.push_back(cur);
+                        if (parts.size() >= 3) {
+                            std::string question = parts[0];
+                            std::vector<std::string> answers(parts.begin() + 1, parts.end());
+                            try { client.sendPoll(roomId, question, answers); } catch (...) {}
+                        }
                     }
                 } else if (cmd == "shrug") {
                     std::string roomId = chat.activeRoomId();

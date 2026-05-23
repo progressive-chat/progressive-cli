@@ -167,6 +167,35 @@ bool Client::sendTyping(const std::string& room_id, bool typing, int timeout_ms)
     return resp.ok();
 }
 
+std::string Client::sendPoll(const std::string& room_id, const std::string& question,
+                              const std::vector<std::string>& answers) {
+    json pollAnswers = json::array();
+    for (auto& a : answers)
+        pollAnswers.push_back({{"id", a}, {"m.text", {{"body", a}}}});
+
+    json content = {
+        {"m.poll", {
+            {"question", {
+                {"m.text", {{"body", question}}}
+            }},
+            {"answers", pollAnswers},
+            {"max_selections", 1},
+            {"kind", "m.poll.disclosed"}
+        }},
+        {"m.text", {
+            {"body", question + "\n" + 
+                [&](){ std::string s; for (size_t i = 0; i < answers.size(); i++) 
+                    s += std::to_string(i+1) + ". " + answers[i] + "\n"; return s; }()}
+        }}
+    };
+
+    std::string txn = generateTxnId();
+    auto resp = authPut("/_matrix/client/r0/rooms/" + room_id +
+                         "/send/m.poll.start/" + txn, content.dump());
+    checkResponse(resp);
+    return json::parse(resp.body)["event_id"].get<std::string>();
+}
+
 std::string Client::sendPollResponse(const std::string& room_id,
                                       const std::string& poll_event_id,
                                       const std::vector<std::string>& answer_ids) {

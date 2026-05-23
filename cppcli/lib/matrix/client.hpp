@@ -208,6 +208,8 @@ public:
     bool sendTyping(const std::string& room_id, bool typing, int timeout_ms = 30000);
 
     // Polls
+    std::string sendPoll(const std::string& room_id, const std::string& question,
+                          const std::vector<std::string>& answers);
     std::string sendPollResponse(const std::string& room_id, const std::string& poll_event_id,
                                   const std::vector<std::string>& answer_ids);
 
