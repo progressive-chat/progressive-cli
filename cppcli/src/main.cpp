@@ -766,6 +766,62 @@ int cmdTUI(const matrixcli::cli::Args&) {
                 } else if (cmd == "bridge") {
                     // Bridge status — check account data for bridge info
                     chat.setConnectionStatus("Bridges: IRC/XMPP/Telegram/DeltaChat available");
+                } else if (cmd == "op" || cmd == "admin") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty())
+                        try { client.setPowerLevel(roomId, args, 100); } catch (...) {}
+                } else if (cmd == "deop") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty())
+                        try { client.setPowerLevel(roomId, args, 0); } catch (...) {}
+                } else if (cmd == "whois") {
+                    if (!args.empty()) {
+                        try { chat.setConnectionStatus("whois " + args + ": " + client.getDisplayName(args)); } catch (...) {}
+                    }
+                } else if (cmd == "ignore") {
+                    if (!args.empty()) try { client.ignoreUser(args); } catch (...) {}
+                } else if (cmd == "pin") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty())
+                        try { client.pinEvent(roomId, args); } catch (...) {}
+                } else if (cmd == "unpin") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty())
+                        try { client.unpinEvent(roomId, args); } catch (...) {}
+                } else if (cmd == "pins") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty()) {
+                        try { chat.setConnectionStatus("Pins: " + std::to_string(
+                            client.getPinnedEvents(roomId).value("pinned", nlohmann::json::array()).size())); } catch (...) {}
+                    }
+                } else if (cmd == "stats") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty()) {
+                        try {
+                            auto st = client.getRoomStats(roomId);
+                            chat.setConnectionStatus("Stats: " + std::to_string(st.value("total_messages", 0)) +
+                                " msgs, " + std::to_string(st.value("unique_posters", 0)) + " posters");
+                        } catch (...) {}
+                    }
+                } else if (cmd == "fav" || cmd == "favorite") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty()) try { client.setRoomTag(roomId, "m.favourite"); } catch (...) {}
+                } else if (cmd == "mirror") {
+                    std::string roomId = chat.activeRoomId();
+                    auto sp = args.find(' ');
+                    if (!roomId.empty() && sp != std::string::npos)
+                        try { client.mirrorMessage(roomId, args.substr(0, sp), args.substr(sp + 1)); } catch (...) {}
+                } else if (cmd == "markdown") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty()) {
+                        nlohmann::json content = {{"msgtype", "m.text"}, {"body", args},
+                            {"format", "org.matrix.custom.html"}, {"formatted_body", "<p>" + args + "</p>"}};
+                        try { client.sendEvent(roomId, "m.room.message", content); } catch (...) {}
+                    }
+                } else if (cmd == "upgrade" || cmd == "upgraderoom") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty())
+                        try { chat.setConnectionStatus("Upgraded " + client.upgradeRoom(roomId)); } catch (...) {}
                 }
                 } else if (cmd == "create" || cmd == "newroom") {
                     auto sp = args.find(' ');

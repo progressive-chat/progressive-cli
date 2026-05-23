@@ -1234,4 +1234,128 @@ bool Client::isLoggedIn() const { return impl->logged_in; }
 std::string Client::userId() const { return impl->creds.user_id; }
 Credentials Client::credentials() const { return impl->creds; }
 
+bool Client::ignoreUser(const std::string& user_id) {
+    json data;
+    auto resp = authGet("/_matrix/client/r0/user/" +
+        http::urlEncode(impl->creds.user_id) + "/account_data/m.ignored_user_list");
+    if (resp.ok()) {
+        try { data = json::parse(resp.body); } catch (...) {}
+    }
+    if (!data.contains("ignored_users")) data["ignored_users"] = json::object();
+    data["ignored_users"][user_id] = json::object();
+    auto putResp = authPut("/_matrix/client/r0/user/" +
+        http::urlEncode(impl->creds.user_id) + "/account_data/m.ignored_user_list",
+        data.dump());
+    return putResp.ok();
+}
+
+json Client::getPowerLevels(const std::string& room_id) {
+    auto events = getRoomState(room_id);
+    for (auto& ev : events) {
+        if (ev.type == "m.room.power_levels") return ev.content;
+    }
+    return json::object();
+}
+
+bool Client::setPowerLevel(const std::string& room_id, const std::string& user_id, int level) {
+    auto pl = getPowerLevels(room_id);
+    if (pl.empty()) pl = {{"users", json::object()}, {"users_default", 0},
+        {"events", {{"m.room.name", 50}, {"m.room.power_levels", 100}}}};
+    pl["users"][user_id] = level;
+    sendStateEvent(room_id, "m.room.power_levels", "", pl);
+    return true;
+}
+
+bool Client::setRoomTag(const std::string& room_id, const std::string& tag, float order) {
+    json content = {{"order", order}};
+    auto resp = authPut("/_matrix/client/r0/user/" +
+        http::urlEncode(impl->creds.user_id) + "/rooms/" + room_id + "/tags/" + tag,
+        content.dump());
+    return resp.ok();
+}
+
+bool Client::deleteRoomTag(const std::string& room_id, const std::string& tag) {
+    auto resp = authDelete("/_matrix/client/r0/user/" +
+        http::urlEncode(impl->creds.user_id) + "/rooms/" + room_id + "/tags/" + tag);
+    return resp.ok();
+}
+
+json Client::getRoomTags(const std::string& room_id) {
+    auto resp = authGet("/_matrix/client/r0/user/" +
+        http::urlEncode(impl->creds.user_id) + "/rooms/" + room_id + "/tags");
+    return resp.ok() ? json::parse(resp.body) : json::object();
+}
+
+json Client::getPinnedEvents(const std::string& room_id) {
+    auto events = getRoomState(room_id);
+    for (auto& ev : events) {
+        if (ev.type == "m.room.pinned_events") return ev.content;
+    }
+    return json::object();
+}
+
+bool Client::pinEvent(const std::string& room_id, const std::string& event_id) {
+    auto pinned = getPinnedEvents(room_id);
+    if (!pinned.contains("pinned")) pinned["pinned"] = json::array();
+    pinned["pinned"].push_back(event_id);
+    sendStateEvent(room_id, "m.room.pinned_events", "", pinned);
+    return true;
+}
+
+bool Client::unpinEvent(const std::string& room_id, const std::string& event_id) {
+    auto pinned = getPinnedEvents(room_id);
+    if (!pinned.contains("pinned")) return false;
+    json newPinned = json::array();
+    for (auto& ev : pinned["pinned"]) {
+        if (ev.get<std::string>() != event_id) newPinned.push_back(ev);
+    }
+    sendStateEvent(room_id, "m.room.pinned_events", "", {{"pinned", newPinned}});
+    return true;
+}
+
+std::string Client::upgradeRoom(const std::string& room_id, const std::string& new_version) {
+    json content = {{"new_version", new_version}};
+    auto resp = authPost("/_matrix/client/r0/rooms/" + room_id + "/upgrade", content.dump());
+    checkResponse(resp);
+    return json::parse(resp.body)["replacement_room"].get<std::string>();
+}
+
+bool Client::mirrorMessage(const std::string& from_room, const std::string& event_id,
+                            const std::string& to_room) {
+    auto events = getRoomMessages(from_room, event_id);
+    if (events.empty()) return false;
+    auto& ev = events[0];
+    std::string body = ev.content.value("body", "(no content)");
+    std::string sender = ev.sender;
+    sendTextMessage(to_room, "[← " + from_room + "] <" + sender + "> " + body);
+    return true;
+}
+
+bool Client::mirrorEvent(const std::string& from_room, const std::string& event_id,
+                          const std::string& to_room) {
+    return mirrorMessage(from_room, event_id, to_room);
+}
+
+json Client::getRoomStats(const std::string& room_id) {
+    json stats;
+    auto msgs = getRoomMessages(room_id, "", "b", 500);
+    std::map<std::string, int> posters;
+    int total = 0;
+    for (auto& ev : msgs) { posters[ev.sender]++; total++; }
+    stats["total_messages"] = total;
+    stats["unique_posters"] = posters.size();
+    json top = json::array();
+    std::vector<std::pair<int, std::string>> sorted;
+    for (auto& [k, v] : posters) sorted.push_back({v, k});
+    std::sort(sorted.rbegin(), sorted.rend());
+    for (size_t i = 0; i < std::min((size_t)10, sorted.size()); i++) {
+        std::string sender = sorted[i].second;
+        auto at = sender.find(':');
+        if (at != std::string::npos && sender.starts_with("@")) sender = sender.substr(1, at - 1);
+        top.push_back({{"sender", sender}, {"count", sorted[i].first}});
+    }
+    stats["top_posters"] = top;
+    return stats;
+}
+
 }} // namespace matrixcli::matrix

@@ -130,6 +130,33 @@ public:
     bool banUser(const std::string& room_id, const std::string& user_id,
                  const std::string& reason = "");
     bool unbanUser(const std::string& room_id, const std::string& user_id);
+    bool ignoreUser(const std::string& user_id);
+
+    // Power levels
+    json getPowerLevels(const std::string& room_id);
+    bool setPowerLevel(const std::string& room_id, const std::string& user_id, int level);
+
+    // Room tags
+    bool setRoomTag(const std::string& room_id, const std::string& tag, float order = 0.5);
+    bool deleteRoomTag(const std::string& room_id, const std::string& tag);
+    json getRoomTags(const std::string& room_id);
+
+    // Pinned events
+    json getPinnedEvents(const std::string& room_id);
+    bool pinEvent(const std::string& room_id, const std::string& event_id);
+    bool unpinEvent(const std::string& room_id, const std::string& event_id);
+
+    // Room upgrade
+    std::string upgradeRoom(const std::string& room_id, const std::string& new_version = "10");
+
+    // Room mirror
+    bool mirrorMessage(const std::string& from_room, const std::string& event_id,
+                       const std::string& to_room);
+    bool mirrorEvent(const std::string& from_room, const std::string& event_id,
+                     const std::string& to_room);
+
+    // Room analytics
+    json getRoomStats(const std::string& room_id);
 
     // Room state
     std::string setRoomName(const std::string& room_id, const std::string& name);
