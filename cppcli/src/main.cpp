@@ -65,6 +65,14 @@ int cmdServe(const matrixcli::cli::Args& args) {
     server::APIServer api_server(port, demo_mode);
     api_server.start();
 
+    // Start background sync if logged in (populates DB for CLI commands)
+    if (!demo_mode && acc.is_logged_in()) {
+        client.startSync([&](const matrix::Event&) {
+            // Events auto-saved to DB by Client's built-in sync handler
+        });
+        util::Logger::instance().info("Background sync started");
+    }
+
     std::cout << "API server running on http://localhost:" << port << std::endl;
     std::cout << "Press Ctrl+C to stop" << std::endl;
 
@@ -72,6 +80,7 @@ int cmdServe(const matrixcli::cli::Args& args) {
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 
+    client.stopSync();
     api_server.stop();
     return 0;
 }
@@ -200,7 +209,9 @@ int cmdRooms(const matrixcli::cli::Args&) {
     }
     auto rooms = dbi.listRooms();
     if (rooms.empty()) {
-        std::cout << "No rooms. Login first or start sync." << std::endl;
+        std::cout << "No rooms in cache." << std::endl;
+        std::cout << "  For demo:   matrixcli demo    (start demo server, then try again)" << std::endl;
+        std::cout << "  For real:   matrixcli login   (login to Matrix first)" << std::endl;
         return 0;
     }
     for (auto& r : rooms) {
@@ -254,24 +265,36 @@ int cmdView(const matrixcli::cli::Args& args) {
             std::cout << "  [" << sender << "] " << body << std::endl;
         }
     } else {
-        // Try fetching from server
+        // Try fetching from server via direct API call
         auto acc = dbi.loadAccount();
         if (!acc.is_logged_in()) {
-            std::cout << "No cached messages. Login first to fetch from server." << std::endl;
+            std::cout << "No cached messages and not logged in." << std::endl;
+            std::cout << "  Quick start: matrixcli demo populate" << std::endl;
+            std::cout << "  Real server: matrixcli login --homeserver URL --username @u:p --password x" << std::endl;
             return 0;
         }
         matrix::Client client;
         client.setHomeserverURL(acc.homeserver_url);
         client.setAccessToken(acc.access_token);
         try {
-            auto serverEvents = client.getRoomMessages(room_id, "", "b", limit);
-            for (auto& ev : serverEvents) {
-                std::string body = ev.content.value("body", "(no body)");
-                if (body.size() > 120) body = body.substr(0, 120) + "...";
-                std::string sender = ev.sender;
-                auto at = sender.find(':');
-                if (at != std::string::npos && sender.starts_with("@")) sender = sender.substr(1, at - 1);
-                std::cout << "  [" << sender << "] " << body << std::endl;
+            // Do a quick sync to populate DB
+            auto sr = client.syncOnce("", "", 5000);
+            for (auto& [rid, room] : sr.rooms.join) {
+                dbi.upsertRoom(rid, room);
+                for (auto& ev : room.timeline.events) dbi.insertEvent(ev);
+            }
+            // Retry from cache
+            auto events = dbi.getEvents(room_id, limit);
+            if (!events.empty()) {
+                std::reverse(events.begin(), events.end());
+                for (auto& ev : events) {
+                    std::string body = ev.content.value("body", "(no body)");
+                    if (body.size() > 120) body = body.substr(0, 120) + "...";
+                    std::string sender = ev.sender;
+                    auto at = sender.find(':');
+                    if (at != std::string::npos && sender.starts_with("@")) sender = sender.substr(1, at - 1);
+                    std::cout << "  [" << sender << "] " << body << std::endl;
+                }
             }
         } catch (const std::exception& e) {
             std::cerr << "Fetch failed: " << e.what() << std::endl;
@@ -326,6 +349,53 @@ int cmdSendMsg(const matrixcli::cli::Args& args) {
         std::cerr << "Send failed: " << e.what() << std::endl;
         return 1;
     }
+    return 0;
+}
+
+int cmdDemoPopulate(const matrixcli::cli::Args&) {
+    using namespace matrixcli;
+    db::Database dbi;
+    if (!dbi.open("matrixcli.db")) return 1;
+
+    struct { const char* id; const char* name; const char* topic; int members; } rooms[] = {
+        {"!general:demo.local","#general","General discussion",42},
+        {"!dev:demo.local","#dev","Development chat",15},
+        {"!random:demo.local","#random","Random stuff",28},
+        {"!dm_alice:demo.local","Alice","",2},
+        {"!dm_bob:demo.local","Bob","",2},
+    };
+    for (auto& r : rooms) {
+        nlohmann::json j;
+        j["name"] = r.name; j["topic"] = r.topic; j["member_count"] = r.members;
+        dbi.upsertRoom(j, r.id);
+    }
+
+    int64_t ts = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    struct { const char* room; const char* sender; const char* name; const char* body; } msgs[] = {
+        {"!general:demo.local","@alice","Alice","Welcome! This is matrixcli — a terminal Matrix client."},
+        {"!general:demo.local","@bob","Bob","Supports E2EE, SQLite cache, multi-format REST API."},
+        {"!general:demo.local","@alice","Alice","Try: matrixcli tui, matrixcli view, matrixcli send"},
+        {"!dev:demo.local","@charlie","Charlie","C++20, raw sockets + OpenSSL, no external HTTP libs."},
+        {"!dev:demo.local","@alice","Alice","CMake build, 5 format renderers, full Matrix CS API."},
+        {"!random:demo.local","@bob","Bob","Why did the dev quit? No arrays."},
+        {"!dm_alice:demo.local","@alice","Alice","Hey! This is a private encrypted DM."},
+        {"!dm_bob:demo.local","@bob","Bob","Try matrixcli view \"!dm_bob:demo.local\""},
+    };
+    for (auto& m : msgs) {
+        matrix::Event ev;
+        ev.event_id = "$demo_" + std::to_string(ts);
+        ev.room_id = m.room; ev.sender = m.sender;
+        ev.type = "m.room.message";
+        ev.content = {{"body", m.body}, {"msgtype", "m.text"}};
+        ev.origin_server_ts = ts;
+        dbi.insertEvent(ev);
+        ts -= 60;
+    }
+
+    std::cout << "Populated DB: " << (sizeof(rooms)/sizeof(rooms[0])) << " rooms, "
+              << (sizeof(msgs)/sizeof(msgs[0])) << " messages." << std::endl;
+    std::cout << "Try:  matrixcli rooms | matrixcli view #general | matrixcli view #dev" << std::endl;
     return 0;
 }
 
@@ -674,6 +744,9 @@ int main(int argc, char* argv[]) {
     }
 
     if (args.command == "demo") {
+        if (!args.positional.empty() && args.positional[0] == "populate") {
+            return cmdDemoPopulate(args);
+        }
         return cmdServe(args);
     }
 
