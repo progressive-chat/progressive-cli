@@ -63,7 +63,10 @@ public:
     Credentials loginToken(const std::string& token,
                            const std::string& device_name = "");
     Credentials loginSSO(const std::string& token,
-                         const std::string& device_name = "");
+                          const std::string& device_name = "");
+    Credentials registerAccount(const std::string& username,
+                                 const std::string& password,
+                                 const std::string& device_name = "");
     SessionInfo whoAmI();
     bool logout();
     bool logoutAll();
@@ -177,6 +180,16 @@ public:
     // Reactions
     std::string sendReaction(const std::string& room_id, const std::string& event_id,
                               const std::string& key);
+
+    // Special message types
+    std::string sendVoiceMessage(const std::string& room_id, const std::string& mxc_url,
+                                  int64_t duration_ms, const std::string& mimetype = "audio/ogg");
+    std::string sendSticker(const std::string& room_id, const std::string& mxc_url,
+                             const std::string& body, const std::string& mimetype = "image/webp");
+    std::string sendLocation(const std::string& room_id, const std::string& geo_uri,
+                              const std::string& description = "");
+    std::string sendTodo(const std::string& room_id, const std::string& title,
+                          const json& items);
 
     // URL preview
     json getURLPreview(const std::string& url);

@@ -201,6 +201,75 @@ std::string Client::sendReaction(const std::string& room_id, const std::string& 
     return json::parse(resp.body)["event_id"].get<std::string>();
 }
 
+std::string Client::sendVoiceMessage(const std::string& room_id, const std::string& mxc_url,
+                                      int64_t duration_ms, const std::string& mimetype) {
+    json content = {
+        {"msgtype", "m.audio"},
+        {"body", "Voice message"},
+        {"url", mxc_url},
+        {"info", {
+            {"duration", duration_ms},
+            {"mimetype", mimetype}
+        }}
+    };
+    std::string txn = generateTxnId();
+    auto resp = authPut("/_matrix/client/r0/rooms/" + room_id +
+                         "/send/m.room.message/" + txn, content.dump());
+    checkResponse(resp);
+    return json::parse(resp.body)["event_id"].get<std::string>();
+}
+
+std::string Client::sendSticker(const std::string& room_id, const std::string& mxc_url,
+                                 const std::string& body, const std::string& mimetype) {
+    json content = {
+        {"body", body},
+        {"url", mxc_url},
+        {"info", {{"mimetype", mimetype}}}
+    };
+    std::string txn = generateTxnId();
+    auto resp = authPut("/_matrix/client/r0/rooms/" + room_id +
+                         "/send/m.sticker/" + txn, content.dump());
+    checkResponse(resp);
+    return json::parse(resp.body)["event_id"].get<std::string>();
+}
+
+std::string Client::sendLocation(const std::string& room_id, const std::string& geo_uri,
+                                  const std::string& description) {
+    json content = {
+        {"msgtype", "m.location"},
+        {"body", description.empty() ? geo_uri : description},
+        {"geo_uri", geo_uri},
+        {"org.matrix.msc3488.location", {
+            {"uri", geo_uri}
+        }}
+    };
+    if (!description.empty()) {
+        content["org.matrix.msc3488.location"]["description"] = description;
+    }
+    std::string txn = generateTxnId();
+    auto resp = authPut("/_matrix/client/r0/rooms/" + room_id +
+                         "/send/m.room.message/" + txn, content.dump());
+    checkResponse(resp);
+    return json::parse(resp.body)["event_id"].get<std::string>();
+}
+
+std::string Client::sendTodo(const std::string& room_id, const std::string& title,
+                              const json& items) {
+    json content = {
+        {"title", title},
+        {"items", items}
+    };
+    std::string txn = generateTxnId();
+    auto resp = authPut("/_matrix/client/r0/rooms/" + room_id +
+                         "/send/im.vector.todo/" + txn, content.dump());
+    if (resp.status_code != 200) {
+        // Fallback to state event
+        return sendStateEvent(room_id, "im.vector.todo", "", content);
+    }
+    checkResponse(resp);
+    return json::parse(resp.body)["event_id"].get<std::string>();
+}
+
 json Client::getURLPreview(const std::string& url) {
     auto resp = authGet("/_matrix/media/r0/preview_url?url=" + http::urlEncode(url));
     if (resp.ok()) return json::parse(resp.body);
@@ -456,6 +525,46 @@ Credentials Client::loginToken(const std::string& token,
 Credentials Client::loginSSO(const std::string& token,
                               const std::string& device_name) {
     return loginToken(token, device_name);
+}
+
+Credentials Client::registerAccount(const std::string& username,
+                                     const std::string& password,
+                                     const std::string& device_name) {
+    json req = {
+        {"username", username},
+        {"password", password},
+        {"type", "m.login.password"}
+    };
+    if (!device_name.empty())
+        req["initial_device_display_name"] = device_name;
+
+    auto resp = impl->http.post(
+        buildUrl("/_matrix/client/r0/register"),
+        req.dump(),
+        {{"Content-Type", "application/json"}}
+    );
+
+    if (resp.status_code == 401) {
+        // Interactive auth: try with dummy auth
+        req["auth"] = {{"type", "m.login.dummy"}};
+        resp = impl->http.post(
+            buildUrl("/_matrix/client/r0/register"),
+            req.dump(),
+            {{"Content-Type", "application/json"}}
+        );
+    }
+
+    if (resp.status_code != 200) {
+        auto err = makeMatrixError(resp);
+        throw MatrixException(err);
+    }
+
+    auto j = json::parse(resp.body);
+    impl->creds.user_id = j["user_id"].get<std::string>();
+    impl->creds.access_token = j["access_token"].get<std::string>();
+    impl->creds.device_id = j.value("device_id", "");
+    impl->logged_in = true;
+    return impl->creds;
 }
 
 SessionInfo Client::whoAmI() {

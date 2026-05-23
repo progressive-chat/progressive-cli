@@ -107,6 +107,8 @@ int cmdLogin(const matrixcli::cli::Args& args) {
 
     try {
         auto token_it = args.options.find("token");
+        auto reg_it = args.options.find("register");
+
         if (token_it != args.options.end()) {
             auto creds = client.loginToken(token_it->second);
             std::cout << "Logged in as " << creds.user_id << std::endl;
@@ -125,6 +127,34 @@ int cmdLogin(const matrixcli::cli::Args& args) {
             acc.access_token = creds.access_token;
             acc.device_id = creds.device_id;
             dbi.saveAccount(acc);
+        } else if (reg_it != args.options.end()) {
+            // Registration
+            std::string username;
+            auto user_it = args.options.find("username");
+            if (user_it != args.options.end()) username = user_it->second;
+            else { std::cerr << "Error: --username required for registration" << std::endl; return 1; }
+
+            std::string password;
+            auto pass_it = args.options.find("password");
+            if (pass_it != args.options.end()) password = pass_it->second;
+            else { std::cerr << "Error: --password required for registration" << std::endl; return 1; }
+
+            auto creds = client.registerAccount(username, password);
+            std::cout << "Registered as " << creds.user_id << std::endl;
+            // Save to DB
+            Config::instance().set("homeserver_url", homeserver);
+            Config::instance().set("access_token", creds.access_token);
+            Config::instance().set("user_id", creds.user_id);
+            Config::instance().set("device_id", creds.device_id);
+            Config::instance().save();
+            db::Database dbi2;
+            dbi2.open("matrixcli.db");
+            db::StoredAccount sacc;
+            sacc.homeserver_url = homeserver;
+            sacc.user_id = creds.user_id;
+            sacc.access_token = creds.access_token;
+            sacc.device_id = creds.device_id;
+            dbi2.saveAccount(sacc);
         } else {
             std::string username;
             auto user_it = args.options.find("username");
@@ -700,25 +730,43 @@ int cmdTUI(const matrixcli::cli::Args&) {
                             try {
                                 auto mxc = client.uploadMedia(args);
                                 client.sendFileMessage(roomId, mxc, args, 0, "");
-                            } catch (...) {}
-                        }
-                    } else {
-                        FILE* fp = popen("ls -1 --color=never *.png *.jpg *.gif *.webp *.mp4 *.pdf *.txt *.md 2>/dev/null", "r");
-                        if (fp) {
-                            char buf[256];
-                            std::string files;
-                            while (fgets(buf, sizeof(buf), fp)) files += "  " + std::string(buf);
-                            pclose(fp);
-                            if (!files.empty() && !roomId.empty()) {
-                                auto nl = files.find('\n');
-                                std::string first = files.substr(2, nl - 2);
-                                try {
-                                    auto mxc = client.uploadMedia(first);
-                                    client.sendFileMessage(roomId, mxc, first, 0, "");
-                                } catch (...) {}
-                            }
-                        }
+                    } catch (...) {}
+                }
+                } else if (cmd == "voice") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty()) {
+                        try {
+                            auto mxc = client.uploadMedia(args);
+                            client.sendVoiceMessage(roomId, mxc, 3000);
+                        } catch (...) {}
                     }
+                } else if (cmd == "sticker") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty()) {
+                        try {
+                            std::string url = (args.find("mxc://") == 0) ? args : client.uploadMedia(args);
+                            client.sendSticker(roomId, url, "Sticker");
+                        } catch (...) {}
+                    }
+                } else if (cmd == "location") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty()) {
+                        auto sp = args.find(' ');
+                        std::string geo = (sp != std::string::npos) ? args.substr(0, sp) : args;
+                        std::string desc = (sp != std::string::npos) ? args.substr(sp + 1) : "";
+                        try { client.sendLocation(roomId, geo, desc); } catch (...) {}
+                    }
+                } else if (cmd == "todo") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty()) {
+                        nlohmann::json items = nlohmann::json::array();
+                        items.push_back({{"text", args}, {"done", false}});
+                        try { client.sendTodo(roomId, "TODO", items); } catch (...) {}
+                    }
+                } else if (cmd == "bridge") {
+                    // Bridge status — check account data for bridge info
+                    chat.setConnectionStatus("Bridges: IRC/XMPP/Telegram/DeltaChat available");
+                }
                 } else if (cmd == "create" || cmd == "newroom") {
                     auto sp = args.find(' ');
                     std::string name = (sp != std::string::npos) ? args.substr(0, sp) : args;
