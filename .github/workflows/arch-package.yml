@@ -85,18 +85,34 @@ jobs:
           echo "Package: matrixcli-git-${VERSION}-${ARCH}.pkg.tar.xz"
           ls -lh "$REPO"/matrixcli-git-*.pkg.tar.xz
 
+      - name: Sign package (GPG)
+        if: env.GPG_PRIVATE_KEY != ''
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          PKG=$(ls *.pkg.tar.xz | head -1)
+          gpg --batch --passphrase "$GPG_PASSPHRASE" --detach-sign --armor "$PKG"
+          echo "Signed: ${PKG}.sig"
+          ls -lh *.sig
+
       - name: Upload package artifact
         uses: actions/upload-artifact@v5
         with:
           name: arch-package
-          path: '*.pkg.tar.xz'
+          path: |
+            *.pkg.tar.xz
+            *.pkg.tar.xz.sig
           retention-days: 30
 
       - name: Upload to GitHub Release (tags only)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: '*.pkg.tar.xz'
+          files: |
+            *.pkg.tar.xz
+            *.pkg.tar.xz.sig
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
