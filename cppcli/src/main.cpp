@@ -391,6 +391,39 @@ int cmdSendMsg(const matrixcli::cli::Args& args) {
     return 0;
 }
 
+int cmdSearch(const matrixcli::cli::Args& args) {
+    using namespace matrixcli;
+    if (args.positional.empty()) {
+        std::cerr << "Usage: matrixcli search <query> [--limit N]" << std::endl;
+        return 1;
+    }
+    std::string query = args.positional[0];
+    int limit = 20;
+    auto lm = args.options.find("limit");
+    if (lm != args.options.end()) limit = std::stoi(lm->second);
+
+    db::Database dbi;
+    if (!dbi.open("matrixcli.db")) return 1;
+
+    auto results = dbi.search(query, limit);
+    if (results.empty()) {
+        std::cout << "No results for: " << query << std::endl;
+        std::cout << "(Indexed during sync. Start: matrixcli serve, then sync populates FTS)" << std::endl;
+        return 0;
+    }
+    std::cout << results.size() << " results for \"" << query << "\":" << std::endl;
+    for (auto& r : results) {
+        std::string sender = r.value("sender", "?");
+        auto at = sender.find(':');
+        if (at != std::string::npos && sender.starts_with("@")) sender = sender.substr(1, at - 1);
+        std::string room = r.value("room_name", r.value("room_id", "?"));
+        std::string body = r.value("content", nlohmann::json::object()).value("body", "(no body)");
+        if (body.size() > 100) body = body.substr(0, 100) + "...";
+        std::cout << "  #" << room << "  [" << sender << "] " << body << std::endl;
+    }
+    return 0;
+}
+
 int cmdConfig(const matrixcli::cli::Args& args) {
     using namespace matrixcli;
     const std::string path = "matrixcli.toml";
@@ -683,15 +716,27 @@ int cmdTUI(const matrixcli::cli::Args&) {
                         auto roomId = client.createRoom(name);
                         client.joinRoom(roomId);
                     } catch (...) {}
-                } else if (cmd == "search" || cmd == "joinroom") {
+                } else if (cmd == "search" || cmd == "find") {
+                    // Full-text search messages
                     if (!args.empty()) {
                         try {
-                            auto rooms = client.getPublicRooms("", args, 10);
-                            // Join first match
-                            if (rooms.contains("chunk") && !rooms["chunk"].empty()) {
-                                client.joinRoom(rooms["chunk"][0]["room_id"].get<std::string>());
+                            auto results = dbi.search(args, 20);
+                            if (!results.empty()) {
+                                std::string output;
+                                for (auto& r : results) {
+                                    std::string body = r.value("content", nlohmann::json::object()).value("body", "");
+                                    output += body.substr(0, 80) + " | ";
+                                }
+                                chat.setConnectionStatus("Search: " + std::to_string(results.size()) + " results");
+                            } else {
+                                chat.setConnectionStatus("Search: no results");
                             }
                         } catch (...) {}
+                    }
+                } else if (cmd == "joinroom") {
+                    // Join room by name or alias
+                    if (!args.empty()) {
+                        try { client.joinRoom(args); } catch (...) {}
                     }
                 } else if (cmd == "preview" && !args.empty()) {
                     try {
@@ -1015,6 +1060,10 @@ int main(int argc, char* argv[]) {
         try { client.setRoomAvatar(args.positional[0], url); std::cout << "Avatar set" << std::endl; }
         catch (const std::exception& e) { std::cerr << e.what() << std::endl; return 1; }
         return 0;
+    }
+
+    if (args.command == "search") {
+        return cmdSearch(args);
     }
 
     if (args.command == "config") {

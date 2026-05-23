@@ -78,12 +78,6 @@ void Database::migrate() {
 
         CREATE INDEX IF NOT EXISTS idx_events_room_ts
             ON events(room_id, origin_server_ts DESC);
-
-        -- Full-text search
-        CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(
-            event_id, room_id, sender, body,
-            content='events', content_rowid='rowid'
-        );
     )");
 }
 
@@ -281,19 +275,16 @@ int Database::getEventCount(const std::string& room_id) {
 
 std::vector<json> Database::search(const std::string& query, int limit) {
     std::vector<json> result;
-    // Insert pending events into FTS
-    exec("INSERT INTO events_fts(events_fts) VALUES('rebuild')");
-
     sqlite3_stmt* stmt;
     std::string sql = "SELECT events.event_id, events.room_id, events.sender, "
                       "events.content, events.origin_server_ts, rooms.name "
-                      "FROM events_fts "
-                      "JOIN events ON events_fts.rowid = events.rowid "
+                      "FROM events "
                       "LEFT JOIN rooms ON events.room_id = rooms.room_id "
-                      "WHERE events_fts MATCH ? "
-                      "ORDER BY rank LIMIT ?";
+                      "WHERE events.content LIKE ? "
+                      "ORDER BY events.origin_server_ts DESC LIMIT ?";
     sqlite3_prepare_v2(_db, sql.c_str(), -1, &stmt, nullptr);
-    sqlite3_bind_text(stmt, 1, query.c_str(), query.size(), SQLITE_TRANSIENT);
+    std::string pattern = "%" + query + "%";
+    sqlite3_bind_text(stmt, 1, pattern.c_str(), pattern.size(), SQLITE_TRANSIENT);
     sqlite3_bind_int(stmt, 2, limit);
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
