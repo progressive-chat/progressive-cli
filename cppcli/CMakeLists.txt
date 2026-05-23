@@ -14,7 +14,13 @@ find_package(OpenSSL REQUIRED)
 
 # libolm
 if(USE_SYSTEM_OLM)
-    find_package(olm REQUIRED)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(LIBOLM REQUIRED olm)
+    add_library(olm SHARED IMPORTED)
+    set_target_properties(olm PROPERTIES
+        IMPORTED_LOCATION "${LIBOLM_LINK_LIBRARIES}"
+        INTERFACE_INCLUDE_DIRECTORIES "${LIBOLM_INCLUDE_DIRS}"
+    )
 else()
     set(OLM_LIB_FILE "${CMAKE_SOURCE_DIR}/../libolm/build/libolm.so" CACHE FILEPATH "libolm shared library")
     if(NOT EXISTS "${OLM_LIB_FILE}")
