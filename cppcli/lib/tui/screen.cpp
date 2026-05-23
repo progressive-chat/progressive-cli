@@ -24,9 +24,9 @@ void Screen::init() {
     if (has_colors()) {
         start_color();
         use_default_colors();
-        init_pair(1, COLOR_CYAN, -1);    // Sender name
-        init_pair(2, COLOR_GREEN, -1);   // Room name highlight
-        init_pair(3, COLOR_YELLOW, -1);  // Dim/notice
+        init_pair(1, COLOR_CYAN, -1);     // Sender name
+        init_pair(2, COLOR_GREEN, -1);    // Room name / member
+        init_pair(3, COLOR_YELLOW, -1);   // URLs / links
     }
     _win = stdscr;
     _initialized = true;

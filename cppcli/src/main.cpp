@@ -229,6 +229,66 @@ int cmdTUI(const matrixcli::cli::Args&) {
 
             tui::ChatView chat;
             chat.setStatus("Connected as " + creds.user_id);
+            chat.setConnectionStatus("online");
+
+            // Command handler for slash commands
+            chat.setCommandHandler([&](const std::string& cmd, const std::string& args) {
+                if (cmd == "me" || cmd == "emote") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty()) client.sendEmote(roomId, args);
+                } else if (cmd == "notice") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty()) client.sendNotice(roomId, args);
+                } else if (cmd == "join") {
+                    if (!args.empty()) client.joinRoom(args);
+                } else if (cmd == "leave") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty()) client.leaveRoom(roomId);
+                } else if (cmd == "nick" || cmd == "name") {
+                    if (!args.empty()) client.setDisplayName(args);
+                } else if (cmd == "invite") {
+                    std::string roomId = chat.activeRoomId();
+                    auto sp = args.find(' ');
+                    if (!roomId.empty() && !args.empty()) {
+                        std::string user = (sp != std::string::npos) ? args.substr(0, sp) : args;
+                        std::string reason = (sp != std::string::npos) ? args.substr(sp + 1) : "";
+                        client.inviteUser(roomId, user, reason);
+                    }
+                } else if (cmd == "kick") {
+                    std::string roomId = chat.activeRoomId();
+                    auto sp = args.find(' ');
+                    if (!roomId.empty() && !args.empty()) {
+                        std::string user = (sp != std::string::npos) ? args.substr(0, sp) : args;
+                        std::string reason = (sp != std::string::npos) ? args.substr(sp + 1) : "";
+                        client.kickUser(roomId, user, reason);
+                    }
+                } else if (cmd == "ban") {
+                    std::string roomId = chat.activeRoomId();
+                    auto sp = args.find(' ');
+                    if (!roomId.empty() && !args.empty()) {
+                        std::string user = (sp != std::string::npos) ? args.substr(0, sp) : args;
+                        std::string reason = (sp != std::string::npos) ? args.substr(sp + 1) : "";
+                        client.banUser(roomId, user, reason);
+                    }
+                } else if (cmd == "react") {
+                    // Reaction to last message
+                    chat.requestRedraw();
+                } else if (cmd == "shrug") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty()) client.sendTextMessage(roomId, "¯\\_(ツ)_/¯");
+                } else if (cmd == "tableflip") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty()) client.sendTextMessage(roomId, "(╯°□°)╯︵ ┻━┻");
+                } else if (cmd == "upload" && !args.empty()) {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty()) {
+                        try {
+                            auto mxc = client.uploadMedia(args);
+                            client.sendImageMessage(roomId, mxc, args, 0, "");
+                        } catch (...) {}
+                    }
+                }
+            });
 
             // Load rooms from DB
             auto rooms = dbi.listRooms();
@@ -285,18 +345,33 @@ int cmdTUI(const matrixcli::cli::Args&) {
                     mi.is_notice = (mt == "m.notice");
                     mi.is_emote = (mt == "m.emote");
                     mi.is_highlight = pr.highlight;
+                    mi.url = ev.content.value("url", "");
+                    mi.mimetype = ev.content.value("info", nlohmann::json::object()).value("mimetype", "");
 
-                    // Desktop notification for highlights and DMs
+                    // Check for edit (m.replace relation)
+                    if (ev.content.contains("m.relates_to") &&
+                        ev.content["m.relates_to"].value("rel_type", "") == "m.replace") {
+                        mi.is_edited = true;
+                        mi.body = ev.content.value("m.new_content", nlohmann::json::object()).value("body", mi.body);
+                    }
+
+                    // Desktop notification for highlights
                     if (pr.highlight || client.isDirectChat(ev.room_id)) {
-                        util::Notifications::send(ev.sender, mi.body);
+                        util::Notifications::send(mi.sender, mi.body);
                     }
 
                     chat.addMessage(ev.room_id, mi);
                 }
 
-                // Track reactions (handled in chat view via event decoding)
-                if (ev.type == "m.reaction" && ev.content.contains("m.relates_to")) {
-                    // Reactions are tracked by the sync loop decryption already
+                // Redactions
+                if (ev.type == "m.room.redaction" && !ev.redacts.empty()) {
+                    tui::MessageInfo mi;
+                    mi.sender = ev.sender;
+                    mi.body = "Message redacted";
+                    mi.event_id = ev.redacts;
+                    mi.is_redacted = true;
+                    mi.redacted_by = ev.sender;
+                    chat.addMessage(ev.room_id, mi);
                 }
 
                 chat.requestRedraw();

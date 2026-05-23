@@ -23,8 +23,13 @@ struct MessageInfo {
     bool is_encrypted = false;
     bool is_notice = false;
     bool is_emote = false;
-    std::string reaction; // emoji reaction key
-    bool is_highlight = false; // push rule match
+    std::string reaction;
+    bool is_highlight = false;
+    bool is_edited = false;
+    bool is_redacted = false;
+    std::string redacted_by = "";
+    std::string url; // mxc:// or https:// URL for images/files
+    std::string mimetype;
 };
 
 struct MemberInfo {
@@ -54,6 +59,11 @@ public:
     void setStatus(const std::string& status) { _status = status; }
     void setMembers(const std::string& room_id, const std::vector<MemberInfo>& members);
     void setNotificationCallback(std::function<void(const std::string&)> cb) { _notifyCb = std::move(cb); }
+    void setConnectionStatus(const std::string& status) { _connStatus = status; _needsRedraw = true; }
+
+    // Commands
+    using CommandHandler = std::function<void(const std::string& cmd, const std::string& args)>;
+    void setCommandHandler(CommandHandler cb) { _cmdHandler = std::move(cb); }
 
     // Main loop
     void run(Screen& screen);
@@ -90,12 +100,14 @@ private:
     bool _showSearch = false;
     std::string _searchQuery;
     std::string _status;
+    std::string _connStatus;
     bool _running = true;
     bool _needsRedraw = true;
 
     SendCallback _sendCb;
     RoomSwitchCallback _roomSwitchCb;
     std::function<void(const std::string&)> _notifyCb;
+    CommandHandler _cmdHandler;
     mutable std::mutex _mutex;
 };
 

@@ -156,6 +156,13 @@ public:
     bool isDirectChat(const std::string& room_id) const;
     std::string dmUserId(const std::string& room_id) const;
 
+    // Space hierarchy
+    std::vector<std::string> getSpaceChildren(const std::string& space_id) const;
+    bool isSpaceRoom(const std::string& room_id) const;
+
+    // SSO login
+    std::string getSSOLoginURL(const std::string& redirect_uri = "");
+
     // Filters
     std::string createFilter(const std::string& filter_json);
 

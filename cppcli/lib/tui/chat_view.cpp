@@ -131,6 +131,7 @@ void ChatView::draw(Screen& screen) {
 
 void ChatView::drawStatus(Screen& screen, int y, int w) {
     std::string status = _status;
+    if (!_connStatus.empty()) status += " │ " + _connStatus;
     if (status.empty()) status = "matrixcli";
     if (status.size() > (size_t)w) status = status.substr(0, w);
 
@@ -236,6 +237,64 @@ void ChatView::drawMemberList(Screen& screen, int x, int y, int w, int h) {
 #endif
 }
 
+// Simple rich text renderer: **bold**, *italic*, `code`, URLs
+static void renderRichLine(int y, int x, const std::string& text, int maxw) {
+#ifdef HAS_NCURSES
+    int pos = 0;
+    auto peek = [&](int i) -> char { return (pos + i < (int)text.size()) ? text[pos + i] : '\0'; };
+
+    std::string url;
+    while (pos < (int)text.size() && pos < maxw) {
+        // Bold: **text**
+        if (peek(0) == '*' && peek(1) == '*' && pos + 2 < (int)text.size()) {
+            pos += 2;
+            attron(A_BOLD);
+            while (pos < (int)text.size() && !(peek(0) == '*' && peek(1) == '*')) {
+                mvaddch(y, x++, text[pos++]);
+            }
+            attroff(A_BOLD);
+            if (peek(0) == '*' && peek(1) == '*') pos += 2;
+            continue;
+        }
+        // Italic: *text*
+        if (peek(0) == '*' && peek(1) != '*' && pos > 0 && text[pos-1] != '*') {
+            pos++;
+            attron(A_ITALIC);
+            while (pos < (int)text.size() && text[pos] != '*') {
+                mvaddch(y, x++, text[pos++]);
+            }
+            attroff(A_ITALIC);
+            if (pos < (int)text.size()) pos++;
+            continue;
+        }
+        // Code: `text`
+        if (peek(0) == '`') {
+            pos++;
+            attron(A_REVERSE);
+            while (pos < (int)text.size() && text[pos] != '`') {
+                mvaddch(y, x++, text[pos++]);
+            }
+            attroff(A_REVERSE);
+            if (pos < (int)text.size()) pos++;
+            continue;
+        }
+        // URL: http(s)://...
+        if ((peek(0) == 'h' && peek(1) == 't' && peek(2) == 't' && peek(3) == 'p') ||
+            peek(0) == 'm' && peek(1) == 'x' && peek(2) == 'c') {
+            attron(COLOR_PAIR(3) | A_UNDERLINE);
+            while (pos < (int)text.size() && text[pos] != ' ' && text[pos] != '\n') {
+                mvaddch(y, x++, text[pos++]);
+            }
+            attroff(COLOR_PAIR(3) | A_UNDERLINE);
+            continue;
+        }
+        mvaddch(y, x++, text[pos++]);
+    }
+#else
+    (void)y; (void)x; (void)text; (void)maxw;
+#endif
+}
+
 void ChatView::drawMessages(Screen& screen, int x, int y, int w, int h) {
     std::lock_guard<std::mutex> lock(_mutex);
 
@@ -270,26 +329,48 @@ void ChatView::drawMessages(Screen& screen, int x, int y, int w, int h) {
         else if (msg.is_encrypted) prefix = msg.sender + ": [encrypted] ";
         if (!msg.reaction.empty()) suffix = "  " + msg.reaction;
         if (msg.is_highlight) prefix = "★ " + prefix;
+        if (msg.is_edited) suffix += " (edited)";
+        if (msg.is_redacted) {
+            prefix = "[" + msg.sender + " message redacted";
+            if (!msg.redacted_by.empty()) prefix += " by " + msg.redacted_by;
+            prefix += "]";
+        }
 
-        int avail = w - (int)prefix.size();
+        int avail = w - (int)prefix.size() - (int)suffix.size();
         if (avail <= 0) continue;
         std::string line = msg.body.substr(0, avail);
 
+        if (msg.is_redacted) {
+            attron(A_DIM);
+            mvaddstr(ry, x, (prefix + line + suffix).c_str());
+            attroff(A_DIM);
+        } else {
 #ifdef HAS_NCURSES
-        if (msg.is_emote) attron(A_ITALIC);
-        if (msg.is_notice) attron(A_DIM);
+            if (msg.is_emote) attron(A_ITALIC);
+            if (msg.is_notice) attron(A_DIM);
+            if (msg.is_highlight) attron(A_BOLD);
 
-        attron(COLOR_PAIR(1)); // sender color
-        mvaddstr(ry, x, prefix.c_str());
-        attroff(COLOR_PAIR(1));
+            attron(COLOR_PAIR(1));
+            mvaddstr(ry, x, prefix.c_str());
+            attroff(COLOR_PAIR(1));
 
-        mvaddstr(ry, x + prefix.size(), line.c_str());
+            // Basic rich text: **bold**, *italic*, `code`, URLs
+            renderRichLine(ry, x + prefix.size(), line, avail);
 
-        if (msg.is_notice) attroff(A_DIM);
-        if (msg.is_emote) attroff(A_ITALIC);
+            if (!suffix.empty()) {
+                attron(A_DIM);
+                mvaddstr(ry, x + prefix.size() + line.size(), suffix.c_str());
+                attroff(A_DIM);
+            }
+
+            if (msg.is_highlight) attroff(A_BOLD);
+            if (msg.is_notice) attroff(A_DIM);
+            if (msg.is_emote) attroff(A_ITALIC);
 #else
-        screen.drawText(x, ry, prefix + line);
+            mvaddstr(ry, x, (prefix + line + suffix).c_str());
 #endif
+        }
+        (void)screen;
     }
 }
 
@@ -319,12 +400,23 @@ void ChatView::handleKey(Screen& screen, int key) {
     if (_focus == FOCUS_INPUT) {
         switch (key) {
         case '\n': case '\r': case KEY_ENTER:
-            if (!_input.empty() && _sendCb) {
-                std::string text = _input;
-                _input.clear();
-                _cursorPos = 0;
-                _sendCb(text);
-                _needsRedraw = true;
+            if (!_input.empty()) {
+                if (_input[0] == '/' && _cmdHandler) {
+                    // Slash command
+                    auto space = _input.find(' ');
+                    std::string cmd = _input.substr(1, space - 1);
+                    std::string args = (space != std::string::npos) ? _input.substr(space + 1) : "";
+                    _cmdHandler(cmd, args);
+                    _input.clear();
+                    _cursorPos = 0;
+                    _needsRedraw = true;
+                } else if (_sendCb) {
+                    std::string text = _input;
+                    _input.clear();
+                    _cursorPos = 0;
+                    _needsRedraw = true;
+                    _sendCb(text);
+                }
             }
             break;
         case KEY_BACKSPACE: case 127: case '\b':

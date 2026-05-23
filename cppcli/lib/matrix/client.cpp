@@ -29,7 +29,9 @@ struct Client::Impl {
     std::unique_ptr<e2ee::CryptoManager> crypto;
     std::map<std::string, bool> encrypted_rooms;
     PushRules pushRules;
-    std::map<std::string, std::string> directChats; // room_id -> user_id
+    std::map<std::string, std::string> directChats;
+    std::map<std::string, std::vector<std::string>> spaceChildren; // space_id -> [room_ids]
+    std::map<std::string, std::string> spaceParents; // room_id -> space_id
     bool pushRulesLoaded = false;
 };
 
@@ -126,6 +128,33 @@ bool Client::isDirectChat(const std::string& room_id) const {
 std::string Client::dmUserId(const std::string& room_id) const {
     auto it = impl->directChats.find(room_id);
     return it != impl->directChats.end() ? it->second : "";
+}
+
+std::vector<std::string> Client::getSpaceChildren(const std::string& space_id) const {
+    auto it = impl->spaceChildren.find(space_id);
+    return it != impl->spaceChildren.end() ? it->second : std::vector<std::string>{};
+}
+
+bool Client::isSpaceRoom(const std::string& room_id) const {
+    return impl->spaceChildren.count(room_id) > 0;
+}
+
+std::string Client::getSSOLoginURL(const std::string& redirect_uri) {
+    auto flows = getLoginFlows();
+    bool has_sso = false;
+    for (auto& flow : flows.flows) {
+        if (flow.type == "m.login.sso" || flow.type == "m.login.cas") {
+            has_sso = true;
+            break;
+        }
+    }
+    if (!has_sso) return "";
+
+    std::string hs = impl->homeserver_url;
+    if (hs.back() == '/') hs.pop_back();
+    std::string url = hs + "/_matrix/client/r0/login/sso/redirect";
+    if (!redirect_uri.empty()) url += "?redirectUrl=" + http::urlEncode(redirect_uri);
+    return url;
 }
 
 bool Client::loadCrossSigningKeys() {
@@ -932,11 +961,17 @@ void Client::startSync(EventCallback onEvent, const std::string& filter,
                 for (auto& [room_id, room] : sr.rooms.join) {
                     if (impl->db) impl->db->upsertRoom(room_id, room);
 
-                    // Track encrypted rooms from state events
+                    // Track encrypted rooms and space hierarchy from state events
                     for (auto& ev : room.state.events) {
                         if (ev.type == "m.room.encryption") {
                             impl->encrypted_rooms[room_id] = true;
-                            util::Logger::instance().info("Room " + room_id + " is encrypted (m.megolm.v1.aes-sha2)");
+                        }
+                        if (ev.type == "m.space.child" && ev.content.contains("via")) {
+                            impl->spaceChildren[room_id].push_back(ev.state_key);
+                            impl->spaceParents[ev.state_key] = room_id;
+                        }
+                        if (ev.type == "m.room.create" && ev.content.value("type", "") == "m.space") {
+                            impl->spaceChildren.emplace(room_id, std::vector<std::string>{});
                         }
                         if (impl->db) impl->db->insertEvent(ev);
                         onEvent(ev);
