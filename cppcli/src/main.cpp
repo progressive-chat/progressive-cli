@@ -290,7 +290,6 @@ int cmdView(const matrixcli::cli::Args& args) {
     bool verbose = args.options.count("verbose") || args.options.count("ids");
     bool show_ts = args.options.count("ts") || args.options.count("time");
     bool debug = args.options.count("debug") || args.options.count("raw");
-    bool jump_date = args.options.count("date");
 
     db::Database dbi;
     if (!dbi.open("matrixcli.db")) { std::cerr << "Cannot open database" << std::endl; return 1; }
@@ -947,9 +946,9 @@ int cmdTUI(const matrixcli::cli::Args&) {
                         std::vector<std::string> cmds = {"join","leave","kick","ban","invite","op","deop",
                             "whois","ignore","pin","unpin","pins","stats","fav","mirror","markdown","upgrade",
                             "export","statusmsg","remind","notify","directory","nick","topic","react","vote",
-                            "search","voice","sticker","location","todo","create","upload","redact","read","online","away",
-                            "jumptodate","shrug","tableflip","poll","avatar","devtools","bridge","roomname","me","notice"};
-                        std::string best; int bestDist = 999;
+                            "search","voice","sticker","location","todo","create","upload","redact","read","online","away"};
+                        std::string best;
+                        int bestDist = 999;
                         for (auto& c : cmds) {
                             int dist = 0;
                             for (size_t i = 0; i < std::min(args.size(), c.size()); i++)
@@ -957,15 +956,6 @@ int cmdTUI(const matrixcli::cli::Args&) {
                             dist += std::abs((int)args.size() - (int)c.size());
                             if (dist < bestDist) { bestDist = dist; best = c; }
                         }
-                        chat.setConnectionStatus("Did you mean: /" + best + " ?");
-                    }
-                } else if (cmd == "jumptodate") {
-                    // Jump to messages near a date: /jumptodate YYYY-MM-DD
-                    if (!args.empty()) {
-                        chat.setConnectionStatus("Jump to date: " + args + " — scroll to find messages from that day");
-                        // In TUI: would scroll the message list. In CLI: use --before with estimated timestamp.
-                    }
-                }
                         chat.setConnectionStatus("Did you mean: /" + best + " ?");
                     }
                 }
