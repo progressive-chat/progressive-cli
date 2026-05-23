@@ -92,10 +92,11 @@ jobs:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | head -1 | awk -F'/' '{print $2}' | awk '{print $1}')
           PKG=$(ls *.pkg.tar.xz | head -1)
           gpg --batch --passphrase "$GPG_PASSPHRASE" --detach-sign --armor "$PKG"
-          echo "Signed: ${PKG}.sig"
-          ls -lh *.sig
+          gpg --batch --export --armor "$KEY_ID" > matrixcli-public-key.asc
+          echo "Signed: ${PKG}.sig | Public key: matrixcli-public-key.asc"
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v5
@@ -104,6 +105,7 @@ jobs:
           path: |
             *.pkg.tar.xz
             *.pkg.tar.xz.sig
+            matrixcli-public-key.asc
           retention-days: 30
 
       - name: Upload to GitHub Release (tags only)
@@ -113,6 +115,7 @@ jobs:
           files: |
             *.pkg.tar.xz
             *.pkg.tar.xz.sig
+            matrixcli-public-key.asc
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
