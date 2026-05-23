@@ -475,6 +475,41 @@ int cmdTUI(const matrixcli::cli::Args&) {
                 } else if (cmd == "roomname") {
                     std::string roomId = chat.activeRoomId();
                     if (!roomId.empty() && !args.empty()) client.setRoomName(roomId, args);
+                } else if (cmd == "avatar") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty()) {
+                        // If args is a file path, upload first
+                        std::string url = args;
+                        if (args.find("mxc://") != 0 && args.find("http") != 0) {
+                            try { url = client.uploadMedia(args); } catch (...) { return; }
+                        }
+                        client.setRoomAvatar(roomId, url);
+                    }
+                } else if (cmd == "useravatar") {
+                    if (!args.empty()) {
+                        std::string url = args;
+                        if (args.find("mxc://") != 0 && args.find("http") != 0) {
+                            try { url = client.uploadMedia(args); } catch (...) { return; }
+                        }
+                        client.setAvatarUrl(url);
+                    }
+                } else if (cmd == "displayname" || cmd == "nick") {
+                    if (!args.empty()) client.setDisplayName(args);
+                } else if (cmd == "redact" || cmd == "delete") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty()) client.redactEvent(roomId, args);
+                } else if (cmd == "read" || cmd == "markread") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty()) {
+                        try { client.sendReadReceipt(roomId, ""); } catch (...) {}
+                    }
+                } else if (cmd == "online") {
+                    client.setPresence("online");
+                } else if (cmd == "away") {
+                    client.setPresence("unavailable");
+                } else if (cmd == "offline") {
+                    client.setPresence("offline");
+                } else if (cmd == "devices") {
                 } else if (cmd == "invite") {
                     std::string roomId = chat.activeRoomId();
                     auto sp = args.find(' ');
@@ -863,8 +898,7 @@ int main(int argc, char* argv[]) {
         }
         using namespace matrixcli;
         matrix::Client client;
-        db::Database dbi;
-        if (!dbi.open("matrixcli.db")) return 1;
+        db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
         auto acc = dbi.loadAccount();
         if (!acc.is_logged_in()) { std::cerr << "Not logged in" << std::endl; return 1; }
         client.setHomeserverURL(acc.homeserver_url);
@@ -874,13 +908,30 @@ int main(int argc, char* argv[]) {
         for (size_t i = 1; i < args.positional.size(); i++) {
             if (i > 1) body += " "; body += args.positional[i];
         }
-        try {
-            client.setRoomName(args.positional[0], body);
-            std::cout << "Room name set" << std::endl;
-        } catch (const std::exception& e) {
-            std::cerr << "Failed: " << e.what() << std::endl;
+        try { client.setRoomName(args.positional[0], body); std::cout << "OK" << std::endl; }
+        catch (const std::exception& e) { std::cerr << e.what() << std::endl; return 1; }
+        return 0;
+    }
+
+    if (args.command == "avatar") {
+        if (args.positional.size() < 2) {
+            std::cerr << "Usage: matrixcli avatar <room> <file|mxc_url>" << std::endl;
             return 1;
         }
+        using namespace matrixcli;
+        matrix::Client client;
+        db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+        auto acc = dbi.loadAccount();
+        if (!acc.is_logged_in()) { std::cerr << "Not logged in" << std::endl; return 1; }
+        client.setHomeserverURL(acc.homeserver_url);
+        client.setAccessToken(acc.access_token);
+
+        std::string url = args.positional[1];
+        if (url.find("mxc://") != 0 && url.find("http") != 0) {
+            try { url = client.uploadMedia(url); } catch (...) { std::cerr << "Upload failed" << std::endl; return 1; }
+        }
+        try { client.setRoomAvatar(args.positional[0], url); std::cout << "Avatar set" << std::endl; }
+        catch (const std::exception& e) { std::cerr << e.what() << std::endl; return 1; }
         return 0;
     }
 

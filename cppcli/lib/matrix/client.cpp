@@ -696,6 +696,12 @@ std::string Client::setRoomTopic(const std::string& room_id, const std::string& 
     return sendStateEvent(room_id, "m.room.topic", "", content);
 }
 
+bool Client::setRoomAvatar(const std::string& room_id, const std::string& mxc_url) {
+    json content = {{"url", mxc_url}};
+    sendStateEvent(room_id, "m.room.avatar", "", content);
+    return true;
+}
+
 std::vector<Event> Client::getRoomState(const std::string& room_id) {
     auto resp = authGet("/_matrix/client/r0/rooms/" + room_id + "/state");
     checkResponse(resp);
@@ -859,6 +865,23 @@ bool Client::setPresence(const std::string& presence) {
     auto resp = authPut("/_matrix/client/r0/presence/" +
                         http::urlEncode(impl->creds.user_id) + "/status",
                         body.dump());
+    return resp.ok();
+}
+
+bool Client::sendReadReceipt(const std::string& room_id, const std::string& event_id) {
+    json body;
+    if (!event_id.empty()) body = {{"event_id", event_id}};
+    // If event_id is empty, mark fully read up to latest
+    std::string event = event_id.empty() ?
+        std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count()) : event_id;
+    auto resp = authPost("/_matrix/client/r0/rooms/" + room_id + "/read_markers",
+                          json{{"m.fully_read", event}, {"m.read", event}}.dump());
+    // Fallback for older servers
+    if (!resp.ok()) {
+        resp = authPost("/_matrix/client/r0/rooms/" + room_id + "/receipt/m.read/" + event,
+                         json::object().dump());
+    }
     return resp.ok();
 }
 

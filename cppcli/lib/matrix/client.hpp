@@ -128,6 +128,7 @@ public:
     // Room state
     std::string setRoomName(const std::string& room_id, const std::string& name);
     std::string setRoomTopic(const std::string& room_id, const std::string& topic);
+    bool setRoomAvatar(const std::string& room_id, const std::string& mxc_url);
     std::vector<Event> getRoomState(const std::string& room_id);
     std::vector<Event> getRoomMembers(const std::string& room_id);
     std::vector<Event> getRoomMessages(const std::string& room_id,
@@ -197,6 +198,9 @@ public:
 
     // Presence
     bool setPresence(const std::string& presence);
+
+    // Read receipts
+    bool sendReadReceipt(const std::string& room_id, const std::string& event_id);
     json getPresence(const std::string& user_id);
 
     // Notifications
