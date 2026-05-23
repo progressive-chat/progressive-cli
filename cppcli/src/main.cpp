@@ -362,8 +362,8 @@ int cmdView(const matrixcli::cli::Args& args) {
         }
 
         if (!member_line.empty()) {
-            std::cout << "  -- " << member_line << " --" << ts_str << std::endl;
-            if (debug) std::cout << "       id:" << ev.event_id << " state_key:" << ev.state_key << std::endl;
+            std::cout << "  " ANSI_DIM "-- " << member_line << " --" ANSI_RESET << ts_str << std::endl;
+            if (debug) std::cout << ANSI_GRAY "       id:" << ev.event_id << " state_key:" << ev.state_key << ANSI_RESET << std::endl;
             continue;
         }
 
@@ -376,7 +376,7 @@ int cmdView(const matrixcli::cli::Args& args) {
         int64_t msg_day = mktime(&msg_tm);
         if (msg_day != last_day && msg_day > 0) {
             last_day = msg_day;
-            std::cout << std::endl << "  " << daySeparator(ev.origin_server_ts) << std::endl << std::endl;
+            std::cout << std::endl << "  " ANSI_BOLD ANSI_CYAN << daySeparator(ev.origin_server_ts) << ANSI_RESET << std::endl << std::endl;
         }
         std::string prefix;
         if (ev.content.contains("m.relates_to") &&
@@ -410,15 +410,16 @@ int cmdView(const matrixcli::cli::Args& args) {
         std::string reply_str;
         if (reply_count > 0) reply_str = " [" + std::to_string(reply_count) + " replies]";
 
-        if (!reply_ctx.empty()) std::cout << "       " << reply_ctx << std::endl;
-        std::cout << "  " << prefix << "[" << sender << "]" << ts_str << " " << body << reply_str;
+        if (!reply_ctx.empty()) std::cout << ANSI_GRAY "       " << reply_ctx << ANSI_RESET << std::endl;
+        std::cout << "  " << prefix << ansiUser(ev.sender, "[" + sender + "]") << ts_str << " " << body << reply_str;
         if (verbose) {
-            std::cout << "\n       id:" << ev.event_id;
+            std::cout << "\n" ANSI_GRAY "       id:" << ev.event_id;
             if (!ev.redacts.empty()) std::cout << " redacts:" << ev.redacts;
             if (!ev.state_key.empty()) std::cout << " state_key:" << ev.state_key;
+            std::cout << ANSI_RESET;
         }
         if (debug) {
-            std::cout << "\n       raw:" << ev.content.dump();
+            std::cout << "\n" ANSI_DIM "       raw:" << ev.content.dump() << ANSI_RESET;
         }
         std::cout << std::endl;
     }

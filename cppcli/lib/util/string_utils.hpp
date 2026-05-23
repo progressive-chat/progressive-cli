@@ -60,6 +60,26 @@ inline std::string urlEncode(const std::string& value) {
 
 }} // namespace matrixcli::util
 
+// ── ANSI colors ──
+#define ANSI_RESET   "\033[0m"
+#define ANSI_BOLD    "\033[1m"
+#define ANSI_DIM     "\033[2m"
+#define ANSI_RED     "\033[31m"
+#define ANSI_GREEN   "\033[32m"
+#define ANSI_YELLOW  "\033[33m"
+#define ANSI_BLUE    "\033[34m"
+#define ANSI_CYAN    "\033[36m"
+#define ANSI_GRAY    "\033[90m"
+
+inline std::string ansiUser(const std::string& user_id, const std::string& text) {
+    int colors[] = {32,34,35,36,33,31,32}; // green blue magenta cyan yellow red green
+    size_t h = std::hash<std::string>{}(user_id);
+    int color = colors[h % 7];
+    return "\033[1;" + std::to_string(color) + "m" + text + ANSI_RESET;
+}
+
+// Relative time formatting
+
 // Relative time formatting
 inline std::string relativeTime(int64_t ts_ms) {
     int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
