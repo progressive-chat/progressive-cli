@@ -4,9 +4,10 @@ add_library(matrixcli_tui STATIC
     main_view.cpp
     chat_view.cpp
     help_screen.cpp
+    config.cpp
 )
 target_include_directories(matrixcli_tui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(matrixcli_tui PUBLIC matrixcli_util matrixcli_matrix matrixcli_db)
+target_link_libraries(matrixcli_tui PUBLIC matrixcli_util matrixcli_matrix matrixcli_db nlohmann_json::nlohmann_json)
 
 if(TARGET Curses::Curses)
     target_link_libraries(matrixcli_tui PUBLIC Curses::Curses)

@@ -17,6 +17,7 @@
 #include "../lib/tui/login.hpp"
 #include "../lib/tui/main_view.hpp"
 #include "../lib/tui/chat_view.hpp"
+#include "../lib/tui/config.hpp"
 #endif
 
 namespace {
@@ -390,6 +391,46 @@ int cmdSendMsg(const matrixcli::cli::Args& args) {
     return 0;
 }
 
+int cmdConfig(const matrixcli::cli::Args& args) {
+    using namespace matrixcli;
+    const std::string path = "matrixcli.toml";
+
+    if (args.options.count("set") && args.positional.size() >= 1) {
+        tui::TUIConfig cfg = tui::TUIConfig::load(path);
+        std::string key = args.options.at("set");
+        std::string val = args.positional[0];
+        if (key == "show_timestamps") cfg.show_timestamps = (val == "1" || val == "true" || val == "on");
+        else if (key == "compact") cfg.compact_mode = (val == "1" || val == "true" || val == "on");
+        else if (key == "sound") cfg.notification_sound = (val == "1" || val == "true" || val == "on");
+        else if (key == "room_width") cfg.room_list_width = std::stoi(val);
+        else if (key == "max_messages") cfg.max_messages = std::stoi(val);
+        else if (key == "date_format") cfg.date_format = val;
+        else { std::cerr << "Unknown key: " << key << std::endl; return 1; }
+        cfg.save(path);
+        std::cout << "Saved " << key << " = " << val << std::endl;
+    } else if (args.options.count("get")) {
+        tui::TUIConfig cfg = tui::TUIConfig::load(path);
+        std::string key = args.options.at("get");
+        if (key == "show_timestamps") std::cout << cfg.show_timestamps << std::endl;
+        else if (key == "compact") std::cout << cfg.compact_mode << std::endl;
+        else if (key == "sound") std::cout << cfg.notification_sound << std::endl;
+        else if (key == "room_width") std::cout << cfg.room_list_width << std::endl;
+        else if (key == "max_messages") std::cout << cfg.max_messages << std::endl;
+        else if (key == "date_format") std::cout << cfg.date_format << std::endl;
+        else { std::cerr << "Unknown: " << key << std::endl; return 1; }
+    } else {
+        tui::TUIConfig cfg = tui::TUIConfig::load(path);
+        std::cout << "show_timestamps = " << cfg.show_timestamps << std::endl;
+        std::cout << "compact         = " << cfg.compact_mode << std::endl;
+        std::cout << "sound           = " << cfg.notification_sound << std::endl;
+        std::cout << "room_width      = " << cfg.room_list_width << std::endl;
+        std::cout << "max_messages    = " << cfg.max_messages << std::endl;
+        std::cout << "date_format     = " << cfg.date_format << std::endl;
+        std::cout << "\nSet:  matrixcli config --set key value" << std::endl;
+    }
+    return 0;
+}
+
 int cmdDemoPopulate(const matrixcli::cli::Args&) {
     using namespace matrixcli;
     db::Database dbi;
@@ -491,6 +532,9 @@ int cmdTUI(const matrixcli::cli::Args&) {
             tui::ChatView chat;
             chat.setStatus("Connected as " + creds.user_id);
             chat.setConnectionStatus("online");
+
+            // Load TUI config
+            tui::TUIConfig tuiCfg = tui::TUIConfig::load("matrixcli.toml");
 
             // Command handler for slash commands
             chat.setCommandHandler([&](const std::string& cmd, const std::string& args) {
@@ -971,6 +1015,10 @@ int main(int argc, char* argv[]) {
         try { client.setRoomAvatar(args.positional[0], url); std::cout << "Avatar set" << std::endl; }
         catch (const std::exception& e) { std::cerr << e.what() << std::endl; return 1; }
         return 0;
+    }
+
+    if (args.command == "config") {
+        return cmdConfig(args);
     }
 
     if (args.command == "demo") {
