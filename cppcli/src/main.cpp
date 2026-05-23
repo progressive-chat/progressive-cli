@@ -494,8 +494,33 @@ int cmdTUI(const matrixcli::cli::Args&) {
                         client.banUser(roomId, user, reason);
                     }
                 } else if (cmd == "react") {
-                    // Reaction to last message
-                    chat.requestRedraw();
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty()) {
+                        auto sp = args.find(' ');
+                        std::string eventId = (sp != std::string::npos) ? args.substr(0, sp) : "";
+                        std::string key = (sp != std::string::npos) ? args.substr(sp + 1) : args;
+                        if (!eventId.empty()) {
+                            try { client.sendReaction(roomId, eventId, key); } catch (...) {}
+                        }
+                    }
+                } else if (cmd == "vote") {
+                    // Vote in a poll: /vote event_id answer1,answer2,...
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty()) {
+                        auto sp = args.find(' ');
+                        std::string pollId = (sp != std::string::npos) ? args.substr(0, sp) : args;
+                        std::string answers = (sp != std::string::npos) ? args.substr(sp + 1) : "";
+                        std::vector<std::string> ansVec;
+                        if (!answers.empty()) {
+                            size_t pos = 0;
+                            while ((pos = answers.find(',')) != std::string::npos) {
+                                ansVec.push_back(answers.substr(0, pos));
+                                answers.erase(0, pos + 1);
+                            }
+                            ansVec.push_back(answers);
+                        }
+                        try { client.sendPollResponse(roomId, pollId, ansVec); } catch (...) {}
+                    }
                 } else if (cmd == "shrug") {
                     std::string roomId = chat.activeRoomId();
                     if (!roomId.empty()) client.sendTextMessage(roomId, "¯\\_(ツ)_/¯");
@@ -741,6 +766,60 @@ int main(int argc, char* argv[]) {
 
     if (args.command == "send") {
         return cmdSendMsg(args);
+    }
+
+    if (args.command == "vote") {
+        // matrixcli vote room_id poll_event_id answer1,answer2
+        if (args.positional.size() < 3) {
+            std::cerr << "Usage: matrixcli vote <room> <poll_event_id> <answer1>[,answer2...]" << std::endl;
+            return 1;
+        }
+        using namespace matrixcli;
+        matrix::Client client;
+        db::Database dbi;
+        if (!dbi.open("matrixcli.db")) return 1;
+        auto acc = dbi.loadAccount();
+        if (!acc.is_logged_in()) { std::cerr << "Not logged in" << std::endl; return 1; }
+        client.setHomeserverURL(acc.homeserver_url);
+        client.setAccessToken(acc.access_token);
+
+        std::string room = args.positional[0];
+        std::string pollId = args.positional[1];
+        std::vector<std::string> answers;
+        for (size_t i = 2; i < args.positional.size(); i++) answers.push_back(args.positional[i]);
+
+        try {
+            auto eid = client.sendPollResponse(room, pollId, answers);
+            std::cout << "Voted [" << eid << "]" << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "Vote failed: " << e.what() << std::endl;
+            return 1;
+        }
+        return 0;
+    }
+
+    if (args.command == "react") {
+        if (args.positional.size() < 3) {
+            std::cerr << "Usage: matrixcli react <room> <event_id> <emoji>" << std::endl;
+            return 1;
+        }
+        using namespace matrixcli;
+        matrix::Client client;
+        db::Database dbi;
+        if (!dbi.open("matrixcli.db")) return 1;
+        auto acc = dbi.loadAccount();
+        if (!acc.is_logged_in()) { std::cerr << "Not logged in" << std::endl; return 1; }
+        client.setHomeserverURL(acc.homeserver_url);
+        client.setAccessToken(acc.access_token);
+
+        try {
+            auto eid = client.sendReaction(args.positional[0], args.positional[1], args.positional[2]);
+            std::cout << "Reacted [" << eid << "]" << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "Reaction failed: " << e.what() << std::endl;
+            return 1;
+        }
+        return 0;
     }
 
     if (args.command == "demo") {

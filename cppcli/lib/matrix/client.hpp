@@ -166,6 +166,14 @@ public:
     // Typing notification
     bool sendTyping(const std::string& room_id, bool typing, int timeout_ms = 30000);
 
+    // Polls
+    std::string sendPollResponse(const std::string& room_id, const std::string& poll_event_id,
+                                  const std::vector<std::string>& answer_ids);
+
+    // Reactions
+    std::string sendReaction(const std::string& room_id, const std::string& event_id,
+                              const std::string& key);
+
     // URL preview
     json getURLPreview(const std::string& url);
 

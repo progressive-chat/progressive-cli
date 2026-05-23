@@ -167,6 +167,40 @@ bool Client::sendTyping(const std::string& room_id, bool typing, int timeout_ms)
     return resp.ok();
 }
 
+std::string Client::sendPollResponse(const std::string& room_id,
+                                      const std::string& poll_event_id,
+                                      const std::vector<std::string>& answer_ids) {
+    json rel = {{"event_id", poll_event_id}, {"rel_type", "m.reference"}};
+    json content = {
+        {"m.relates_to", rel},
+        {"m.poll.response", {
+            {"answers", answer_ids}
+        }}
+    };
+
+    std::string txn = generateTxnId();
+    auto resp = authPut("/_matrix/client/r0/rooms/" + room_id +
+                         "/send/m.poll.response/" + txn, content.dump());
+    checkResponse(resp);
+    return json::parse(resp.body)["event_id"].get<std::string>();
+}
+
+std::string Client::sendReaction(const std::string& room_id, const std::string& event_id,
+                                  const std::string& key) {
+    json content = {
+        {"m.relates_to", {
+            {"event_id", event_id},
+            {"rel_type", "m.annotation"},
+            {"key", key}
+        }}
+    };
+    std::string txn = generateTxnId();
+    auto resp = authPut("/_matrix/client/r0/rooms/" + room_id +
+                         "/send/m.reaction/" + txn, content.dump());
+    checkResponse(resp);
+    return json::parse(resp.body)["event_id"].get<std::string>();
+}
+
 json Client::getURLPreview(const std::string& url) {
     auto resp = authGet("/_matrix/media/r0/preview_url?url=" + http::urlEncode(url));
     if (resp.ok()) return json::parse(resp.body);

@@ -60,6 +60,8 @@ void printUsage() {
               << "  rooms         List joined rooms\n"
               << "  view          View room messages (offline from cache)\n"
               << "  send          Send a message to a room\n"
+              << "  react         Add a reaction to a message\n"
+              << "  vote          Vote in a poll\n"
               << "  serve         Start the built-in HTTP API server\n"
               << "  demo          Start API server in demo mode (no Matrix account)\n"
               << "  tui           Launch the interactive terminal UI\n"
