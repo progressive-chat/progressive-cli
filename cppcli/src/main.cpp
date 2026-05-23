@@ -850,6 +850,8 @@ int cmdTUI(const matrixcli::cli::Args&) {
                     }
                 } else if (cmd == "ignore") {
                     if (!args.empty()) try { client.ignoreUser(args); } catch (...) {}
+                } else if (cmd == "unignore") {
+                    if (!args.empty()) try { client.unignoreUser(args); } catch (...) {}
                 } else if (cmd == "pin") {
                     std::string roomId = chat.activeRoomId();
                     if (!roomId.empty() && !args.empty())

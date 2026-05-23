@@ -131,6 +131,7 @@ public:
                  const std::string& reason = "");
     bool unbanUser(const std::string& room_id, const std::string& user_id);
     bool ignoreUser(const std::string& user_id);
+    bool unignoreUser(const std::string& user_id);
 
     // Power levels
     json getPowerLevels(const std::string& room_id);

@@ -1278,6 +1278,21 @@ bool Client::ignoreUser(const std::string& user_id) {
     return putResp.ok();
 }
 
+bool Client::unignoreUser(const std::string& user_id) {
+    json data;
+    auto resp = authGet("/_matrix/client/r0/user/" +
+        http::urlEncode(impl->creds.user_id) + "/account_data/m.ignored_user_list");
+    if (resp.ok()) {
+        try { data = json::parse(resp.body); } catch (...) { return false; }
+    }
+    if (!data.contains("ignored_users")) return true;
+    data["ignored_users"].erase(user_id);
+    auto putResp = authPut("/_matrix/client/r0/user/" +
+        http::urlEncode(impl->creds.user_id) + "/account_data/m.ignored_user_list",
+        data.dump());
+    return putResp.ok();
+}
+
 json Client::getPowerLevels(const std::string& room_id) {
     auto events = getRoomState(room_id);
     for (auto& ev : events) {
