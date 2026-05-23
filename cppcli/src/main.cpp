@@ -231,8 +231,15 @@ int cmdView(const matrixcli::cli::Args& args) {
     }
     std::string query = args.positional[0];
     int limit = 20;
-    if (args.positional.size() >= 2 && !args.positional[1].starts_with("--"))
-        limit = std::stoi(args.positional[1]);
+    if (args.positional.size() >= 2 && !args.positional[1].starts_with("--")) {
+        std::string lv = args.positional[1];
+        limit = (lv == "all" || lv == "0") ? -1 : std::stoi(lv);
+    }
+    auto lm = args.options.find("limit");
+    if (lm != args.options.end()) {
+        std::string lv = lm->second;
+        limit = (lv == "all" || lv == "0") ? -1 : std::stoi(lv);
+    }
 
     std::string thread_root;
     auto tr_it = args.options.find("thread");
@@ -266,7 +273,7 @@ int cmdView(const matrixcli::cli::Args& args) {
     }
     if (room_id.empty()) { room_id = query; std::cout << "=== " << room_id << " ===" << std::endl; }
 
-    auto events = dbi.getEvents(room_id, limit, before);
+    auto events = dbi.getEvents(room_id, limit > 0 ? limit : 999999, before);
     if (events.empty() && !before.empty()) {
         std::cout << "(no older messages)" << std::endl;
         return 0;
@@ -394,18 +401,21 @@ int cmdSendMsg(const matrixcli::cli::Args& args) {
 int cmdSearch(const matrixcli::cli::Args& args) {
     using namespace matrixcli;
     if (args.positional.empty()) {
-        std::cerr << "Usage: matrixcli search <query> [--limit N]" << std::endl;
+        std::cerr << "Usage: matrixcli search <query> [--limit N|all]" << std::endl;
         return 1;
     }
     std::string query = args.positional[0];
-    int limit = 20;
+    int limit = -1; // -1 = unlimited
     auto lm = args.options.find("limit");
-    if (lm != args.options.end()) limit = std::stoi(lm->second);
+    if (lm != args.options.end()) {
+        std::string lv = lm->second;
+        limit = (lv == "all" || lv == "0") ? -1 : std::stoi(lv);
+    }
 
     db::Database dbi;
     if (!dbi.open("matrixcli.db")) return 1;
 
-    auto results = dbi.search(query, limit);
+    auto results = dbi.search(query, limit > 0 ? limit : 999999);
     if (results.empty()) {
         std::cout << "No results for: " << query << std::endl;
         std::cout << "(Indexed during sync. Start: matrixcli serve, then sync populates FTS)" << std::endl;
