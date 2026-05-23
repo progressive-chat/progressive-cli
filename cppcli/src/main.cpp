@@ -225,20 +225,21 @@ int cmdRooms(const matrixcli::cli::Args&) {
 int cmdView(const matrixcli::cli::Args& args) {
     using namespace matrixcli;
     if (args.positional.empty()) {
-        std::cerr << "Usage: matrixcli view <room_id|room_name> [limit]" << std::endl;
+        std::cerr << "Usage: matrixcli view <room> [limit] [--thread event_id]" << std::endl;
         return 1;
     }
     std::string query = args.positional[0];
     int limit = 20;
-    if (args.positional.size() >= 2) limit = std::stoi(args.positional[1]);
+    if (args.positional.size() >= 2 && !args.positional[1].starts_with("--"))
+        limit = std::stoi(args.positional[1]);
+
+    std::string thread_root;
+    auto tr_it = args.options.find("thread");
+    if (tr_it != args.options.end()) thread_root = tr_it->second;
 
     db::Database dbi;
-    if (!dbi.open("matrixcli.db")) {
-        std::cerr << "Cannot open database" << std::endl;
-        return 1;
-    }
+    if (!dbi.open("matrixcli.db")) { std::cerr << "Cannot open database" << std::endl; return 1; }
 
-    // Try DB cache first, fall back to server fetch
     std::string room_id;
     auto rooms = dbi.listRooms();
     for (auto& r : rooms) {
@@ -246,60 +247,42 @@ int cmdView(const matrixcli::cli::Args& args) {
         std::string name = r.value("name", "");
         if (id == query || name == query || name.find(query) == 0) {
             room_id = id;
-            std::cout << "=== " << name << " (" << id << ") ===" << std::endl;
+            if (!thread_root.empty()) std::cout << "=== " << name << " / thread " << thread_root << " ===" << std::endl;
+            else std::cout << "=== " << name << " (" << id << ") ===" << std::endl;
             break;
         }
     }
-    if (room_id.empty()) room_id = query;
+    if (room_id.empty()) { room_id = query; std::cout << "=== " << room_id << " ===" << std::endl; }
 
     auto events = dbi.getEvents(room_id, limit);
-    if (!events.empty()) {
-        // Offline cache
-        std::reverse(events.begin(), events.end());
-        for (auto& ev : events) {
-            std::string body = ev.content.value("body", "(no body)");
-            if (body.size() > 120) body = body.substr(0, 120) + "...";
-            std::string sender = ev.sender;
-            auto at = sender.find(':');
-            if (at != std::string::npos && sender.starts_with("@")) sender = sender.substr(1, at - 1);
-            std::cout << "  [" << sender << "] " << body << std::endl;
-        }
-    } else {
-        // Try fetching from server via direct API call
-        auto acc = dbi.loadAccount();
-        if (!acc.is_logged_in()) {
-            std::cout << "No cached messages and not logged in." << std::endl;
-            std::cout << "  Quick start: matrixcli demo populate" << std::endl;
-            std::cout << "  Real server: matrixcli login --homeserver URL --username @u:p --password x" << std::endl;
-            return 0;
-        }
-        matrix::Client client;
-        client.setHomeserverURL(acc.homeserver_url);
-        client.setAccessToken(acc.access_token);
-        try {
-            // Do a quick sync to populate DB
-            auto sr = client.syncOnce("", "", 5000);
-            for (auto& [rid, room] : sr.rooms.join) {
-                dbi.upsertRoom(rid, room);
-                for (auto& ev : room.timeline.events) dbi.insertEvent(ev);
+    std::reverse(events.begin(), events.end());
+    for (auto& ev : events) {
+        // Filter to thread if requested
+        bool in_thread = false;
+        if (!thread_root.empty()) {
+            if (ev.content.contains("m.relates_to") &&
+                ev.content["m.relates_to"].value("rel_type", "") == "m.thread" &&
+                ev.content["m.relates_to"].value("event_id", "") == thread_root) {
+                in_thread = true;
+            } else if (ev.event_id != thread_root) {
+                continue;
             }
-            // Retry from cache
-            auto events = dbi.getEvents(room_id, limit);
-            if (!events.empty()) {
-                std::reverse(events.begin(), events.end());
-                for (auto& ev : events) {
-                    std::string body = ev.content.value("body", "(no body)");
-                    if (body.size() > 120) body = body.substr(0, 120) + "...";
-                    std::string sender = ev.sender;
-                    auto at = sender.find(':');
-                    if (at != std::string::npos && sender.starts_with("@")) sender = sender.substr(1, at - 1);
-                    std::cout << "  [" << sender << "] " << body << std::endl;
-                }
-            }
-        } catch (const std::exception& e) {
-            std::cerr << "Fetch failed: " << e.what() << std::endl;
-            return 1;
         }
+
+        std::string body = ev.content.value("body", "(no body)");
+        if (body.size() > 120) body = body.substr(0, 120) + "...";
+        std::string sender = ev.sender;
+        auto at = sender.find(':');
+        if (at != std::string::npos && sender.starts_with("@")) sender = sender.substr(1, at - 1);
+
+        // Thread indicators
+        std::string prefix;
+        if (ev.content.contains("m.relates_to") &&
+            ev.content["m.relates_to"].value("rel_type", "") == "m.thread") {
+            prefix = "↳ ";
+        }
+
+        std::cout << "  " << prefix << "[" << sender << "] " << body << std::endl;
     }
     return 0;
 }
@@ -307,14 +290,14 @@ int cmdView(const matrixcli::cli::Args& args) {
 int cmdSendMsg(const matrixcli::cli::Args& args) {
     using namespace matrixcli;
     if (args.positional.size() < 2) {
-        std::cerr << "Usage: matrixcli send <room_id|room_name> <message>" << std::endl;
+        std::cerr << "Usage: matrixcli send <room> [--thread event_id] <message>" << std::endl;
         return 1;
     }
     std::string query = args.positional[0];
+    std::string thread_root = args.options.count("thread") ? args.options.at("thread") : "";
     std::string body;
     for (size_t i = 1; i < args.positional.size(); i++) {
-        if (i > 1) body += " ";
-        body += args.positional[i];
+        if (i > 1) body += " "; body += args.positional[i];
     }
 
     Config::instance().load("config.json");
@@ -343,7 +326,12 @@ int cmdSendMsg(const matrixcli::cli::Args& args) {
     }
 
     try {
-        auto event_id = client.sendTextMessage(room_id, body);
+        std::string event_id;
+        if (!thread_root.empty()) {
+            event_id = client.sendThreadReply(room_id, thread_root, body);
+        } else {
+            event_id = client.sendTextMessage(room_id, body);
+        }
         std::cout << "Sent [" << event_id << "]" << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Send failed: " << e.what() << std::endl;

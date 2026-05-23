@@ -83,7 +83,10 @@ public:
                             const std::string& body,
                             const std::string& msgtype = "m.text");
     std::string sendTextMessage(const std::string& room_id,
-                                const std::string& body);
+                                 const std::string& body);
+    std::string sendThreadReply(const std::string& room_id,
+                                 const std::string& thread_root,
+                                 const std::string& body);
     std::string sendNotice(const std::string& room_id,
                            const std::string& body);
     std::string sendEmote(const std::string& room_id,

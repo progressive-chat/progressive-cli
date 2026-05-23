@@ -530,6 +530,26 @@ std::string Client::sendTextMessage(const std::string& room_id,
     return sendMessage(room_id, body, "m.text");
 }
 
+std::string Client::sendThreadReply(const std::string& room_id,
+                                     const std::string& thread_root,
+                                     const std::string& body) {
+    json content = {
+        {"msgtype", "m.text"},
+        {"body", body},
+        {"m.relates_to", {
+            {"event_id", thread_root},
+            {"rel_type", "m.thread"}
+        }}
+    };
+
+    std::string txn_id = generateTxnId();
+    std::string path = "/_matrix/client/r0/rooms/" + room_id + "/send/m.room.message/" + txn_id;
+    auto resp = authPut(path, content.dump());
+    checkResponse(resp);
+
+    return json::parse(resp.body)["event_id"].get<std::string>();
+}
+
 std::string Client::sendNotice(const std::string& room_id,
                                 const std::string& body) {
     return sendMessage(room_id, body, "m.notice");
