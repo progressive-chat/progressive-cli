@@ -33,19 +33,27 @@ void ChatView::addRoom(const RoomInfo& room) {
     _needsRedraw = true;
 }
 
-void ChatView::setMessages(const std::string& room_id, const std::vector<MessageInfo>& msgs) {
+void ChatView::setTypingUsers(const std::string& room_id, const std::vector<std::string>& users) {
     std::lock_guard<std::mutex> lock(_mutex);
-    _messages[room_id] = msgs;
+    _typingUsers[room_id] = users;
+    _needsRedraw = true;
+}
+
+void ChatView::setMessages(const std::string& room_id, const std::vector<MessageInfo>& msgs,
+                            const std::string& thread_root) {
+    std::lock_guard<std::mutex> lock(_mutex);
+    std::string key = thread_root.empty() ? room_id : room_id + ":" + thread_root;
+    _messages[key] = msgs;
     _msgScroll = 0;
     _needsRedraw = true;
 }
 
 void ChatView::addMessage(const std::string& room_id, const MessageInfo& msg) {
     std::lock_guard<std::mutex> lock(_mutex);
-    _messages[room_id].push_back(msg);
-    if (_messages[room_id].size() > 1000) {
-        _messages[room_id].erase(_messages[room_id].begin(),
-                                 _messages[room_id].begin() + 200);
+    std::string key = msg.thread_id.empty() ? room_id : room_id + ":" + msg.thread_id;
+    _messages[key].push_back(msg);
+    if (_messages[key].size() > 1000) {
+        _messages[key].erase(_messages[key].begin(), _messages[key].begin() + 200);
         if (_msgScroll >= 200) _msgScroll -= 200; else _msgScroll = 0;
     }
     _needsRedraw = true;
@@ -131,7 +139,21 @@ void ChatView::draw(Screen& screen) {
 
 void ChatView::drawStatus(Screen& screen, int y, int w) {
     std::string status = _status;
-    if (!_connStatus.empty()) status += " │ " + _connStatus;
+    if (!_activeThread.empty()) status += " [thread]";
+    if (!_connStatus.empty()) status += " | " + _connStatus;
+
+    // Typing indicators
+    auto ti = _typingUsers.find(_activeRoom);
+    if (ti != _typingUsers.end() && !ti->second.empty()) {
+        status += " | ";
+        for (size_t i = 0; i < ti->second.size() && i < 3; i++) {
+            if (i > 0) status += ", ";
+            status += ti->second[i];
+        }
+        if (ti->second.size() > 3) status += " +" + std::to_string(ti->second.size() - 3);
+        status += " typing...";
+    }
+
     if (status.empty()) status = "matrixcli";
     if (status.size() > (size_t)w) status = status.substr(0, w);
 
@@ -237,13 +259,28 @@ void ChatView::drawMemberList(Screen& screen, int x, int y, int w, int h) {
 #endif
 }
 
-// Simple rich text renderer: **bold**, *italic*, `code`, URLs
+// Keywords for basic syntax highlighting
+static const char* cpp_keywords[] = {
+    "if","else","for","while","do","switch","case","break","continue","return",
+    "class","struct","namespace","template","typename","using","public","private","protected",
+    "const","static","virtual","override","final","auto","decltype","sizeof","new","delete",
+    "int","float","double","char","bool","void","string","vector","map","unique_ptr","shared_ptr",
+    "include","define","ifdef","ifndef","endif","pragma", "try","catch","throw","nullptr","true","false",
+    nullptr
+};
+
+static bool isKeyword(const std::string& word) {
+    for (auto* kw : cpp_keywords) {
+        if (kw && word == kw) return true;
+    }
+    return false;
+}
+
 static void renderRichLine(int y, int x, const std::string& text, int maxw) {
 #ifdef HAS_NCURSES
     int pos = 0;
     auto peek = [&](int i) -> char { return (pos + i < (int)text.size()) ? text[pos + i] : '\0'; };
 
-    std::string url;
     while (pos < (int)text.size() && pos < maxw) {
         // Bold: **text**
         if (peek(0) == '*' && peek(1) == '*' && pos + 2 < (int)text.size()) {
@@ -257,7 +294,7 @@ static void renderRichLine(int y, int x, const std::string& text, int maxw) {
             continue;
         }
         // Italic: *text*
-        if (peek(0) == '*' && peek(1) != '*' && pos > 0 && text[pos-1] != '*') {
+        if (peek(0) == '*' && peek(1) != '*' && pos > 0 && (text[pos-1] == ' ' || text[pos-1] == '\n')) {
             pos++;
             attron(A_ITALIC);
             while (pos < (int)text.size() && text[pos] != '*') {
@@ -270,22 +307,22 @@ static void renderRichLine(int y, int x, const std::string& text, int maxw) {
         // Code: `text`
         if (peek(0) == '`') {
             pos++;
-            attron(A_REVERSE);
+            attron(COLOR_PAIR(3));
             while (pos < (int)text.size() && text[pos] != '`') {
                 mvaddch(y, x++, text[pos++]);
             }
-            attroff(A_REVERSE);
+            attroff(COLOR_PAIR(3));
             if (pos < (int)text.size()) pos++;
             continue;
         }
-        // URL: http(s)://...
+        // URL
         if ((peek(0) == 'h' && peek(1) == 't' && peek(2) == 't' && peek(3) == 'p') ||
-            peek(0) == 'm' && peek(1) == 'x' && peek(2) == 'c') {
-            attron(COLOR_PAIR(3) | A_UNDERLINE);
+            (peek(0) == 'm' && peek(1) == 'x' && peek(2) == 'c')) {
+            attron(COLOR_PAIR(2) | A_UNDERLINE);
             while (pos < (int)text.size() && text[pos] != ' ' && text[pos] != '\n') {
                 mvaddch(y, x++, text[pos++]);
             }
-            attroff(COLOR_PAIR(3) | A_UNDERLINE);
+            attroff(COLOR_PAIR(2) | A_UNDERLINE);
             continue;
         }
         mvaddch(y, x++, text[pos++]);
@@ -298,9 +335,10 @@ static void renderRichLine(int y, int x, const std::string& text, int maxw) {
 void ChatView::drawMessages(Screen& screen, int x, int y, int w, int h) {
     std::lock_guard<std::mutex> lock(_mutex);
 
-    auto it = _messages.find(_activeRoom);
+    std::string msgKey = _activeThread.empty() ? _activeRoom : _activeRoom + ":" + _activeThread;
+    auto it = _messages.find(msgKey);
     if (it == _messages.end()) {
-        screen.drawText(x, y, "(no messages)");
+        screen.drawText(x, y, _activeThread.empty() ? "(no messages)" : "(no thread replies)");
         return;
     }
 
@@ -330,6 +368,8 @@ void ChatView::drawMessages(Screen& screen, int x, int y, int w, int h) {
         if (!msg.reaction.empty()) suffix = "  " + msg.reaction;
         if (msg.is_highlight) prefix = "★ " + prefix;
         if (msg.is_edited) suffix += " (edited)";
+        if (msg.is_thread_root && msg.thread_reply_count > 0) suffix += " [" + std::to_string(msg.thread_reply_count) + " replies]";
+        if (!msg.thread_id.empty() && _activeThread.empty()) prefix = "↳ " + prefix;
         if (msg.is_redacted) {
             prefix = "[" + msg.sender + " message redacted";
             if (!msg.redacted_by.empty()) prefix += " by " + msg.redacted_by;
@@ -486,6 +526,17 @@ void ChatView::handleKey(Screen& screen, int key) {
         case 'm': case 'M':
             _leftPane = (_leftPane == PANE_ROOMS) ? PANE_MEMBERS : PANE_ROOMS;
             _needsRedraw = true;
+            break;
+        case 't': case 'T':
+            if (_activeThread.empty()) {
+                std::string key = _activeRoom;
+                auto it = _messages.find(key);
+                if (it != _messages.end()) {
+                    for (auto& m : it->second) {
+                        if (m.is_thread_root) { _activeThread = m.event_id; _msgScroll = 0; _needsRedraw = true; break; }
+                    }
+                }
+            } else { _activeThread.clear(); _msgScroll = 0; _needsRedraw = true; }
             break;
         case KEY_F(5): case '\x06': // Ctrl+F
             _showSearch = !_showSearch;

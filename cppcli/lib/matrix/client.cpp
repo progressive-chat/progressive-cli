@@ -157,6 +157,22 @@ std::string Client::getSSOLoginURL(const std::string& redirect_uri) {
     return url;
 }
 
+bool Client::sendTyping(const std::string& room_id, bool typing, int timeout_ms) {
+    json body = {
+        {"typing", typing},
+        {"timeout", timeout_ms}
+    };
+    auto resp = authPut("/_matrix/client/r0/rooms/" + room_id + "/typing/" +
+        http::urlEncode(impl->creds.user_id), body.dump());
+    return resp.ok();
+}
+
+json Client::getURLPreview(const std::string& url) {
+    auto resp = authGet("/_matrix/media/r0/preview_url?url=" + http::urlEncode(url));
+    if (resp.ok()) return json::parse(resp.body);
+    return json::object();
+}
+
 bool Client::loadCrossSigningKeys() {
     if (!impl->crypto) return false;
     try {

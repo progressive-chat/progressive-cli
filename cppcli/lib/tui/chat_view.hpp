@@ -20,6 +20,7 @@ struct MessageInfo {
     std::string sender;
     std::string body;
     std::string event_id;
+    std::string thread_id; // thread root event_id
     bool is_encrypted = false;
     bool is_notice = false;
     bool is_emote = false;
@@ -27,9 +28,11 @@ struct MessageInfo {
     bool is_highlight = false;
     bool is_edited = false;
     bool is_redacted = false;
-    std::string redacted_by = "";
-    std::string url; // mxc:// or https:// URL for images/files
+    std::string redacted_by;
+    std::string url;
     std::string mimetype;
+    bool is_thread_root = false;
+    int thread_reply_count = 0;
 };
 
 struct MemberInfo {
@@ -50,8 +53,10 @@ public:
     // Data
     void setRooms(const std::vector<RoomInfo>& rooms);
     void addRoom(const RoomInfo& room);
-    void setMessages(const std::string& room_id, const std::vector<MessageInfo>& msgs);
+    void setMessages(const std::string& room_id, const std::vector<MessageInfo>& msgs,
+                     const std::string& thread_root = "");
     void addMessage(const std::string& room_id, const MessageInfo& msg);
+    void setTypingUsers(const std::string& room_id, const std::vector<std::string>& users);
 
     // Interaction
     void setSendCallback(SendCallback cb) { _sendCb = std::move(cb); }
@@ -90,6 +95,7 @@ private:
     std::map<std::string, std::vector<MessageInfo>> _messages;
     std::map<std::string, std::vector<MemberInfo>> _members;
     std::string _activeRoom;
+    std::string _activeThread; // empty = main timeline, event_id = thread view
     int _roomScroll = 0;
     int _msgScroll = 0;
     std::string _input;
@@ -101,6 +107,7 @@ private:
     std::string _searchQuery;
     std::string _status;
     std::string _connStatus;
+    std::map<std::string, std::vector<std::string>> _typingUsers; // room_id -> users
     bool _running = true;
     bool _needsRedraw = true;
 

@@ -163,6 +163,12 @@ public:
     // SSO login
     std::string getSSOLoginURL(const std::string& redirect_uri = "");
 
+    // Typing notification
+    bool sendTyping(const std::string& room_id, bool typing, int timeout_ms = 30000);
+
+    // URL preview
+    json getURLPreview(const std::string& url);
+
     // Filters
     std::string createFilter(const std::string& filter_json);
 

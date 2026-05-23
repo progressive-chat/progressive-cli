@@ -279,13 +279,33 @@ int cmdTUI(const matrixcli::cli::Args&) {
                 } else if (cmd == "tableflip") {
                     std::string roomId = chat.activeRoomId();
                     if (!roomId.empty()) client.sendTextMessage(roomId, "(╯°□°)╯︵ ┻━┻");
-                } else if (cmd == "upload" && !args.empty()) {
+                } else if (cmd == "upload") {
                     std::string roomId = chat.activeRoomId();
-                    if (!roomId.empty()) {
-                        try {
-                            auto mxc = client.uploadMedia(args);
-                            client.sendImageMessage(roomId, mxc, args, 0, "");
-                        } catch (...) {}
+                    if (!args.empty()) {
+                        if (!roomId.empty()) {
+                            try {
+                                auto mxc = client.uploadMedia(args);
+                                client.sendFileMessage(roomId, mxc, args, 0, "");
+                            } catch (...) {}
+                        }
+                    } else {
+                        // No file specified: list current directory
+                        FILE* fp = popen("ls -1 --color=never *.png *.jpg *.gif *.webp *.mp4 *.pdf *.txt *.md 2>/dev/null", "r");
+                        if (fp) {
+                            char buf[256];
+                            std::string files;
+                            while (fgets(buf, sizeof(buf), fp)) files += "  " + std::string(buf);
+                            pclose(fp);
+                            if (!files.empty() && !roomId.empty()) {
+                                // Pick first file for simplicity
+                                auto nl = files.find('\n');
+                                std::string first = files.substr(2, nl - 2);
+                                try {
+                                    auto mxc = client.uploadMedia(first);
+                                    client.sendFileMessage(roomId, mxc, first, 0, "");
+                                } catch (...) {}
+                            }
+                        }
                     }
                 }
             });
@@ -316,6 +336,7 @@ int cmdTUI(const matrixcli::cli::Args&) {
                 if (!roomId.empty()) {
                     try {
                         client.sendTextMessage(roomId, body);
+                        client.sendTyping(roomId, false);
                     } catch (...) {}
                 }
             });
@@ -348,16 +369,19 @@ int cmdTUI(const matrixcli::cli::Args&) {
                     mi.url = ev.content.value("url", "");
                     mi.mimetype = ev.content.value("info", nlohmann::json::object()).value("mimetype", "");
 
-                    // Check for edit (m.replace relation)
-                    if (ev.content.contains("m.relates_to") &&
-                        ev.content["m.relates_to"].value("rel_type", "") == "m.replace") {
-                        mi.is_edited = true;
-                        mi.body = ev.content.value("m.new_content", nlohmann::json::object()).value("body", mi.body);
-                    }
-
-                    // Desktop notification for highlights
-                    if (pr.highlight || client.isDirectChat(ev.room_id)) {
-                        util::Notifications::send(mi.sender, mi.body);
+                    // Thread support
+                    if (ev.content.contains("m.relates_to")) {
+                        auto& rel = ev.content["m.relates_to"];
+                        std::string relType = rel.value("rel_type", "");
+                        if (relType == "m.thread") {
+                            mi.thread_id = rel.value("event_id", "");
+                            // Mark thread root
+                            bool is_root = rel.value("is_falling_back", true);
+                            if (!is_root) mi.is_thread_root = false;
+                        } else if (relType == "m.replace") {
+                            mi.is_edited = true;
+                            mi.body = ev.content.value("m.new_content", nlohmann::json::object()).value("body", mi.body);
+                        }
                     }
 
                     chat.addMessage(ev.room_id, mi);
@@ -372,6 +396,15 @@ int cmdTUI(const matrixcli::cli::Args&) {
                     mi.is_redacted = true;
                     mi.redacted_by = ev.sender;
                     chat.addMessage(ev.room_id, mi);
+                }
+
+                // Typing events
+                if (ev.type == "m.typing" && ev.content.contains("user_ids")) {
+                    std::vector<std::string> users;
+                    for (auto& uid : ev.content["user_ids"]) {
+                        users.push_back(uid.get<std::string>());
+                    }
+                    chat.setTypingUsers(ev.room_id, users);
                 }
 
                 chat.requestRedraw();
