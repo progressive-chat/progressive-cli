@@ -43,6 +43,14 @@ public:
     bool enableEncryption(const std::string& roomId);
     bool isRoomEncrypted(const std::string& roomId) const;
 
+    // Cross-signing
+    bool loadCrossSigningKeys();
+    bool uploadDeviceKeys();
+
+    // Key backup
+    bool uploadKeyBackup();
+    bool restoreKeyBackup();
+
     // Server discovery
     ServerVersions getServerVersions();
     WellKnown getWellKnown(const std::string& server_name);

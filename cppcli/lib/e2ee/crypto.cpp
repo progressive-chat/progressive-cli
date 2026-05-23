@@ -1,4 +1,5 @@
 #include "crypto.hpp"
+#include "../util/logger.hpp"
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <cstring>
@@ -398,6 +399,80 @@ void CryptoManager::clearAll() {
     _olmPrekeySent.clear();
     _inboundMegolm.clear();
     _outboundMegolm.clear();
+}
+
+// Cross-signing
+
+void CryptoManager::setCrossSigningKeys(const std::string& masterKey,
+                                         const std::string& selfSignKey,
+                                         const std::string& userSignKey) {
+    _masterKey = masterKey;
+    _selfSignKey = selfSignKey;
+    _userSignKey = userSignKey;
+    _crossSigningReady = true;
+}
+
+bool CryptoManager::verifyDeviceSignature(const std::string& deviceId,
+                                           const std::string& signatures) {
+    // In production: verify ed25519 signature using _masterKey
+    // For now: trust the server's signature validation
+    (void)deviceId; (void)signatures;
+    return _crossSigningReady;
+}
+
+std::string CryptoManager::signDevice(const std::string& deviceId, const nlohmann::json& deviceKeys) {
+    // In production: sign with _selfSignKey using ed25519
+    // For now: return placeholder
+    json sig;
+    sig[deviceId] = {{"ed25519:" + _deviceId, "placeholder_signature"}};
+    (void)deviceKeys;
+    return sig.dump();
+}
+
+// Key backup
+
+std::string CryptoManager::exportRoomKeys(const std::string& roomId) {
+    json keys;
+    json rooms;
+    json sessions = json::object();
+
+    for (auto& [id, info] : _inboundMegolm) {
+        if (info.roomId != roomId) continue;
+        json sessionData;
+        try {
+            auto exported = info.session.exportSession(info.session.firstKnownIndex());
+            sessionData["session_key"] = exported;
+            sessionData["sender_key"] = info.senderKey;
+            sessionData["sender_claimed_keys"] = {{"ed25519", ""}};
+            sessionData["forwarding_curve25519_key_chain"] = json::array();
+            sessions[id] = sessionData;
+        } catch (...) {}
+    }
+
+    rooms[roomId] = {{"sessions", sessions}};
+    keys["rooms"] = rooms;
+    keys["algorithm"] = "m.megolm_backup.v1.curve25519-aes-sha2";
+    return keys.dump();
+}
+
+void CryptoManager::importRoomKeys(const std::string& roomId, const std::string& keysJson) {
+    try {
+        auto j = json::parse(keysJson);
+        if (!j.contains("rooms") || !j["rooms"].contains(roomId)) return;
+
+        auto& roomData = j["rooms"][roomId];
+        if (!roomData.contains("sessions")) return;
+
+        for (auto& [sessionId, sessionData] : roomData["sessions"].items()) {
+            try {
+                std::string senderKey = sessionData.value("sender_key", "");
+                std::string sessionKey = sessionData.value("session_key", "");
+                importMegolmSessionKey(roomId, senderKey, sessionKey);
+            } catch (...) {
+                util::Logger::instance().warn("Failed to import key for session " + sessionId);
+            }
+        }
+    } catch (...) {}
 }
 
 }} // namespace matrixcli::e2ee

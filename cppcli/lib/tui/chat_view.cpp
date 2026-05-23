@@ -395,11 +395,16 @@ void ChatView::handleKey(Screen& screen, int key) {
             _leftPane = (_leftPane == PANE_ROOMS) ? PANE_MEMBERS : PANE_ROOMS;
             _needsRedraw = true;
             break;
-        case '?':
-            _showHelp = true;
+        case KEY_F(5): case '\x06': // Ctrl+F
+            _showSearch = !_showSearch;
+            if (_showSearch) {
+                _focus = FOCUS_SEARCH;
+                _searchQuery.clear();
+            } else {
+                _focus = FOCUS_INPUT;
+            }
             _needsRedraw = true;
             break;
-        default:
             if (key >= 32 && key <= 126) {
                 _input.insert(_input.begin() + _cursorPos, (char)key);
                 _cursorPos++;

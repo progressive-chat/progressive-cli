@@ -128,6 +128,87 @@ std::string Client::dmUserId(const std::string& room_id) const {
     return it != impl->directChats.end() ? it->second : "";
 }
 
+bool Client::loadCrossSigningKeys() {
+    if (!impl->crypto) return false;
+    try {
+        auto resp = authGet("/_matrix/client/r0/keys/query");
+        if (!resp.ok()) return false;
+        auto j = json::parse(resp.body);
+        if (j.contains("master_keys") && j["master_keys"].contains(impl->creds.user_id)) {
+            auto& mk = j["master_keys"][impl->creds.user_id];
+            auto ssk = j.value("self_signing_keys", json::object());
+            auto usk = j.value("user_signing_keys", json::object());
+            impl->crypto->setCrossSigningKeys(
+                mk.dump(),
+                ssk.value(impl->creds.user_id, json::object()).dump(),
+                usk.value(impl->creds.user_id, json::object()).dump()
+            );
+            return true;
+        }
+    } catch (...) {}
+    return false;
+}
+
+bool Client::uploadDeviceKeys() {
+    if (!impl->crypto) return false;
+    try {
+        auto dk = impl->crypto->deviceKeys();
+        json body;
+        body["device_keys"] = {
+            {"user_id", dk.userId},
+            {"device_id", dk.deviceId},
+            {"algorithms", {"m.olm.v1.curve25519-aes-sha2", "m.megolm.v1.aes-sha2"}},
+            {"keys", {
+                {"ed25519:" + dk.deviceId, dk.ed25519Key},
+                {"curve25519:" + dk.deviceId, dk.curve25519Key}
+            }},
+            {"signatures", {{dk.userId, {{"ed25519:" + dk.deviceId, impl->crypto->signMessage("")}}}}}
+        };
+
+        auto resp = authPost("/_matrix/client/r0/keys/upload", body.dump());
+        return resp.ok();
+    } catch (...) { return false; }
+}
+
+bool Client::uploadKeyBackup() {
+    if (!impl->crypto) return false;
+    try {
+        // Get or create backup version
+        auto resp = authPost("/_matrix/client/r0/room_keys/version", R"({"algorithm":"m.megolm_backup.v1.curve25519-aes-sha2"})");
+        if (!resp.ok() && resp.status_code != 409) return false;
+
+        // Upload all rooms' keys
+        json rooms;
+        for (auto& [id, _] : impl->encrypted_rooms) {
+            auto keys = impl->crypto->exportRoomKeys(id);
+            auto kj = json::parse(keys);
+            for (auto& [rid, data] : kj.value("rooms", json::object()).items()) {
+                rooms[rid] = data;
+            }
+        }
+
+        json body;
+        body["rooms"] = rooms;
+        auto putResp = authPut("/_matrix/client/r0/room_keys/keys", body.dump());
+        return putResp.ok();
+    } catch (...) { return false; }
+}
+
+bool Client::restoreKeyBackup() {
+    try {
+        auto resp = authGet("/_matrix/client/r0/room_keys/keys");
+        if (!resp.ok()) return false;
+        auto j = json::parse(resp.body);
+        if (j.contains("rooms") && impl->crypto) {
+            for (auto& [roomId, roomData] : j["rooms"].items()) {
+                impl->crypto->importRoomKeys(roomId, roomData.dump());
+            }
+            return true;
+        }
+    } catch (...) {}
+    return false;
+}
+
 std::string Client::buildUrl(const std::string& path) const {
     return impl->homeserver_url + path;
 }

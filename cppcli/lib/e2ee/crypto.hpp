@@ -8,6 +8,7 @@
 #include <memory>
 #include <cstdint>
 #include <chrono>
+#include <nlohmann/json.hpp>
 
 namespace matrixcli { namespace e2ee {
 
@@ -101,11 +102,27 @@ public:
 
     bool accountValid() const { return _accountValid; }
 
+    // Cross-signing
+    void setCrossSigningKeys(const std::string& masterKey, const std::string& selfSignKey,
+                              const std::string& userSignKey);
+    bool verifyDeviceSignature(const std::string& deviceId, const std::string& signatures);
+    std::string signDevice(const std::string& deviceId, const nlohmann::json& deviceKeys);
+
+    // Key backup
+    std::string exportRoomKeys(const std::string& roomId);
+    void importRoomKeys(const std::string& roomId, const std::string& keysJson);
+
 private:
     OlmAccount _account;
     bool _accountValid = false;
     std::string _userId;
     std::string _deviceId;
+
+    // Cross-signing keys
+    std::string _masterKey;
+    std::string _selfSignKey;
+    std::string _userSignKey;
+    bool _crossSigningReady = false;
 
     // Olm sessions indexed by device curve25519 key
     std::map<std::string, OlmSession> _olmSessions;

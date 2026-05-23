@@ -1,5 +1,6 @@
 #include "server.hpp"
 #include "format.hpp"
+#include "websocket.hpp"
 #include "../util/logger.hpp"
 #include "../util/string_utils.hpp"
 
@@ -95,6 +96,25 @@ void Server::handleClient(int client_sock) {
     }
 
     if (!raw.empty()) {
+        // Check for WebSocket upgrade
+        if (raw.find("Upgrade: websocket") != std::string::npos) {
+            try {
+                WebSocketSession ws(client_sock);
+                if (ws.handleHandshake(raw)) {
+                    EventBus::instance().subscribe(&ws);
+                    std::string msg;
+                    while (ws.isOpen() && ws.readFrame(msg)) {
+                        // Echo server: publish received messages as events
+                        EventBus::instance().broadcast("message", msg);
+                    }
+                    EventBus::instance().unsubscribe(&ws);
+                }
+            } catch (...) {}
+            shutdown(client_sock, SHUT_RDWR);
+            close(client_sock);
+            return;
+        }
+
         try {
             auto req = parseRequest(raw);
             auto handler = findHandler(req.method, req.path, req.params);
