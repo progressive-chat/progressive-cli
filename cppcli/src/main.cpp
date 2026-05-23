@@ -176,6 +176,119 @@ int cmdStatus(const matrixcli::cli::Args&) {
     return 0;
 }
 
+int cmdRooms(const matrixcli::cli::Args&) {
+    using namespace matrixcli;
+    db::Database dbi;
+    if (!dbi.open("matrixcli.db")) {
+        std::cerr << "Cannot open database" << std::endl;
+        return 1;
+    }
+    auto rooms = dbi.listRooms();
+    if (rooms.empty()) {
+        std::cout << "No rooms. Login first or start sync." << std::endl;
+        return 0;
+    }
+    for (auto& r : rooms) {
+        std::string name = r.value("name", r.value("room_id", "?"));
+        int msgs = dbi.getEventCount(r.value("room_id", ""));
+        std::cout << name << "  [" << msgs << " msgs]" << std::endl;
+    }
+    return 0;
+}
+
+int cmdView(const matrixcli::cli::Args& args) {
+    using namespace matrixcli;
+    if (args.positional.empty()) {
+        std::cerr << "Usage: matrixcli view <room_id|room_name> [limit]" << std::endl;
+        return 1;
+    }
+    std::string query = args.positional[0];
+    int limit = 20;
+    if (args.positional.size() >= 2) limit = std::stoi(args.positional[1]);
+
+    db::Database dbi;
+    if (!dbi.open("matrixcli.db")) {
+        std::cerr << "Cannot open database" << std::endl;
+        return 1;
+    }
+
+    std::string room_id;
+    auto rooms = dbi.listRooms();
+    for (auto& r : rooms) {
+        std::string id = r.value("room_id", "");
+        std::string name = r.value("name", "");
+        if (id == query || name == query || name.find(query) == 0) {
+            room_id = id;
+            std::cout << "=== " << name << " (" << id << ") ===" << std::endl;
+            break;
+        }
+    }
+    if (room_id.empty()) {
+        room_id = query;
+        std::cout << "=== " << room_id << " ===" << std::endl;
+    }
+
+    auto events = dbi.getEvents(room_id, limit);
+    std::reverse(events.begin(), events.end());
+    for (auto& ev : events) {
+        std::string body = ev.content.value("body", "(no body)");
+        if (body.size() > 120) body = body.substr(0, 120) + "...";
+        std::string sender = ev.sender;
+        auto at = sender.find(':');
+        if (at != std::string::npos && sender.starts_with("@")) sender = sender.substr(1, at - 1);
+        std::cout << "  [" << sender << "] " << body << std::endl;
+    }
+    return 0;
+}
+
+int cmdSendMsg(const matrixcli::cli::Args& args) {
+    using namespace matrixcli;
+    if (args.positional.size() < 2) {
+        std::cerr << "Usage: matrixcli send <room_id|room_name> <message>" << std::endl;
+        return 1;
+    }
+    std::string query = args.positional[0];
+    std::string body;
+    for (size_t i = 1; i < args.positional.size(); i++) {
+        if (i > 1) body += " ";
+        body += args.positional[i];
+    }
+
+    Config::instance().load("config.json");
+    matrix::Client client;
+
+    db::Database dbi;
+    if (!dbi.open("matrixcli.db")) return 1;
+    auto acc = dbi.loadAccount();
+    if (!acc.is_logged_in()) {
+        std::cerr << "Not logged in. Run 'matrixcli login' first." << std::endl;
+        return 1;
+    }
+    client.setHomeserverURL(acc.homeserver_url);
+    client.setAccessToken(acc.access_token);
+    client.setDatabase(&dbi);
+
+    std::string room_id = query;
+    auto rooms = dbi.listRooms();
+    for (auto& r : rooms) {
+        std::string id = r.value("room_id", "");
+        std::string name = r.value("name", "");
+        if (id == query || name == query || name.find(query) == 0) {
+            room_id = id;
+            break;
+        }
+    }
+
+    try {
+        auto event_id = client.sendTextMessage(room_id, body);
+        std::cout << "Sent [" << event_id << "]" << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Send failed: " << e.what() << std::endl;
+        return 1;
+    }
+    return 0;
+}
+
 #ifdef BUILD_TUI
 int cmdTUI(const matrixcli::cli::Args&) {
     using namespace matrixcli;
@@ -504,13 +617,20 @@ int main(int argc, char* argv[]) {
         return cmdLogin(args);
     }
 
+    if (args.command == "rooms") {
+        return cmdRooms(args);
+    }
+
+    if (args.command == "view") {
+        return cmdView(args);
+    }
+
     if (args.command == "status") {
         return cmdStatus(args);
     }
 
     if (args.command == "send") {
-        std::cerr << "send: not implemented via CLI yet. Use the API server or TUI." << std::endl;
-        return 1;
+        return cmdSendMsg(args);
     }
 
     if (args.command == "demo") {
