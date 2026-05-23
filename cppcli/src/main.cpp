@@ -245,6 +245,8 @@ int cmdView(const matrixcli::cli::Args& args) {
     auto fm_it = args.options.find("from");
     if (fm_it != args.options.end()) from = fm_it->second;
 
+    bool verbose = args.options.count("verbose") || args.options.count("ids");
+
     db::Database dbi;
     if (!dbi.open("matrixcli.db")) { std::cerr << "Cannot open database" << std::endl; return 1; }
 
@@ -306,7 +308,9 @@ int cmdView(const matrixcli::cli::Args& args) {
             prefix = "↳ ";
         }
 
-        std::cout << "  " << prefix << "[" << sender << "] " << body << std::endl;
+        std::cout << "  " << prefix << "[" << sender << "] " << body;
+        if (verbose) std::cout << "\n       id:" << ev.event_id;
+        std::cout << std::endl;
     }
     return 0;
 }
