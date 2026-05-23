@@ -158,6 +158,13 @@ public:
     // Room analytics
     json getRoomStats(const std::string& room_id);
 
+    // Chat export
+    std::string exportRoom(const std::string& room_id, const std::string& format = "text",
+                            int limit = 200);
+
+    // Custom status
+    bool setCustomStatus(const std::string& status, const std::string& emoji = "");
+
     // Room state
     std::string setRoomName(const std::string& room_id, const std::string& name);
     std::string setRoomTopic(const std::string& room_id, const std::string& topic);

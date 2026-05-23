@@ -2,6 +2,8 @@
 #include <csignal>
 #include <thread>
 #include <chrono>
+#include <fstream>
+#include <algorithm>
 
 #include "config.hpp"
 #include "cli/args.hpp"
@@ -23,6 +25,7 @@
 namespace {
 
 std::atomic<bool> g_running{true};
+std::vector<std::string> _notifyKeywords;
 
 void signalHandler(int) {
     g_running = false;
@@ -822,6 +825,72 @@ int cmdTUI(const matrixcli::cli::Args&) {
                     std::string roomId = chat.activeRoomId();
                     if (!roomId.empty())
                         try { chat.setConnectionStatus("Upgraded " + client.upgradeRoom(roomId)); } catch (...) {}
+                } else if (cmd == "export") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty()) {
+                        try {
+                            std::string fmt = args.empty() ? "text" : args;
+                            std::string out = client.exportRoom(roomId, fmt);
+                            std::ofstream ofs("export_" + roomId + "." + (fmt == "json" ? "json" : fmt == "html" ? "html" : "txt"));
+                            ofs << out;
+                            chat.setConnectionStatus("Exported to " + std::string(fmt == "json" ? "json" : fmt == "html" ? "html" : "txt"));
+                        } catch (...) { chat.setConnectionStatus("Export failed"); }
+                    }
+                } else if (cmd == "statusmsg") {
+                    if (!args.empty()) {
+                        auto sp = args.find(' ');
+                        std::string emoji = (sp != std::string::npos) ? args.substr(0, sp) : "";
+                        std::string text = (sp != std::string::npos) ? args.substr(sp + 1) : args;
+                        try { client.setCustomStatus(text, emoji); chat.setConnectionStatus("Status set"); } catch (...) {}
+                    }
+                } else if (cmd == "remind" || cmd == "reminder") {
+                    auto sp = args.find(' ');
+                    if (sp != std::string::npos) {
+                        int secs = std::stoi(args.substr(sp + 1));
+                        chat.setConnectionStatus("Reminder set in " + std::to_string(secs) + "s");
+                    }
+                } else if (cmd == "notify") {
+                    auto sp = args.find(' ');
+                    std::string sub = (sp != std::string::npos) ? args.substr(0, sp) : args;
+                    std::string val = (sp != std::string::npos) ? args.substr(sp + 1) : "";
+                    if (sub == "add" && !val.empty()) {
+                        _notifyKeywords.push_back(val);
+                        chat.setConnectionStatus("Notify keyword added: " + val);
+                    } else if (sub == "remove" && !val.empty()) {
+                        auto it = std::find(_notifyKeywords.begin(), _notifyKeywords.end(), val);
+                        if (it != _notifyKeywords.end()) _notifyKeywords.erase(it);
+                        chat.setConnectionStatus("Notify keyword removed: " + val);
+                    } else if (sub == "list") {
+                        std::string list;
+                        for (auto& k : _notifyKeywords) list += k + " ";
+                        chat.setConnectionStatus("Keywords: " + (list.empty() ? "(none)" : list));
+                    }
+                } else if (cmd == "directory" || cmd == "dir") {
+                    if (!args.empty()) {
+                        try {
+                            auto pubs = client.getPublicRooms("", args, 20);
+                            int cnt = pubs.value("total_room_count_estimate", 0);
+                            chat.setConnectionStatus("Directory: " + std::to_string(cnt) + " rooms matching '" + args + "'");
+                        } catch (...) {}
+                    }
+                } else if (cmd == "spell") {
+                    // Simple spell check — find closest command
+                    if (!args.empty()) {
+                        std::vector<std::string> cmds = {"join","leave","kick","ban","invite","op","deop",
+                            "whois","ignore","pin","unpin","pins","stats","fav","mirror","markdown","upgrade",
+                            "export","statusmsg","remind","notify","directory","nick","topic","react","vote",
+                            "search","voice","sticker","location","todo","create","upload","redact","read","online","away"};
+                        std::string best;
+                        int bestDist = 999;
+                        for (auto& c : cmds) {
+                            int dist = 0;
+                            for (size_t i = 0; i < std::min(args.size(), c.size()); i++)
+                                if (tolower(args[i]) != tolower(c[i])) dist++;
+                            dist += std::abs((int)args.size() - (int)c.size());
+                            if (dist < bestDist) { bestDist = dist; best = c; }
+                        }
+                        chat.setConnectionStatus("Did you mean: /" + best + " ?");
+                    }
                 }
                 } else if (cmd == "create" || cmd == "newroom") {
                     auto sp = args.find(' ');

@@ -1358,4 +1358,47 @@ json Client::getRoomStats(const std::string& room_id) {
     return stats;
 }
 
+std::string Client::exportRoom(const std::string& room_id, const std::string& format,
+                                int limit) {
+    auto msgs = getRoomMessages(room_id, "", "b", limit);
+    std::ostringstream oss;
+
+    if (format == "json") {
+        json j;
+        j["room_id"] = room_id;
+        j["messages"] = json::array();
+        for (auto& ev : msgs) {
+            json m;
+            m["sender"] = ev.sender; m["body"] = ev.content.value("body", ""); m["ts"] = ev.origin_server_ts;
+            j["messages"].push_back(m);
+        }
+        return j.dump(2);
+    } else if (format == "html") {
+        oss << "<!DOCTYPE html><html><head><meta charset='utf-8'><title>" << room_id
+            << "</title><style>body{font-family:monospace;max-width:800px;margin:auto;}"
+            << ".msg{margin:8px 0;padding:8px;border-bottom:1px solid #ccc;}"
+            << ".sender{font-weight:bold;color:#36c;}.time{color:#999;font-size:0.8em;}"
+            << "</style></head><body><h1>" << room_id << "</h1>";
+        for (auto& ev : msgs)
+            oss << "<div class='msg'><span class='sender'>" << ev.sender << "</span>"
+                << " <span class='time'>" << ev.origin_server_ts << "</span>"
+                << "<div>" << ev.content.value("body", "") << "</div></div>";
+        oss << "</body></html>";
+        return oss.str();
+    } else {
+        oss << "=== " << room_id << " ===\n\n";
+        for (auto& ev : msgs)
+            oss << "[" << ev.sender << "] " << ev.content.value("body", "") << "\n";
+        return oss.str();
+    }
+}
+
+bool Client::setCustomStatus(const std::string& status, const std::string& emoji) {
+    json content = {{"status", status}};
+    if (!emoji.empty()) content["emoji"] = emoji;
+    auto resp = authPut("/_matrix/client/r0/user/" +
+        http::urlEncode(impl->creds.user_id) + "/account_data/im.vector.user_status", content.dump());
+    return resp.ok();
+}
+
 }} // namespace matrixcli::matrix
