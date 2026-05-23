@@ -289,7 +289,6 @@ int cmdTUI(const matrixcli::cli::Args&) {
                             } catch (...) {}
                         }
                     } else {
-                        // No file specified: list current directory
                         FILE* fp = popen("ls -1 --color=never *.png *.jpg *.gif *.webp *.mp4 *.pdf *.txt *.md 2>/dev/null", "r");
                         if (fp) {
                             char buf[256];
@@ -297,7 +296,6 @@ int cmdTUI(const matrixcli::cli::Args&) {
                             while (fgets(buf, sizeof(buf), fp)) files += "  " + std::string(buf);
                             pclose(fp);
                             if (!files.empty() && !roomId.empty()) {
-                                // Pick first file for simplicity
                                 auto nl = files.find('\n');
                                 std::string first = files.substr(2, nl - 2);
                                 try {
@@ -307,6 +305,31 @@ int cmdTUI(const matrixcli::cli::Args&) {
                             }
                         }
                     }
+                } else if (cmd == "create" || cmd == "newroom") {
+                    auto sp = args.find(' ');
+                    std::string name = (sp != std::string::npos) ? args.substr(0, sp) : args;
+                    try {
+                        auto roomId = client.createRoom(name);
+                        client.joinRoom(roomId);
+                    } catch (...) {}
+                } else if (cmd == "search" || cmd == "joinroom") {
+                    if (!args.empty()) {
+                        try {
+                            auto rooms = client.getPublicRooms("", args, 10);
+                            // Join first match
+                            if (rooms.contains("chunk") && !rooms["chunk"].empty()) {
+                                client.joinRoom(rooms["chunk"][0]["room_id"].get<std::string>());
+                            }
+                        } catch (...) {}
+                    }
+                } else if (cmd == "preview" && !args.empty()) {
+                    try {
+                        auto preview = client.getURLPreview(args);
+                        if (preview.contains("og:title")) {
+                            // Show URL preview in status
+                            chat.setConnectionStatus("Preview: " + preview["og:title"].get<std::string>());
+                        }
+                    } catch (...) {}
                 }
             });
 
@@ -339,6 +362,13 @@ int cmdTUI(const matrixcli::cli::Args&) {
                         client.sendTyping(roomId, false);
                     } catch (...) {}
                 }
+            });
+
+            // Set up pagination callback
+            chat.setPaginateCallback([&](const std::string& room_id) {
+                try {
+                    client.getRoomMessages(room_id, "", "b", 50);
+                } catch (...) {}
             });
 
             // Start sync: feed events to chat
@@ -396,6 +426,25 @@ int cmdTUI(const matrixcli::cli::Args&) {
                     mi.is_redacted = true;
                     mi.redacted_by = ev.sender;
                     chat.addMessage(ev.room_id, mi);
+                }
+
+                // Polls
+                if (ev.type == "m.poll.start" && ev.content.contains("m.poll")) {
+                    tui::MessageInfo mi;
+                    mi.sender = ev.sender;
+                    auto& poll = ev.content["m.poll"];
+                    mi.body = poll.value("question", nlohmann::json::object())
+                                   .value("body", "(poll)");
+                    mi.is_poll = true;
+                    mi.event_id = ev.event_id;
+                    for (auto& ans : poll.value("answers", nlohmann::json::array())) {
+                        std::string text = ans.value("body", nlohmann::json::object()).value("body", "?");
+                        mi.poll_options.emplace_back(text, 0);
+                    }
+                    chat.addMessage(ev.room_id, mi);
+                }
+                if (ev.type == "m.poll.response" && ev.content.contains("m.poll.response")) {
+                    // Update vote counts by re-reading room state
                 }
 
                 // Typing events

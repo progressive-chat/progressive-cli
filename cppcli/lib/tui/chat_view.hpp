@@ -33,6 +33,12 @@ struct MessageInfo {
     std::string mimetype;
     bool is_thread_root = false;
     int thread_reply_count = 0;
+    bool is_poll = false;
+    std::string poll_question;
+    std::vector<std::pair<std::string, int>> poll_options; // text, votes
+    bool poll_ended = false;
+    std::string url_title;
+    std::string url_desc;
 };
 
 struct MemberInfo {
@@ -69,6 +75,13 @@ public:
     // Commands
     using CommandHandler = std::function<void(const std::string& cmd, const std::string& args)>;
     void setCommandHandler(CommandHandler cb) { _cmdHandler = std::move(cb); }
+
+    // Pagination
+    using PaginateCallback = std::function<void(const std::string& room_id)>;
+    void setPaginateCallback(PaginateCallback cb) { _paginateCb = std::move(cb); }
+
+    // Unread
+    int getUnreadCount(const std::string& room_id) const;
 
     // Main loop
     void run(Screen& screen);
@@ -107,7 +120,8 @@ private:
     std::string _searchQuery;
     std::string _status;
     std::string _connStatus;
-    std::map<std::string, std::vector<std::string>> _typingUsers; // room_id -> users
+    std::map<std::string, std::vector<std::string>> _typingUsers;
+    std::map<std::string, int> _unreadCounts;
     bool _running = true;
     bool _needsRedraw = true;
 
@@ -115,6 +129,7 @@ private:
     RoomSwitchCallback _roomSwitchCb;
     std::function<void(const std::string&)> _notifyCb;
     CommandHandler _cmdHandler;
+    PaginateCallback _paginateCb;
     mutable std::mutex _mutex;
 };
 

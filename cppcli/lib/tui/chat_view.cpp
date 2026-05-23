@@ -56,7 +56,16 @@ void ChatView::addMessage(const std::string& room_id, const MessageInfo& msg) {
         _messages[key].erase(_messages[key].begin(), _messages[key].begin() + 200);
         if (_msgScroll >= 200) _msgScroll -= 200; else _msgScroll = 0;
     }
+    // Increment unread if room is not active
+    if (room_id != _activeRoom && !msg.is_notice) {
+        _unreadCounts[room_id]++;
+    }
     _needsRedraw = true;
+}
+
+int ChatView::getUnreadCount(const std::string& room_id) const {
+    auto it = _unreadCounts.find(room_id);
+    return it != _unreadCounts.end() ? it->second : 0;
 }
 
 std::string ChatView::activeRoomId() const {
@@ -192,6 +201,8 @@ void ChatView::drawRoomList(Screen& screen, int x, int y, int w, int h) {
 
         auto& room = _rooms[idx];
         std::string label = room.name.empty() ? room.id : room.name;
+        int unread = getUnreadCount(room.id);
+        if (unread > 0) label += " (" + std::to_string(unread) + ")";
         if (label.size() > (size_t)(w - 3)) label = label.substr(0, w - 3);
 
         bool is_active = (room.id == _activeRoom);
@@ -282,6 +293,13 @@ static void renderRichLine(int y, int x, const std::string& text, int maxw) {
     auto peek = [&](int i) -> char { return (pos + i < (int)text.size()) ? text[pos + i] : '\0'; };
 
     while (pos < (int)text.size() && pos < maxw) {
+        // Blockquote: > text
+        if (peek(0) == '>' && (pos == 0 || text[pos-1] == '\n')) {
+            attron(A_DIM);
+            while (pos < (int)text.size() && text[pos] != '\n') mvaddch(y, x++, text[pos++]);
+            attroff(A_DIM);
+            continue;
+        }
         // Bold: **text**
         if (peek(0) == '*' && peek(1) == '*' && pos + 2 < (int)text.size()) {
             pos += 2;
@@ -370,10 +388,9 @@ void ChatView::drawMessages(Screen& screen, int x, int y, int w, int h) {
         if (msg.is_edited) suffix += " (edited)";
         if (msg.is_thread_root && msg.thread_reply_count > 0) suffix += " [" + std::to_string(msg.thread_reply_count) + " replies]";
         if (!msg.thread_id.empty() && _activeThread.empty()) prefix = "↳ " + prefix;
-        if (msg.is_redacted) {
-            prefix = "[" + msg.sender + " message redacted";
-            if (!msg.redacted_by.empty()) prefix += " by " + msg.redacted_by;
-            prefix += "]";
+        if (msg.is_poll) {
+            prefix = "[POLL] " + prefix;
+            suffix += msg.poll_ended ? " [closed]" : " [open]";
         }
 
         int avail = w - (int)prefix.size() - (int)suffix.size();
@@ -409,6 +426,18 @@ void ChatView::drawMessages(Screen& screen, int x, int y, int w, int h) {
 #else
             mvaddstr(ry, x, (prefix + line + suffix).c_str());
 #endif
+        }
+        // Poll options
+        if (msg.is_poll && !msg.poll_options.empty()) {
+            for (size_t pi = 0; pi < msg.poll_options.size() && (ry + 1 + pi) < (y + h); pi++) {
+                auto& opt = msg.poll_options[pi];
+                int maxVotes = 0;
+                for (auto& o : msg.poll_options) maxVotes = std::max(maxVotes, o.second);
+                int barLen = maxVotes > 0 ? (opt.second * 10 / maxVotes) : 0;
+                std::string bar = " [" + std::string(barLen, '#') + std::string(10 - barLen, ' ') + "] " +
+                                  std::to_string(opt.second) + " " + opt.first;
+                mvaddstr(ry + 1 + pi, x + 2, bar.c_str());
+            }
         }
         (void)screen;
     }
@@ -489,9 +518,14 @@ void ChatView::handleKey(Screen& screen, int key) {
             _needsRedraw = true;
             break;
         case KEY_UP: {
-            // Scroll messages up
             std::lock_guard<std::mutex> lock(_mutex);
             _msgScroll++;
+            // Trigger pagination if scrolled to top
+            std::string key = _activeThread.empty() ? _activeRoom : _activeRoom + ":" + _activeThread;
+            auto it = _messages.find(key);
+            if (it != _messages.end() && _msgScroll >= (int)it->second.size() && _paginateCb) {
+                _paginateCb(_activeRoom);
+            }
             _needsRedraw = true;
             break;
         }
@@ -570,6 +604,7 @@ void ChatView::handleKey(Screen& screen, int key) {
             int idx = _roomScroll;
             if (idx >= 0 && idx < (int)_rooms.size()) {
                 _activeRoom = _rooms[idx].id;
+                _unreadCounts[_activeRoom] = 0; // clear unread
                 _msgScroll = 0;
                 _needsRedraw = true;
                 if (_roomSwitchCb) _roomSwitchCb(_activeRoom);
