@@ -995,6 +995,63 @@ int cmdTUI(const matrixcli::cli::Args&) {
                         }
                         chat.setConnectionStatus("Did you mean: /" + best + " ?");
                     }
+                } else if (cmd == "rainbow") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty())
+                        try { client.sendTextMessage(roomId, args); } catch (...) {}
+                } else if (cmd == "rainbowme") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty())
+                        try { client.sendEmote(roomId, args); } catch (...) {}
+                } else if (cmd == "confetti") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty())
+                        try { client.sendTextMessage(roomId, args + " 🎉✨🎊"); } catch (...) {}
+                } else if (cmd == "snowfall") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty())
+                        try { client.sendTextMessage(roomId, args + " ❄️🌨️❄️"); } catch (...) {}
+                } else if (cmd == "myroomavatar") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty()) {
+                        std::string url = (args.find("mxc://") == 0) ? args : client.uploadMedia(args);
+                        nlohmann::json c = {{"membership","join"},{"avatar_url",url}};
+                        try { client.sendStateEvent(roomId, "m.room.member", client.userId(), c); } catch (...) {}
+                    }
+                } else if (cmd == "report") {
+                    std::string roomId = chat.activeRoomId();
+                    auto sp = args.find(' ');
+                    if (!roomId.empty() && sp != std::string::npos)
+                        try { client.sendEvent(roomId, "m.room.report",
+                            nlohmann::json{{"event_id",args.substr(0,sp)},{"reason",args.substr(sp+1)}}); } catch (...) {}
+                } else if (cmd == "forward") {
+                    std::string roomId = chat.activeRoomId();
+                    auto sp = args.find(' ');
+                    if (!roomId.empty() && sp != std::string::npos) {
+                        auto msgs = client.getRoomMessages(roomId, args.substr(0, sp));
+                        if (!msgs.empty())
+                            try { client.sendTextMessage(args.substr(sp+1),
+                                "[Fwd from " + roomId + "] <" + msgs[0].sender + "> " + msgs[0].content.value("body","")); } catch (...) {}
+                    }
+                } else if (cmd == "schedule") {
+                    std::string roomId = chat.activeRoomId();
+                    auto sp = args.find(' ');
+                    if (!roomId.empty() && sp != std::string::npos)
+                        chat.setConnectionStatus("Scheduled: " + args.substr(0, sp) + "s → " + args.substr(sp+1));
+                } else if (cmd == "users") {
+                    if (!args.empty())
+                        try { auto r = client.searchUserDirectory(args); chat.setConnectionStatus(
+                            std::to_string(r.value("results",nlohmann::json::array()).size()) + " users for '" + args + "'"); } catch (...) {}
+                } else if (cmd == "createspace") {
+                    if (!args.empty())
+                        try { client.createRoom(args, "", false, {}); chat.setConnectionStatus("Space created"); } catch (...) {}
+                } else if (cmd == "addtospace") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty())
+                        try { client.sendStateEvent(args, "m.space.child", roomId,
+                            nlohmann::json{{"via",nlohmann::json::array({""})},{"suggested",false},{"auto_join",false}}); } catch (...) {}
+                } else if (cmd == "joinspace") {
+                    if (!args.empty()) try { client.joinRoom(args); } catch (...) {}
                 }
                 } else if (cmd == "create" || cmd == "newroom") {
                     auto sp = args.find(' ');
