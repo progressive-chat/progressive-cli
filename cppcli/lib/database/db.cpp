@@ -78,6 +78,18 @@ void Database::migrate() {
 
         CREATE INDEX IF NOT EXISTS idx_events_room_ts
             ON events(room_id, origin_server_ts DESC);
+
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id TEXT NOT NULL,
+            event_id TEXT NOT NULL,
+            sender TEXT,
+            body TEXT,
+            highlight INTEGER DEFAULT 0,
+            ts INTEGER DEFAULT 0,
+            read INTEGER DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_notif_unread ON notifications(read, ts DESC);
     )");
 }
 
@@ -303,6 +315,74 @@ std::vector<json> Database::search(const std::string& query, int limit) {
     }
     sqlite3_finalize(stmt);
     return result;
+}
+
+bool Database::insertNotification(const std::string& room_id, const std::string& event_id,
+                                   const std::string& sender, const std::string& body, bool highlight) {
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(_db, "INSERT INTO notifications(room_id,event_id,sender,body,highlight,ts) VALUES(?,?,?,?,?,?)",
+        -1, &stmt, nullptr);
+    sqlite3_bind_text(stmt, 1, room_id.c_str(), room_id.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, event_id.c_str(), event_id.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, sender.c_str(), sender.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, body.c_str(), body.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 5, highlight ? 1 : 0);
+    sqlite3_bind_int64(stmt, 6, std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count());
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return true;
+}
+
+std::vector<json> Database::getNotifications(int limit, bool unread_only) {
+    std::vector<json> result;
+    std::string sql = "SELECT n.id, n.room_id, n.event_id, n.sender, n.body, n.highlight, n.ts, r.name "
+                      "FROM notifications n LEFT JOIN rooms r ON n.room_id = r.room_id ";
+    if (unread_only) sql += "WHERE n.read = 0 ";
+    sql += "ORDER BY n.ts DESC LIMIT ?";
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(_db, sql.c_str(), -1, &stmt, nullptr);
+    sqlite3_bind_int(stmt, 1, limit);
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        json n;
+        n["id"] = sqlite3_column_int(stmt, 0);
+        n["room_id"] = (const char*)sqlite3_column_text(stmt, 1);
+        n["event_id"] = (const char*)sqlite3_column_text(stmt, 2);
+        n["sender"] = (const char*)sqlite3_column_text(stmt, 3) ?: "";
+        n["body"] = (const char*)sqlite3_column_text(stmt, 4) ?: "";
+        n["highlight"] = sqlite3_column_int(stmt, 5) == 1;
+        n["ts"] = sqlite3_column_int64(stmt, 6);
+        auto rn = (const char*)sqlite3_column_text(stmt, 7);
+        if (rn) n["room_name"] = rn;
+        result.push_back(n);
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+int Database::getNotificationCount(const std::string& room_id) {
+    std::string sql = "SELECT COUNT(*) FROM notifications WHERE read = 0";
+    if (!room_id.empty()) sql += " AND room_id = ?";
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(_db, sql.c_str(), -1, &stmt, nullptr);
+    if (!room_id.empty()) sqlite3_bind_text(stmt, 1, room_id.c_str(), room_id.size(), SQLITE_TRANSIENT);
+    int count = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW) count = sqlite3_column_int(stmt, 0);
+    sqlite3_finalize(stmt);
+    return count;
+}
+
+bool Database::markRoomRead(const std::string& room_id) {
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(_db, "UPDATE notifications SET read=1 WHERE room_id=? AND read=0", -1, &stmt, nullptr);
+    sqlite3_bind_text(stmt, 1, room_id.c_str(), room_id.size(), SQLITE_TRANSIENT);
+    sqlite3_step(stmt); sqlite3_finalize(stmt);
+    return true;
+}
+
+bool Database::markAllRead() {
+    exec("UPDATE notifications SET read=1 WHERE read=0");
+    return true;
 }
 
 }} // namespace matrixcli::db

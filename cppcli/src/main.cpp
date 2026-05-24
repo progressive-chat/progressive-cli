@@ -1359,6 +1359,38 @@ int main(int argc, char* argv[]) {
         return cmdSearch(args);
     }
 
+    if (args.command == "notifications" || args.command == "notif") {
+        using namespace matrixcli;
+        db::Database dbi;
+        if (!dbi.open("matrixcli.db")) return 1;
+        int limit = args.options.count("limit") ? std::stoi(args.options["limit"]) : 20;
+        bool all = args.options.count("all");
+        auto notifs = dbi.getNotifications(limit, !all);
+        if (notifs.empty()) { std::cout << "No notifications." << std::endl; return 0; }
+        int total = dbi.getNotificationCount();
+        std::cout << "Notifications: " << notifs.size() << (total > (int)notifs.size() ? " (total: " + std::to_string(total) + ")" : "") << std::endl << std::endl;
+        for (auto& n : notifs) {
+            std::string room = n.value("room_name", n.value("room_id", "?"));
+            std::string sender = n.value("sender", "?");
+            auto at = sender.find(':'); if (at != std::string::npos && sender.starts_with("@")) sender = sender.substr(1, at - 1);
+            std::string body = n.value("body", ""); if (body.size() > 80) body = body.substr(0, 77) + "...";
+            bool hl = n.value("highlight", false);
+            std::cout << (hl ? ANSI_BOLD "★ " ANSI_RESET : "  ") << ansiUser(n["sender"], "[" + sender + "]") << " #" << room << "  " << body << std::endl;
+        }
+        std::cout << "\nMark read: matrixcli read <room> | matrixcli read --all" << std::endl;
+        return 0;
+    }
+
+    if (args.command == "read") {
+        using namespace matrixcli;
+        db::Database dbi;
+        if (!dbi.open("matrixcli.db")) return 1;
+        if (args.options.count("all")) { dbi.markAllRead(); std::cout << "All read." << std::endl; }
+        else if (!args.positional.empty()) { dbi.markRoomRead(args.positional[0]); std::cout << "Marked " << args.positional[0] << " read." << std::endl; }
+        else { std::cerr << "Usage: matrixcli read <room> | matrixcli read --all" << std::endl; return 1; }
+        return 0;
+    }
+
     if (args.command == "config") {
         return cmdConfig(args);
     }

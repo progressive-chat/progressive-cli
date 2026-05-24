@@ -51,6 +51,14 @@ public:
     // Full-text search
     std::vector<json> search(const std::string& query, int limit = 20);
 
+    // Notifications
+    bool insertNotification(const std::string& room_id, const std::string& event_id,
+                             const std::string& sender, const std::string& body, bool highlight);
+    std::vector<json> getNotifications(int limit = 50, bool unread_only = true);
+    int getNotificationCount(const std::string& room_id = "");
+    bool markRoomRead(const std::string& room_id);
+    bool markAllRead();
+
 private:
     void migrate();
     bool exec(const std::string& sql);
