@@ -16,6 +16,7 @@ target_link_libraries(matrixcli PRIVATE
     matrixcli_db
     matrixcli_api
     matrixcli_formats
+    matrixcli_tdlib
     Threads::Threads
 )
 

@@ -9,6 +9,7 @@
 #include "cli/args.hpp"
 #include "server/server.hpp"
 #include "../lib/matrix/client.hpp"
+#include "../lib/tdlib/tdlib_bridge.hpp"
 #include "../lib/matrix/pushrules.hpp"
 #include "../lib/database/db.hpp"
 #include "../lib/util/logger.hpp"
@@ -29,7 +30,7 @@ namespace {
 std::atomic<bool> g_running{true};
 std::vector<std::string> _notifyKeywords;
 matrixcli::util::TypingMonitor g_typing;
-// Message queue: room_id -> [{body, retries}]
+matrixcli::tdlib::TdBridge g_tdlib;
 std::map<std::string, std::vector<std::pair<std::string, int>>> g_msgQueue;
 std::mutex g_queueMutex;
 
@@ -1105,6 +1106,51 @@ int cmdTUI(const matrixcli::cli::Args&) {
                         try { client.adminShadowBan(val); chat.setConnectionStatus("Shadow banned " + val); } catch (...) {}
                     else if (sub == "roomstats")
                         try { client.adminRoomStats(); chat.setConnectionStatus("Room stats fetched"); } catch (...) {}
+                } else if (cmd == "td") {
+                    auto sp = args.find(' ');
+                    std::string sub = (sp != std::string::npos) ? args.substr(0, sp) : args;
+                    std::string val = (sp != std::string::npos) ? args.substr(sp + 1) : "";
+                    if (sub == "login" || sub == "start") {
+                        if (!g_tdlib.isAvailable()) { g_tdlib.initialize(); }
+                        if (g_tdlib.isAvailable()) {
+                            // Use test API credentials (you need real ones for production)
+                            g_tdlib.setTdlibParams(94575, "a3406de8d171bb422bb6ddf3bbd8f4e2");
+                            chat.setConnectionStatus("TDLib initialized. Send /td phone +1234567890");
+                        } else chat.setConnectionStatus("TDLib not available (install libtdjson)");
+                    } else if (sub == "phone") {
+                        if (!val.empty()) { g_tdlib.sendPhoneNumber(val); chat.setConnectionStatus("Sent code to " + val + ". /td code XXXXX"); }
+                    } else if (sub == "code") {
+                        if (!val.empty()) { g_tdlib.sendAuthCode(val); chat.setConnectionStatus("Code sent. /td password your2fa (if needed)"); }
+                    } else if (sub == "password" || sub == "2fa") {
+                        if (!val.empty()) { g_tdlib.sendPassword(val); chat.setConnectionStatus("2FA sent"); }
+                    } else if (sub == "chats") {
+                        if (g_tdlib.authState() == matrixcli::tdlib::TdAuthState::Ready) {
+                            auto chats = g_tdlib.getChats(20);
+                            std::string list = std::to_string(chats.size()) + " chats: ";
+                            for (size_t i = 0; i < std::min((size_t)5, chats.size()); i++)
+                                list += chats[i].title + (i < 4 ? ", " : "");
+                            chat.setConnectionStatus(list);
+                        } else chat.setConnectionStatus("Not authorized. /td phone first");
+                    } else if (sub == "msg") {
+                        if (g_tdlib.authState() == matrixcli::tdlib::TdAuthState::Ready) {
+                            auto sp2 = val.find(' ');
+                            if (sp2 != std::string::npos) {
+                                int64_t chatId = std::stoll(val.substr(0, sp2));
+                                g_tdlib.sendMessage(chatId, val.substr(sp2 + 1));
+                                chat.setConnectionStatus("Sent to Telegram");
+                            }
+                        }
+                    } else if (sub == "history") {
+                        if (g_tdlib.authState() == matrixcli::tdlib::TdAuthState::Ready && !val.empty()) {
+                            int64_t chatId = std::stoll(val);
+                            auto msgs = g_tdlib.getChatHistory(chatId);
+                            std::string preview = std::to_string(msgs.size()) + " msgs. Latest: ";
+                            if (!msgs.empty()) preview += msgs[0].text.substr(0, 60);
+                            chat.setConnectionStatus(preview);
+                        }
+                    } else {
+                        chat.setConnectionStatus("TDLib: /td login|phone|code|password|chats|msg|history");
+                    }
                 }
                 } else if (cmd == "create" || cmd == "newroom") {
                     auto sp = args.find(' ');
