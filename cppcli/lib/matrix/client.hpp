@@ -239,6 +239,9 @@ public:
                         const std::string& search_term = "",
                         int limit = 20);
 
+    // User directory search
+    json searchUserDirectory(const std::string& search_term, int limit = 20);
+
     // Search
     json searchMessages(const std::string& search_term,
                         const std::string& room_id = "",

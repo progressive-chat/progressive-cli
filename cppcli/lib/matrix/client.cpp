@@ -1445,4 +1445,32 @@ bool Client::setCustomStatus(const std::string& status, const std::string& emoji
     return resp.ok();
 }
 
+json Client::searchUserDirectory(const std::string& search_term, int limit) {
+    json body = {{"search_term", search_term}, {"limit", limit}};
+    auto resp = authPost("/_matrix/client/r0/user_directory/search", body.dump());
+    checkResponse(resp);
+    auto j = json::parse(resp.body);
+    // Add relevance scoring for better ordering
+    if (j.contains("results")) {
+        std::vector<json> sorted;
+        for (auto& r : j["results"]) {
+            int score = 0;
+            std::string dn = r.value("display_name", "");
+            std::string uid = r.value("user_id", "");
+            if (dn == search_term) score += 100;
+            else if (uid == search_term) score += 90;
+            else if (dn.find(search_term) == 0) score += 60;
+            else if (dn.find(search_term) != std::string::npos) score += 20;
+            else if (uid.find(search_term) != std::string::npos) score += 10;
+            r["_score"] = score;
+            sorted.push_back(r);
+        }
+        std::sort(sorted.begin(), sorted.end(), [](const json& a, const json& b) {
+            return a["_score"].get<int>() > b["_score"].get<int>();
+        });
+        j["results"] = sorted;
+    }
+    return j;
+}
+
 }} // namespace matrixcli::matrix
