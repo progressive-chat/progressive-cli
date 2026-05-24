@@ -1,0 +1,2 @@
+/usr/bin/ar qc liblibmatrix-core.a "CMakeFiles/libmatrix-core.dir/matrix/client.cpp.o" "CMakeFiles/libmatrix-core.dir/matrix/events.cpp.o" "CMakeFiles/libmatrix-core.dir/matrix/error.cpp.o" "CMakeFiles/libmatrix-core.dir/matrix/auth.cpp.o" "CMakeFiles/libmatrix-core.dir/matrix/sync.cpp.o" "CMakeFiles/libmatrix-core.dir/matrix/api.cpp.o" "CMakeFiles/libmatrix-core.dir/matrix/pushrules.cpp.o" "CMakeFiles/libmatrix-core.dir/matrix/room_sort.cpp.o" "CMakeFiles/libmatrix-core.dir/matrix/sliding_sync.cpp.o"
+/usr/bin/ranlib liblibmatrix-core.a

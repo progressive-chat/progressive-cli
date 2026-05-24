@@ -1,0 +1,2 @@
+/usr/bin/ar qc liblibmatrix-e2ee.a "CMakeFiles/libmatrix-e2ee.dir/e2ee/olm.cpp.o" "CMakeFiles/libmatrix-e2ee.dir/e2ee/megolm.cpp.o" "CMakeFiles/libmatrix-e2ee.dir/e2ee/crypto.cpp.o" "CMakeFiles/libmatrix-e2ee.dir/e2ee/session.cpp.o"
+/usr/bin/ranlib liblibmatrix-e2ee.a

@@ -1,0 +1,11 @@
+prefix=/usr/local
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include/libmatrix
+
+Name: libmatrix
+Description: C++20 Matrix client library with E2EE, SQLite storage, and multi-protocol support
+Version: 0.1.0
+Requires: openssl libolm sqlite3 nlohmann_json
+Libs: -L${libdir} -lmatrix-core -lmatrix-http -lmatrix-db -lmatrix-e2ee
+Cflags: -I${includedir} -std=c++20

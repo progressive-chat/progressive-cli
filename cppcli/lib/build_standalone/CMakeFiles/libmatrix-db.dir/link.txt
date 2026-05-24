@@ -1,0 +1,2 @@
+/usr/bin/ar qc liblibmatrix-db.a "CMakeFiles/libmatrix-db.dir/database/db.cpp.o"
+/usr/bin/ranlib liblibmatrix-db.a

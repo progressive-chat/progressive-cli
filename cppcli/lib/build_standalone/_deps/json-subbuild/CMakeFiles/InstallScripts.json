@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/bym/matrix/progressive-cli/cppcli/lib/build_standalone/_deps/json-subbuild/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

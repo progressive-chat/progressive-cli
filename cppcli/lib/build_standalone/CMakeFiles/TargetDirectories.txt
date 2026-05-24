@@ -1,0 +1,16 @@
+/home/bym/matrix/progressive-cli/cppcli/lib/build_standalone/CMakeFiles/libmatrix-http.dir
+/home/bym/matrix/progressive-cli/cppcli/lib/build_standalone/CMakeFiles/libmatrix-e2ee.dir
+/home/bym/matrix/progressive-cli/cppcli/lib/build_standalone/CMakeFiles/libmatrix-db.dir
+/home/bym/matrix/progressive-cli/cppcli/lib/build_standalone/CMakeFiles/libmatrix-core.dir
+/home/bym/matrix/progressive-cli/cppcli/lib/build_standalone/CMakeFiles/edit_cache.dir
+/home/bym/matrix/progressive-cli/cppcli/lib/build_standalone/CMakeFiles/rebuild_cache.dir
+/home/bym/matrix/progressive-cli/cppcli/lib/build_standalone/CMakeFiles/list_install_components.dir
+/home/bym/matrix/progressive-cli/cppcli/lib/build_standalone/CMakeFiles/install.dir
+/home/bym/matrix/progressive-cli/cppcli/lib/build_standalone/CMakeFiles/install/local.dir
+/home/bym/matrix/progressive-cli/cppcli/lib/build_standalone/CMakeFiles/install/strip.dir
+/home/bym/matrix/progressive-cli/cppcli/lib/build_standalone/_deps/json-build/CMakeFiles/edit_cache.dir
+/home/bym/matrix/progressive-cli/cppcli/lib/build_standalone/_deps/json-build/CMakeFiles/rebuild_cache.dir
+/home/bym/matrix/progressive-cli/cppcli/lib/build_standalone/_deps/json-build/CMakeFiles/list_install_components.dir
+/home/bym/matrix/progressive-cli/cppcli/lib/build_standalone/_deps/json-build/CMakeFiles/install.dir
+/home/bym/matrix/progressive-cli/cppcli/lib/build_standalone/_deps/json-build/CMakeFiles/install/local.dir
+/home/bym/matrix/progressive-cli/cppcli/lib/build_standalone/_deps/json-build/CMakeFiles/install/strip.dir

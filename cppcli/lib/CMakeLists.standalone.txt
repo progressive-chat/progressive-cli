@@ -1,0 +1,158 @@
+cmake_minimum_required(VERSION 3.20)
+project(libmatrix VERSION 0.1.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Options
+option(BUILD_SHARED_LIBS "Build shared libraries" ON)
+option(USE_SYSTEM_OLM "Use system libolm" ON)
+option(ENABLE_E2EE "Enable E2EE support" ON)
+
+# Dependencies
+find_package(Threads REQUIRED)
+find_package(OpenSSL REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SQLITE3 REQUIRED sqlite3)
+
+# nlohmann/json — try system first, then FetchContent
+find_package(nlohmann_json QUIET)
+if(NOT nlohmann_json_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(json
+        GIT_REPOSITORY https://github.com/nlohmann/json.git
+        GIT_TAG v3.11.3
+    )
+    FetchContent_MakeAvailable(json)
+    set(nlohmann_json_FOUND TRUE)
+endif()
+
+# libolm
+if(ENABLE_E2EE)
+    if(USE_SYSTEM_OLM)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(LIBOLM REQUIRED olm)
+        add_library(olm SHARED IMPORTED)
+        find_library(LIBOLM_LIBRARY_PATH olm REQUIRED)
+        set_target_properties(olm PROPERTIES
+            IMPORTED_LOCATION "${LIBOLM_LIBRARY_PATH}"
+            INTERFACE_INCLUDE_DIRECTORIES "${LIBOLM_INCLUDE_DIRS}")
+        set(OLM_FOUND TRUE)
+    else()
+        # Build from bundled libolm
+        set(OLM_BUILD_DIR "${CMAKE_SOURCE_DIR}/../libolm/build")
+        if(NOT EXISTS "${OLM_BUILD_DIR}/libolm.so")
+            execute_process(COMMAND make -C "${CMAKE_SOURCE_DIR}/../libolm" -j)
+        endif()
+        add_library(olm SHARED IMPORTED)
+        set_target_properties(olm PROPERTIES
+            IMPORTED_LOCATION "${OLM_BUILD_DIR}/libolm.so"
+            INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/../libolm/include")
+        set(OLM_FOUND TRUE)
+    endif()
+endif()
+
+# HTTP client
+add_library(libmatrix-http STATIC
+    http/http.cpp
+    http/proxy.cpp
+)
+target_include_directories(libmatrix-http PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/http
+)
+target_link_libraries(libmatrix-http PUBLIC
+    OpenSSL::SSL OpenSSL::Crypto
+    Threads::Threads
+)
+
+# E2EE
+if(ENABLE_E2EE AND OLM_FOUND)
+    add_library(libmatrix-e2ee STATIC
+        e2ee/olm.cpp
+        e2ee/megolm.cpp
+        e2ee/crypto.cpp
+        e2ee/session.cpp
+    )
+    target_include_directories(libmatrix-e2ee PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(libmatrix-e2ee PUBLIC olm Threads::Threads)
+    target_compile_definitions(libmatrix-e2ee PUBLIC MATRIXCLI_HAS_E2EE=1)
+endif()
+
+# Database
+add_library(libmatrix-db STATIC
+    database/db.cpp
+)
+target_include_directories(libmatrix-db PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${SQLITE3_INCLUDE_DIRS}
+)
+target_link_libraries(libmatrix-db PUBLIC
+    ${SQLITE3_LIBRARIES}
+    nlohmann_json::nlohmann_json
+)
+
+# Matrix client (core)
+add_library(libmatrix-core STATIC
+    matrix/client.cpp
+    matrix/events.cpp
+    matrix/error.cpp
+    matrix/auth.cpp
+    matrix/sync.cpp
+    matrix/api.cpp
+    matrix/pushrules.cpp
+    matrix/room_sort.cpp
+    matrix/sliding_sync.cpp
+)
+target_include_directories(libmatrix-core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(libmatrix-core PUBLIC
+    libmatrix-http
+    libmatrix-db
+    nlohmann_json::nlohmann_json
+    Threads::Threads
+)
+if(ENABLE_E2EE AND OLM_FOUND)
+    target_link_libraries(libmatrix-core PUBLIC libmatrix-e2ee)
+endif()
+
+# Umbrella library
+add_library(libmatrix INTERFACE)
+target_link_libraries(libmatrix INTERFACE libmatrix-core)
+if(ENABLE_E2EE AND OLM_FOUND)
+    target_link_libraries(libmatrix INTERFACE libmatrix-e2ee)
+endif()
+target_link_libraries(libmatrix INTERFACE libmatrix-db libmatrix-http)
+
+# Install
+include(GNUInstallDirs)
+install(TARGETS libmatrix libmatrix-core libmatrix-http libmatrix-db
+        EXPORT libmatrixTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+if(ENABLE_E2EE AND OLM_FOUND)
+    install(TARGETS libmatrix-e2ee EXPORT libmatrixTargets
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif()
+
+# Headers
+install(DIRECTORY http/ matrix/ e2ee/ database/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libmatrix
+        FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h")
+install(DIRECTORY util/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libmatrix/util
+        FILES_MATCHING PATTERN "*.hpp")
+install(DIRECTORY json/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libmatrix/json
+        FILES_MATCHING PATTERN "*.hpp")
+
+# CMake config
+install(EXPORT libmatrixTargets
+        FILE libmatrixTargets.cmake
+        NAMESPACE libmatrix::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libmatrix)
+
+# pkg-config
+configure_file(libmatrix.pc.in libmatrix.pc @ONLY)
+install(FILES ${CMAKE_BINARY_DIR}/libmatrix.pc
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
