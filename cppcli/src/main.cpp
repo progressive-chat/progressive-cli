@@ -403,7 +403,25 @@ int cmdStatus(const matrixcli::cli::Args& args) {
         std::cout << "Homeserver: " << Config::instance().homeserverURL() << std::endl;
         std::cout << "Device ID: " << Config::instance().deviceId() << std::endl;
     } else {
-        std::cout << "Not logged in. Use 'matrixcli login' to authenticate." << std::endl;
+        std::cout << ANSI_BOLD "\n  matrixcli status\n" ANSI_RESET;
+        std::cout << "\n  Not logged in. Use 'matrixcli login' to authenticate.\n";
+        std::cout << "  Or try offline demo: matrixcli demo populate\n";
+    }
+
+    // Smart suggestions
+    {
+        std::cout << ANSI_CYAN "\n  ── Suggestions ──\n" ANSI_RESET;
+        bool synced = !acc.next_batch.empty();
+        int notif = dbi.getNotificationCount();
+        if (!synced && acc.is_logged_in())
+            std::cout << "  • Run " ANSI_BOLD "matrixcli serve" ANSI_RESET " to start syncing\n";
+        if (notif > 0)
+            std::cout << "  • " << notif << " unread — " ANSI_BOLD "matrixcli view room" ANSI_RESET " to read\n";
+        if (g_tdlib.isAvailable() && g_tdlib.authState() != tdlib::TdAuthState::Ready)
+            std::cout << "  • TDLib ready — " ANSI_BOLD "matrixcli td login" ANSI_RESET " for Telegram\n";
+        if (!g_lemmy.isLoggedIn())
+            std::cout << "  • Lemmy available — " ANSI_BOLD "matrixcli lemmy login" ANSI_RESET "\n";
+        std::cout << "  • All commands: " ANSI_BOLD "matrixcli --help" ANSI_RESET "\n";
     }
     }; // end printStatus lambda
 
