@@ -88,6 +88,18 @@ void printUsage() {
               << "General options:\n"
               << "  --help        Show this help\n"
               << "  --version     Show version\n"
+              << "  --json        Pipe-friendly JSON output\n"
+              << "  --debug       Show raw event data\n"
+              << "  --ts          Show relative timestamps (3m ago)\n"
+              << "  --ids         Show event IDs\n"
+              << "\nQuick start:\n"
+              << "  matrixcli demo populate          # offline demo\n"
+              << "  matrixcli rooms                  # list rooms\n"
+              << "  matrixcli view \"#general\" --ts  # view messages\n"
+              << "  matrixcli demo --port=8080       # API server\n"
+              << "  matrixcli tui                    # terminal UI\n"
+              << "\nShell completions:\n"
+              << "  source <(matrixcli completion bash)\n"
               << std::endl;
 }
 

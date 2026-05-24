@@ -359,6 +359,9 @@ int cmdView(const matrixcli::cli::Args& args) {
     bool has_newer = !before.empty();
     bool has_older = (int)events.size() >= limit;
 
+    // Message grouping
+    std::string prev_sender;
+
     if (has_newer || has_older) {
         std::cout << "── ";
         if (has_newer) std::cout << "view --from " << events.front().event_id << " (newer)  ";
@@ -450,7 +453,15 @@ int cmdView(const matrixcli::cli::Args& args) {
         if (reply_count > 0) reply_str = " [" + std::to_string(reply_count) + " replies]";
 
         if (!reply_ctx.empty()) std::cout << ANSI_GRAY "       " << reply_ctx << ANSI_RESET << std::endl;
-        std::cout << "  " << prefix << ansiUser(ev.sender, "[" + sender_name + "]") << ts_str << " " << body << reply_str;
+
+        // Message grouping: collapse sender if same as previous
+        if (ev.sender == prev_sender && !prev_sender.empty()) {
+            std::string indent(sender_name.size() + 3, ' ');
+            std::cout << indent << prefix << body << reply_str;
+        } else {
+            prev_sender = ev.sender;
+            std::cout << "  " << prefix << ansiUser(ev.sender, "[" + sender_name + "]") << ts_str << " " << body << reply_str;
+        }
 
         // Show replied-to body if available
         if (ev.content.contains("m.relates_to")) {
