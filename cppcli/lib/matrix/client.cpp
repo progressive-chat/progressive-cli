@@ -805,7 +805,14 @@ std::string Client::createRoom(const std::string& name,
 bool Client::joinRoom(const std::string& room_id, const std::string& reason) {
     json body;
     if (!reason.empty()) body["reason"] = reason;
-    auto resp = authPost("/_matrix/client/r0/rooms/" + room_id + "/join", body.dump());
+    auto resp = authPost("/_matrix/client/r0/join/" + room_id, body.dump());
+    return resp.ok();
+}
+
+bool Client::knockRoom(const std::string& room_id, const std::string& reason) {
+    json body;
+    if (!reason.empty()) body["reason"] = reason;
+    auto resp = authPost("/_matrix/client/r0/knock/" + room_id, body.dump());
     return resp.ok();
 }
 

@@ -122,6 +122,7 @@ public:
                            bool is_direct = false,
                            const std::vector<std::string>& invite_users = {});
     bool joinRoom(const std::string& room_id, const std::string& reason = "");
+    bool knockRoom(const std::string& room_id, const std::string& reason = "");
     bool leaveRoom(const std::string& room_id);
     bool inviteUser(const std::string& room_id, const std::string& user_id,
                     const std::string& reason = "");

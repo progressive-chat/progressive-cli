@@ -764,6 +764,17 @@ int cmdTUI(const matrixcli::cli::Args&) {
                 } else if (cmd == "redact" || cmd == "delete") {
                     std::string roomId = chat.activeRoomId();
                     if (!roomId.empty() && !args.empty()) client.redactEvent(roomId, args);
+                } else if (cmd == "edit") {
+                    std::string roomId = chat.activeRoomId();
+                    auto sp = args.find(' ');
+                    if (!roomId.empty() && sp != std::string::npos) {
+                        nlohmann::json c = {{"msgtype","m.text"},{"body","* "+args.substr(sp+1)},
+                            {"m.new_content",{{"msgtype","m.text"},{"body",args.substr(sp+1)}}},
+                            {"m.relates_to",{{"event_id",args.substr(0,sp)},{"rel_type","m.replace"}}}};
+                        try { client.sendEvent(roomId, "m.room.message", c); } catch (...) {}
+                    }
+                } else if (cmd == "knock") {
+                    if (!args.empty()) try { client.knockRoom(args); } catch (...) {}
                 } else if (cmd == "read" || cmd == "markread") {
                     std::string roomId = chat.activeRoomId();
                     if (!roomId.empty()) {

@@ -154,6 +154,60 @@ void registerBuiltinCommands() {
         return 0;
     });
 
+    // ── Edit message ──
+    reg.registerCli("edit", [](const cli::Args& args) -> int {
+        if (args.positional.size() < 3) { std::cerr << "Usage: matrixcli edit <room> <event_id> <new_text>" << std::endl; return 1; }
+        using namespace matrixcli;
+        matrix::Client client;
+        db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+        auto acc = dbi.loadAccount();
+        if (!acc.is_logged_in()) { std::cerr << "Not logged in" << std::endl; return 1; }
+        client.setHomeserverURL(acc.homeserver_url); client.setAccessToken(acc.access_token);
+        std::string text;
+        for (size_t i = 2; i < args.positional.size(); i++) { if (i > 2) text += " "; text += args.positional[i]; }
+        try {
+            nlohmann::json content = {{"msgtype","m.text"},{"body","* "+text},
+                {"m.new_content",{{"msgtype","m.text"},{"body",text}}},
+                {"m.relates_to",{{"event_id",args.positional[1]},{"rel_type","m.replace"}}}};
+            auto eid = client.sendEvent(args.positional[0], "m.room.message", content);
+            std::cout << "Edited [" << eid << "]" << std::endl;
+        } catch (const std::exception& e) { std::cerr << e.what() << std::endl; return 1; }
+        return 0;
+    });
+
+    // ── Redact message ──
+    reg.registerCli("redact", [](const cli::Args& args) -> int {
+        if (args.positional.size() < 2) { std::cerr << "Usage: matrixcli redact <room> <event_id> [reason]" << std::endl; return 1; }
+        using namespace matrixcli;
+        matrix::Client client;
+        db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+        auto acc = dbi.loadAccount();
+        if (!acc.is_logged_in()) { std::cerr << "Not logged in" << std::endl; return 1; }
+        client.setHomeserverURL(acc.homeserver_url); client.setAccessToken(acc.access_token);
+        std::string reason = args.positional.size() > 2 ? args.positional[2] : "";
+        try {
+            auto eid = client.redactEvent(args.positional[0], args.positional[1], reason);
+            std::cout << "Redacted [" << eid << "]" << std::endl;
+        } catch (const std::exception& e) { std::cerr << e.what() << std::endl; return 1; }
+        return 0;
+    });
+
+    // ── Knock on room ──
+    reg.registerCli("knock", [](const cli::Args& args) -> int {
+        if (args.positional.empty()) { std::cerr << "Usage: matrixcli knock <room_id|alias> [reason]" << std::endl; return 1; }
+        using namespace matrixcli;
+        matrix::Client client;
+        db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+        auto acc = dbi.loadAccount();
+        if (!acc.is_logged_in()) { std::cerr << "Not logged in" << std::endl; return 1; }
+        client.setHomeserverURL(acc.homeserver_url); client.setAccessToken(acc.access_token);
+        std::string reason = args.positional.size() > 1 ? args.positional[1] : "";
+        if (client.knockRoom(args.positional[0], reason))
+            std::cout << "Knocked on " << args.positional[0] << std::endl;
+        else { std::cerr << "Knock failed" << std::endl; return 1; }
+        return 0;
+    });
+
     // ── Better error messages ──
     reg.registerCli("login", nullptr); // overridden later, placeholder
 
