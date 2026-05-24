@@ -4,6 +4,7 @@
 #include <chrono>
 #include <fstream>
 #include <algorithm>
+#include <sys/stat.h>
 
 #include "config.hpp"
 #include "cli/args.hpp"
@@ -236,18 +237,68 @@ int cmdStatus(const matrixcli::cli::Args&) {
 
     Config::instance().load("config.json");
 
-    // Try DB first
     db::Database dbi;
     dbi.open("matrixcli.db");
     auto acc = dbi.loadAccount();
 
+    std::cout << ANSI_BOLD "\n  matrixcli status\n" ANSI_RESET << std::endl;
+
     if (acc.is_logged_in()) {
-        std::cout << "Logged in as " << acc.user_id << std::endl;
-        std::cout << "Homeserver: " << acc.homeserver_url << std::endl;
-        std::cout << "Device ID: " << acc.device_id << std::endl;
-        std::cout << "Sync token: " << (acc.next_batch.empty() ? "(none)" : acc.next_batch.substr(0, 20) + "...") << std::endl;
-        bool offline = acc.next_batch.empty();
-        std::cout << "Status:     " << (offline ? ANSI_RED "offline (run matrixcli serve to sync)" ANSI_RESET : ANSI_GREEN "synced" ANSI_RESET) << std::endl;
+        // Account
+        std::cout << ANSI_CYAN "\n  ── Account ──\n" ANSI_RESET;
+        std::cout << "  User:       " << acc.user_id << std::endl;
+        std::cout << "  Homeserver: " << acc.homeserver_url << std::endl;
+        std::cout << "  Device:     " << acc.device_id << std::endl;
+
+        // Sync
+        bool synced = !acc.next_batch.empty();
+        std::cout << ANSI_CYAN "\n  ── Sync ──\n" ANSI_RESET;
+        std::cout << "  Status:     " << (synced ? ANSI_GREEN "● online" ANSI_RESET : ANSI_RED "○ offline" ANSI_RESET) << std::endl;
+        if (synced) std::cout << "  Token:      " << acc.next_batch.substr(0, 20) << "..." << std::endl;
+
+        // Rooms
+        auto rooms = dbi.listRooms();
+        int total_msgs = 0;
+        for (auto& r : rooms) total_msgs += dbi.getEventCount(r.value("room_id", ""));
+        int total_notif = dbi.getNotificationCount();
+        int highlight = 0;
+        auto notifs = dbi.getNotifications(99, true);
+        for (auto& n : notifs) if (n.value("highlight", false)) highlight++;
+
+        std::cout << ANSI_CYAN "\n  ── Rooms ──\n" ANSI_RESET;
+        std::cout << "  Rooms:      " << rooms.size() << std::endl;
+        std::cout << "  Messages:   " << total_msgs << std::endl;
+        std::cout << "  Unread:     " << total_notif;
+        if (highlight > 0) std::cout << ANSI_BOLD " (" << highlight << " highlights)" ANSI_RESET;
+        std::cout << std::endl;
+
+        // Room list (top 5 by notification)
+        if (total_notif > 0) {
+            std::vector<std::pair<int, std::string>> sorted;
+            for (auto& r : rooms) {
+                int n = dbi.getNotificationCount(r.value("room_id", ""));
+                if (n > 0) sorted.push_back({n, r.value("name", r.value("room_id", ""))});
+            }
+            std::sort(sorted.rbegin(), sorted.rend());
+            int show = std::min(5, (int)sorted.size());
+            for (int i = 0; i < show; i++)
+                std::cout << "    " << sorted[i].second << " [" << sorted[i].first << "]" << std::endl;
+        }
+
+        // Protocols
+        std::cout << ANSI_CYAN "\n  ── Protocols ──\n" ANSI_RESET;
+        std::cout << "  Matrix:     " ANSI_GREEN "● active" ANSI_RESET << std::endl;
+        std::cout << "  IRC:        " << "○ not connected" << std::endl;
+        std::cout << "  TDLib:      " << (g_tdlib.isAvailable() ? (g_tdlib.authState() == tdlib::TdAuthState::Ready ? ANSI_GREEN "● ready" ANSI_RESET : "○ configuring") : "○ not installed") << std::endl;
+        std::cout << "  Lemmy:      " << (g_lemmy.isLoggedIn() ? ANSI_GREEN "● logged in" ANSI_RESET : "○ not logged in") << std::endl;
+        std::cout << "  DeltaChat:  " << (g_dc.isAvailable() ? (g_dc.isConfigured() ? ANSI_GREEN "● configured" ANSI_RESET : "○ not configured") : "○ not installed") << std::endl;
+
+        // Storage
+        std::cout << ANSI_CYAN "\n  ── Storage ──\n" ANSI_RESET;
+        struct stat st;
+        int db_size = stat("matrixcli.db", &st) == 0 ? st.st_size / 1024 : 0;
+        std::cout << "  DB size:    " << db_size << " KB" << std::endl;
+        std::cout << "  Events:     " << total_msgs << std::endl;
     } else if (!Config::instance().accessToken().empty()) {
         std::cout << "Logged in as " << Config::instance().userId() << std::endl;
         std::cout << "Homeserver: " << Config::instance().homeserverURL() << std::endl;
