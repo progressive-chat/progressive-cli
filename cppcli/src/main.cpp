@@ -8,6 +8,7 @@
 #include "config.hpp"
 #include "cli/args.hpp"
 #include "commands.hpp"
+#include "globals.hpp"
 #include "server/server.hpp"
 #include "../lib/matrix/client.hpp"
 #include "../lib/tdlib/tdlib_bridge.hpp"
@@ -32,13 +33,19 @@
 namespace {
 
 std::atomic<bool> g_running{true};
-std::vector<std::string> _notifyKeywords;
-matrixcli::util::TypingMonitor g_typing;
-matrixcli::tdlib::TdBridge g_tdlib;
-matrixcli::lemmy::LemmyClient g_lemmy;
-matrixcli::deltachat::DcBridge g_dc;
-std::map<std::string, std::vector<std::pair<std::string, int>>> g_msgQueue;
-std::mutex g_queueMutex;
+
+} // anonymous namespace
+
+// Global bridge instances (defined here, declared in globals.hpp)
+namespace matrixcli {
+    tdlib::TdBridge g_tdlib;
+    lemmy::LemmyClient g_lemmy;
+    deltachat::DcBridge g_dc;
+    std::map<std::string, std::vector<std::pair<std::string, int>>> g_msgQueue;
+    std::mutex g_queueMutex;
+    util::TypingMonitor g_typing;
+    std::vector<std::string> g_notifyKeywords;
+}
 
 void signalHandler(int) {
     g_running = false;
@@ -1000,15 +1007,15 @@ int cmdTUI(const matrixcli::cli::Args&) {
                     std::string sub = (sp != std::string::npos) ? args.substr(0, sp) : args;
                     std::string val = (sp != std::string::npos) ? args.substr(sp + 1) : "";
                     if (sub == "add" && !val.empty()) {
-                        _notifyKeywords.push_back(val);
+                        g_notifyKeywords.push_back(val);
                         chat.setConnectionStatus("Notify keyword added: " + val);
                     } else if (sub == "remove" && !val.empty()) {
-                        auto it = std::find(_notifyKeywords.begin(), _notifyKeywords.end(), val);
-                        if (it != _notifyKeywords.end()) _notifyKeywords.erase(it);
+                        auto it = std::find(g_notifyKeywords.begin(), g_notifyKeywords.end(), val);
+                        if (it != g_notifyKeywords.end()) g_notifyKeywords.erase(it);
                         chat.setConnectionStatus("Notify keyword removed: " + val);
                     } else if (sub == "list") {
                         std::string list;
-                        for (auto& k : _notifyKeywords) list += k + " ";
+                        for (auto& k : g_notifyKeywords) list += k + " ";
                         chat.setConnectionStatus("Keywords: " + (list.empty() ? "(none)" : list));
                     }
                 } else if (cmd == "directory" || cmd == "dir") {
@@ -1370,11 +1377,13 @@ int cmdTUI(const matrixcli::cli::Args&) {
 }
 #endif
 
-} // anonymous namespace
-
 int main(int argc, char* argv[]) {
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
+
+    // Register all commands via registry (extensible, no if/else)
+    extern void registerBuiltinCommands();
+    registerBuiltinCommands();
 
     auto args = matrixcli::cli::parseArgs(argc, argv);
 

@@ -2,6 +2,7 @@ set(SOURCES
     main.cpp
     config.cpp
     commands.cpp
+    bridge_commands.cpp
     cli/args.cpp
     server/server.cpp
 )
