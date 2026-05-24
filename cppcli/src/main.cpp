@@ -10,6 +10,7 @@
 #include "server/server.hpp"
 #include "../lib/matrix/client.hpp"
 #include "../lib/tdlib/tdlib_bridge.hpp"
+#include "../lib/irc/irc_client.hpp"
 #include "../lib/matrix/pushrules.hpp"
 #include "../lib/database/db.hpp"
 #include "../lib/util/logger.hpp"
@@ -1656,6 +1657,51 @@ int main(int argc, char* argv[]) {
             std::cerr << "Unknown td subcommand: " << sub << std::endl;
             return 1;
         }
+        return 0;
+    }
+
+    if (args.command == "irc") {
+        using namespace matrixcli;
+        if (args.positional.empty()) {
+            std::cerr << "Usage: matrixcli irc <connect|join|msg|leave|whois|names>" << std::endl;
+            return 1;
+        }
+        static irc::IrcClient ircClient;
+        static bool ircSetup = false;
+        std::string sub = args.positional[0];
+
+        if (sub == "connect") {
+            irc::IrcServerConfig cfg;
+            cfg.host = args.positional.size() > 1 ? args.positional[1] : "irc.libera.chat";
+            cfg.port = args.positional.size() > 2 ? std::stoi(args.positional[2]) : 6667;
+            cfg.nick = args.positional.size() > 3 ? args.positional[3] : "matrixcli";
+            ircClient.setConfig(cfg);
+            if (!ircSetup) {
+                ircClient.onMessage([](const irc::IrcMessage& msg) {
+                    std::cout << "  [" << msg.target << "] <" << msg.prefix << "> " << msg.body << std::endl;
+                });
+                ircClient.onStateChange([](irc::IrcState s) {
+                    const char* names[] = {"Disconnected","Connecting","Connected","Registered","Error"};
+                    std::cout << "IRC: " << names[(int)s] << std::endl;
+                });
+                ircSetup = true;
+            }
+            ircClient.connect();
+            std::this_thread::sleep_for(std::chrono::seconds(3));
+        } else if (sub == "join" && args.positional.size() >= 2) {
+            ircClient.join(args.positional[1]);
+        } else if (sub == "msg" && args.positional.size() >= 3) {
+            std::string text;
+            for (size_t i = 2; i < args.positional.size(); i++) { if (i > 2) text += " "; text += args.positional[i]; }
+            ircClient.privmsg(args.positional[1], text);
+        } else if (sub == "leave" && args.positional.size() >= 2) {
+            ircClient.part(args.positional[1]);
+        } else if (sub == "whois" && args.positional.size() >= 2) {
+            ircClient.whois(args.positional[1]);
+        } else if (sub == "names" && args.positional.size() >= 2) {
+            ircClient.names(args.positional[1]);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
         return 0;
     }
 

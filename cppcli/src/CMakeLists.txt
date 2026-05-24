@@ -18,6 +18,7 @@ target_link_libraries(matrixcli PRIVATE
     matrixcli_formats
     matrixcli_tdlib
     matrixcli_lemmy
+    matrixcli_irc
     Threads::Threads
 )
 
