@@ -14,6 +14,7 @@
 #include "../lib/util/logger.hpp"
 #include "../lib/util/notifications.hpp"
 #include "../lib/util/string_utils.hpp"
+#include "../lib/util/client_utils.hpp"
 
 #ifdef BUILD_TUI
 #include "../lib/tui/screen.hpp"
@@ -27,6 +28,7 @@ namespace {
 
 std::atomic<bool> g_running{true};
 std::vector<std::string> _notifyKeywords;
+matrixcli::util::TypingMonitor g_typing;
 
 void signalHandler(int) {
     g_running = false;
@@ -342,8 +344,7 @@ int cmdView(const matrixcli::cli::Args& args) {
         std::string body = ev.content.value("body", "(no body)");
         if (body.size() > 120) body = body.substr(0, 120) + "...";
         std::string sender = ev.sender;
-        auto at = sender.find(':');
-        if (at != std::string::npos && sender.starts_with("@")) sender = sender.substr(1, at - 1);
+        std::string sender_name = util::userIdToName(sender);
 
         std::string ts_str;
         if (show_ts) ts_str = " " + relativeTime(ev.origin_server_ts);
@@ -411,7 +412,7 @@ int cmdView(const matrixcli::cli::Args& args) {
         if (reply_count > 0) reply_str = " [" + std::to_string(reply_count) + " replies]";
 
         if (!reply_ctx.empty()) std::cout << ANSI_GRAY "       " << reply_ctx << ANSI_RESET << std::endl;
-        std::cout << "  " << prefix << ansiUser(ev.sender, "[" + sender + "]") << ts_str << " " << body << reply_str;
+        std::cout << "  " << prefix << ansiUser(ev.sender, "[" + sender_name + "]") << ts_str << " " << body << reply_str;
         if (verbose) {
             std::cout << "\n" ANSI_GRAY "       id:" << ev.event_id;
             if (!ev.redacts.empty()) std::cout << " redacts:" << ev.redacts;
@@ -1225,12 +1226,17 @@ int cmdTUI(const matrixcli::cli::Args&) {
                     // Update vote counts by re-reading room state
                 }
 
-                // Typing events
+                // Typing events with monitor
                 if (ev.type == "m.typing" && ev.content.contains("user_ids")) {
+                    int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::system_clock::now().time_since_epoch()).count();
+                    for (auto& uid : ev.content["user_ids"])
+                        g_typing.updateUser(ev.room_id, uid.get<std::string>(), now);
+                    g_typing.pruneExpired(now);
+                    auto typing = g_typing.formatTypingUsers(ev.room_id);
+                    if (!typing.empty()) chat.setConnectionStatus(typing);
                     std::vector<std::string> users;
-                    for (auto& uid : ev.content["user_ids"]) {
-                        users.push_back(uid.get<std::string>());
-                    }
+                    for (auto& uid : ev.content["user_ids"]) users.push_back(uid.get<std::string>());
                     chat.setTypingUsers(ev.room_id, users);
                 }
 
