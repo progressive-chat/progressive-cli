@@ -1,6 +1,8 @@
 #include "commands.hpp"
 #include "globals.hpp"
 #include "../lib/irc/irc_client.hpp"
+#include "../lib/matrix/client.hpp"
+#include "../lib/database/db.hpp"
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -103,6 +105,57 @@ void registerBuiltinCommands() {
         }
         return 0;
     });
+
+    // ── Shell completion ──
+    reg.registerCli("completion", [](const cli::Args& args) -> int {
+        std::string shell = args.positional.size() > 0 ? args.positional[0] : "bash";
+        auto cmds = CommandRegistry::instance().cliCommands();
+        // Add built-in commands
+        std::vector<std::string> all = {"serve","login","status","rooms","view","send","demo","tui",
+            "reply","vote","react","topic","roomname","avatar","poll","config","search",
+            "notifications","read","help","version","completion"};
+        for (auto& c : cmds) all.push_back(c);
+
+        if (shell == "bash") {
+            std::cout << "_matrixcli() {\n  local cur prev words cword\n"
+                      << "  _init_completion || return\n"
+                      << "  COMPREPLY=($(compgen -W '";
+            for (size_t i = 0; i < all.size(); i++) { if (i) std::cout << " "; std::cout << all[i]; }
+            std::cout << "' -- \"$cur\"))\n}\ncomplete -F _matrixcli matrixcli\n";
+        } else if (shell == "zsh") {
+            std::cout << "#compdef matrixcli\n_arguments '1: :(";
+            for (size_t i = 0; i < all.size(); i++) { if (i) std::cout << " "; std::cout << all[i]; }
+            std::cout << ")'\n";
+        } else if (shell == "fish") {
+            std::cout << "complete -c matrixcli -f -a '";
+            for (size_t i = 0; i < all.size(); i++) { if (i) std::cout << " "; std::cout << all[i]; }
+            std::cout << "'\n";
+        }
+        return 0;
+    });
+
+    // ── Quick reply ──
+    reg.registerCli("reply", [](const cli::Args& args) -> int {
+        if (args.positional.size() < 3) { std::cerr << "Usage: matrixcli reply <room> <event_id> <text>" << std::endl; return 1; }
+        using namespace matrixcli;
+        matrix::Client client;
+        db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+        auto acc = dbi.loadAccount();
+        if (!acc.is_logged_in()) { std::cerr << "Not logged in" << std::endl; return 1; }
+        client.setHomeserverURL(acc.homeserver_url); client.setAccessToken(acc.access_token);
+        std::string text;
+        for (size_t i = 2; i < args.positional.size(); i++) { if (i > 2) text += " "; text += args.positional[i]; }
+        try {
+            nlohmann::json content = {{"msgtype","m.text"},{"body",text},
+                {"m.relates_to",{{"event_id",args.positional[1]},{"rel_type","m.in_reply_to"}}}};
+            auto eid = client.sendEvent(args.positional[0], "m.room.message", content);
+            std::cout << "Replied [" << eid << "]" << std::endl;
+        } catch (const std::exception& e) { std::cerr << e.what() << std::endl; return 1; }
+        return 0;
+    });
+
+    // ── Better error messages ──
+    reg.registerCli("login", nullptr); // overridden later, placeholder
 
     // ── Version ──
     reg.registerCli("version", [](const cli::Args&) -> int {

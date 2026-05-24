@@ -312,6 +312,7 @@ int cmdView(const matrixcli::cli::Args& args) {
     bool verbose = args.options.count("verbose") || args.options.count("ids");
     bool show_ts = args.options.count("ts") || args.options.count("time");
     bool debug = args.options.count("debug") || args.options.count("raw");
+    bool json_out = args.options.count("json");
 
     db::Database dbi;
     if (!dbi.open("matrixcli.db")) { std::cerr << "Cannot open database" << std::endl; return 1; }
@@ -335,6 +336,23 @@ int cmdView(const matrixcli::cli::Args& args) {
         std::cout << "(no older messages)" << std::endl;
         return 0;
     }
+    // JSON output mode (pipe-friendly)
+    if (json_out) {
+        nlohmann::json j;
+        j["room_id"] = room_id;
+        j["messages"] = nlohmann::json::array();
+        for (auto& ev : events) {
+            nlohmann::json m;
+            m["event_id"] = ev.event_id;
+            m["sender"] = ev.sender;
+            m["body"] = ev.content.value("body", "");
+            m["ts"] = ev.origin_server_ts;
+            j["messages"].push_back(m);
+        }
+        std::cout << j.dump() << std::endl;
+        return 0;
+    }
+
     std::reverse(events.begin(), events.end());
 
     // Show pagination hint
