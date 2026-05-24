@@ -1597,6 +1597,68 @@ int main(int argc, char* argv[]) {
     }
 #endif
 
+    if (args.command == "td") {
+        // matrixcli td <subcommand> [args...]
+        using namespace matrixcli;
+        if (args.positional.empty()) {
+            std::cerr << "Usage: matrixcli td <login|phone|code|password|chats|msg|history>" << std::endl;
+            return 1;
+        }
+        std::string sub = args.positional[0];
+
+        if (sub == "login" || sub == "start") {
+            if (!g_tdlib.isAvailable()) g_tdlib.initialize();
+            if (!g_tdlib.isAvailable()) { std::cerr << "TDLib not available" << std::endl; return 1; }
+            g_tdlib.setTdlibParams(94575, "a3406de8d171bb422bb6ddf3bbd8f4e2");
+            std::cout << "TDLib initialized. Run: matrixcli td phone +1234567890" << std::endl;
+        } else if (sub == "phone") {
+            if (args.positional.size() < 2) { std::cerr << "Usage: matrixcli td phone +1234567890" << std::endl; return 1; }
+            if (!g_tdlib.isAvailable() && !g_tdlib.initialize()) { std::cerr << "TDLib not available" << std::endl; return 1; }
+            g_tdlib.sendPhoneNumber(args.positional[1]);
+            std::cout << "Code sent. Run: matrixcli td code XXXXX" << std::endl;
+        } else if (sub == "code") {
+            if (args.positional.size() < 2) { std::cerr << "Usage: matrixcli td code XXXXX" << std::endl; return 1; }
+            g_tdlib.sendAuthCode(args.positional[1]);
+            std::cout << "Code sent. If 2FA: matrixcli td password yourpassword" << std::endl;
+        } else if (sub == "password" || sub == "2fa") {
+            if (args.positional.size() < 2) { std::cerr << "Usage: matrixcli td password your2fa" << std::endl; return 1; }
+            g_tdlib.sendPassword(args.positional[1]);
+            std::cout << "2FA sent. Run: matrixcli td chats" << std::endl;
+        } else if (sub == "chats") {
+            if (g_tdlib.authState() != tdlib::TdAuthState::Ready) { std::cerr << "Not authorized" << std::endl; return 1; }
+            auto chats = g_tdlib.getChats(50);
+            for (auto& c : chats) {
+                std::cout << "  [" << c.id << "] " << c.title << " (" << c.type << ")" << " unread:" << c.unread_count << std::endl;
+            }
+        } else if (sub == "msg" || sub == "send") {
+            if (args.positional.size() < 3) { std::cerr << "Usage: matrixcli td msg <chat_id> <text>" << std::endl; return 1; }
+            int64_t chatId = std::stoll(args.positional[1]);
+            std::string text;
+            for (size_t i = 2; i < args.positional.size(); i++) { if (i > 2) text += " "; text += args.positional[i]; }
+            if (g_tdlib.authState() != tdlib::TdAuthState::Ready) { std::cerr << "Not authorized" << std::endl; return 1; }
+            g_tdlib.sendMessage(chatId, text);
+            std::cout << "Sent to chat " << chatId << std::endl;
+        } else if (sub == "history" || sub == "view") {
+            if (args.positional.size() < 2) { std::cerr << "Usage: matrixcli td history <chat_id> [limit]" << std::endl; return 1; }
+            int64_t chatId = std::stoll(args.positional[1]);
+            int limit = args.positional.size() >= 3 ? std::stoi(args.positional[2]) : 20;
+            if (g_tdlib.authState() != tdlib::TdAuthState::Ready) { std::cerr << "Not authorized" << std::endl; return 1; }
+            auto msgs = g_tdlib.getChatHistory(chatId, 0, limit);
+            for (auto& m : msgs) {
+                std::cout << (m.is_outgoing ? "  → " : "  ← ") << m.text.substr(0, 100) << std::endl;
+            }
+        } else if (sub == "status") {
+            static const char* states[] = {"Closed","WaitParams","WaitPhone","WaitCode","WaitPassword","Ready","LoggingOut","Error"};
+            int s = (int)g_tdlib.authState();
+            std::cout << "TDLib: " << (g_tdlib.isAvailable() ? "available" : "not available")
+                      << ", auth: " << (s >= 0 && s < 8 ? states[s] : "unknown") << std::endl;
+        } else {
+            std::cerr << "Unknown td subcommand: " << sub << std::endl;
+            return 1;
+        }
+        return 0;
+    }
+
     std::cerr << "Unknown command: " << args.command << "\n"
               << "Run 'matrixcli --help' for usage." << std::endl;
     return 1;
