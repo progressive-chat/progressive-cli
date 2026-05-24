@@ -242,6 +242,14 @@ public:
     // User directory search
     json searchUserDirectory(const std::string& search_term, int limit = 20);
 
+    // Admin API (requires server admin privileges)
+    json adminDeactivateUser(const std::string& user_id);
+    json adminResetPassword(const std::string& user_id, const std::string& new_password);
+    json adminListUsers(int limit = 100, const std::string& from = "");
+    json adminDeleteRoom(const std::string& room_id);
+    json adminShadowBan(const std::string& user_id);
+    json adminRoomStats();
+
     // Search
     json searchMessages(const std::string& search_term,
                         const std::string& room_id = "",

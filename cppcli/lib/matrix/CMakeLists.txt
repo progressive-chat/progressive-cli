@@ -7,6 +7,7 @@ add_library(matrixcli_matrix STATIC
     api.cpp
     pushrules.cpp
     room_sort.cpp
+    sliding_sync.cpp
 )
 target_include_directories(matrixcli_matrix PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(matrixcli_matrix PUBLIC

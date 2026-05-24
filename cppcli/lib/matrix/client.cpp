@@ -1473,4 +1473,38 @@ json Client::searchUserDirectory(const std::string& search_term, int limit) {
     return j;
 }
 
+json Client::adminDeactivateUser(const std::string& user_id) {
+    json body = {{"erase", false}};
+    auto resp = authPost("/_synapse/admin/v1/deactivate/" + user_id, body.dump());
+    return resp.ok() ? json::parse(resp.body) : json::object();
+}
+
+json Client::adminResetPassword(const std::string& user_id, const std::string& new_password) {
+    json body = {{"new_password", new_password}};
+    auto resp = authPost("/_synapse/admin/v1/reset_password/" + user_id, body.dump());
+    return resp.ok() ? json::parse(resp.body) : json::object();
+}
+
+json Client::adminListUsers(int limit, const std::string& from) {
+    std::string path = "/_synapse/admin/v2/users?limit=" + std::to_string(limit);
+    if (!from.empty()) path += "&from=" + http::urlEncode(from);
+    auto resp = authGet(path);
+    return resp.ok() ? json::parse(resp.body) : json::object();
+}
+
+json Client::adminDeleteRoom(const std::string& room_id) {
+    auto resp = authPost("/_synapse/admin/v1/rooms/" + room_id + "/delete", "{}");
+    return resp.ok() ? json::parse(resp.body) : json::object();
+}
+
+json Client::adminShadowBan(const std::string& user_id) {
+    auto resp = authPost("/_synapse/admin/v1/users/" + user_id + "/shadow_ban", "{}");
+    return resp.ok() ? json::parse(resp.body) : json::object();
+}
+
+json Client::adminRoomStats() {
+    auto resp = authGet("/_synapse/admin/v1/statistics/database/rooms");
+    return resp.ok() ? json::parse(resp.body) : json::object();
+}
+
 }} // namespace matrixcli::matrix

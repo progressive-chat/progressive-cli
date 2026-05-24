@@ -1052,6 +1052,24 @@ int cmdTUI(const matrixcli::cli::Args&) {
                             nlohmann::json{{"via",nlohmann::json::array({""})},{"suggested",false},{"auto_join",false}}); } catch (...) {}
                 } else if (cmd == "joinspace") {
                     if (!args.empty()) try { client.joinRoom(args); } catch (...) {}
+                } else if (cmd == "admin") {
+                    auto sp = args.find(' ');
+                    std::string sub = (sp != std::string::npos) ? args.substr(0, sp) : args;
+                    std::string val = (sp != std::string::npos) ? args.substr(sp + 1) : "";
+                    if (sub == "deactivate" && !val.empty())
+                        try { client.adminDeactivateUser(val); chat.setConnectionStatus("Deactivated " + val); } catch (...) {}
+                    else if (sub == "resetpw" && !val.empty()) {
+                        auto sp2 = val.find(' '); auto uid = sp2 != std::string::npos ? val.substr(0, sp2) : val;
+                        auto pw = sp2 != std::string::npos ? val.substr(sp2 + 1) : "";
+                        try { client.adminResetPassword(uid, pw); chat.setConnectionStatus("Password reset for " + uid); } catch (...) {}
+                    } else if (sub == "listusers")
+                        try { auto u = client.adminListUsers(); chat.setConnectionStatus("Users: " + std::to_string(u.value("total", 0))); } catch (...) {}
+                    else if (sub == "deleteroom" && !val.empty())
+                        try { client.adminDeleteRoom(val); chat.setConnectionStatus("Room deleted"); } catch (...) {}
+                    else if (sub == "shadowban" && !val.empty())
+                        try { client.adminShadowBan(val); chat.setConnectionStatus("Shadow banned " + val); } catch (...) {}
+                    else if (sub == "roomstats")
+                        try { client.adminRoomStats(); chat.setConnectionStatus("Room stats fetched"); } catch (...) {}
                 }
                 } else if (cmd == "create" || cmd == "newroom") {
                     auto sp = args.find(' ');
