@@ -7,6 +7,7 @@
 
 #include "config.hpp"
 #include "cli/args.hpp"
+#include "commands.hpp"
 #include "server/server.hpp"
 #include "../lib/matrix/client.hpp"
 #include "../lib/tdlib/tdlib_bridge.hpp"
@@ -1773,6 +1774,10 @@ int main(int argc, char* argv[]) {
         }
         return 0;
     }
+
+    // Try command registry (extensible, no if/else needed)
+    auto cliHandler = matrixcli::CommandRegistry::instance().findCli(args.command);
+    if (cliHandler) return cliHandler(args);
 
     std::cerr << "Unknown command: " << args.command << "\n"
               << "Run 'matrixcli --help' for usage." << std::endl;

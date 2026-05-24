@@ -1,6 +1,7 @@
 set(SOURCES
     main.cpp
     config.cpp
+    commands.cpp
     cli/args.cpp
     server/server.cpp
 )
