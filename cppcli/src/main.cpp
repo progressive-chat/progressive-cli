@@ -232,8 +232,19 @@ int cmdLogin(const matrixcli::cli::Args& args) {
     return 0;
 }
 
-int cmdStatus(const matrixcli::cli::Args&) {
+int cmdStatus(const matrixcli::cli::Args& args) {
     using namespace matrixcli;
+
+    bool watch = args.options.count("watch") || args.options.count("live");
+    int interval = 3;
+    auto iv = args.options.find("watch"); if (iv != args.options.end() && !iv->second.empty() && iv->second != "true") interval = std::stoi(iv->second);
+    iv = args.options.find("live"); if (iv != args.options.end() && !iv->second.empty() && iv->second != "true") interval = std::stoi(iv->second);
+
+    // Room drill-down
+    bool drill = !args.positional.empty();
+
+    auto printStatus = [&]() {
+    if (watch) std::cout << "\033[2J\033[H"; // clear screen
 
     Config::instance().load("config.json");
 
@@ -254,7 +265,38 @@ int cmdStatus(const matrixcli::cli::Args&) {
         bool synced = !acc.next_batch.empty();
         std::cout << ANSI_CYAN "\n  ── Sync ──\n" ANSI_RESET;
         std::cout << "  Status:     " << (synced ? ANSI_GREEN "● online" ANSI_RESET : ANSI_RED "○ offline" ANSI_RESET) << std::endl;
-        if (synced) std::cout << "  Token:      " << acc.next_batch.substr(0, 20) << "..." << std::endl;
+        if (synced) {
+            std::cout << "  Token:      " << acc.next_batch.substr(0, 20) << "..." << std::endl;
+            // Show last sync time if we can determine it
+            try {
+                struct stat st2;
+                if (stat("matrixcli.db", &st2) == 0)
+                    std::cout << "  Last sync:  " << relativeTime(st2.st_mtime * 1000) << std::endl;
+            } catch (...) {}
+        }
+
+        // E2EE
+        std::cout << ANSI_CYAN "\n  ── Encryption ──\n" ANSI_RESET;
+        matrix::Client tmpClient;
+        tmpClient.setHomeserverURL(acc.homeserver_url);
+        tmpClient.setAccessToken(acc.access_token);
+        try {
+            if (tmpClient.initCrypto(acc.user_id, acc.device_id))
+                std::cout << "  Device keys: " ANSI_GREEN "● ready" ANSI_RESET << std::endl;
+            else std::cout << "  Device keys: ○ not initialized" << std::endl;
+        } catch (...) { std::cout << "  Device keys: ○ error" << std::endl; }
+        try {
+            auto devices = tmpClient.getDevices();
+            int dev_count = devices.value("devices", nlohmann::json::array()).size();
+            std::cout << "  Devices:     " << dev_count << std::endl;
+        } catch (...) {}
+
+        // Server info
+        std::cout << ANSI_CYAN "\n  ── Server ──\n" ANSI_RESET;
+        try {
+            auto versions = tmpClient.getServerVersions();
+            std::cout << "  Versions:    " << (versions.versions.empty() ? "?" : versions.versions[0].substr(0, 6)) << std::endl;
+        } catch (...) { std::cout << "  Versions:    unreachable" << std::endl; }
 
         // Rooms
         auto rooms = dbi.listRooms();
@@ -283,6 +325,20 @@ int cmdStatus(const matrixcli::cli::Args&) {
             int show = std::min(5, (int)sorted.size());
             for (int i = 0; i < show; i++)
                 std::cout << "    " << sorted[i].second << " [" << sorted[i].first << "]" << std::endl;
+
+            // Last 3 notification previews
+            auto recent = dbi.getNotifications(3, true);
+            if (!recent.empty()) {
+                std::cout << "\n  Last notifications:" << std::endl;
+                for (auto& n : recent) {
+                    std::string sender = n.value("sender", "?");
+                    auto at = sender.find(':'); if (at != std::string::npos) sender = sender.substr(1, at - 1);
+                    std::string body = n.value("body", "");
+                    if (body.size() > 50) body = body.substr(0, 47) + "...";
+                    bool hl = n.value("highlight", false);
+                    std::cout << "    " << (hl ? ANSI_BOLD "★" ANSI_RESET : " ") << " " << sender << ": " << body << std::endl;
+                }
+            }
         }
 
         // Protocols
@@ -297,14 +353,68 @@ int cmdStatus(const matrixcli::cli::Args&) {
         std::cout << ANSI_CYAN "\n  ── Storage ──\n" ANSI_RESET;
         struct stat st;
         int db_size = stat("matrixcli.db", &st) == 0 ? st.st_size / 1024 : 0;
-        std::cout << "  DB size:    " << db_size << " KB" << std::endl;
-        std::cout << "  Events:     " << total_msgs << std::endl;
+        // Room drill-down
+        if (drill) {
+            std::string query = args.positional[0];
+            auto rooms = dbi.listRooms();
+            std::string room_id;
+            for (auto& r : rooms) {
+                std::string name = r.value("name", "");
+                if (name == query || name.find(query) == 0 || r.value("room_id", "") == query) {
+                    room_id = r.value("room_id", "");
+                    break;
+                }
+            }
+            if (!room_id.empty()) {
+                std::cout << ANSI_CYAN "\n  ── Room Detail ──\n" ANSI_RESET;
+                for (auto& r : rooms) {
+                    if (r.value("room_id", "") == room_id) {
+                        std::cout << "  Topic:      " << r.value("topic", "(none)") << std::endl;
+                        std::cout << "  Members:    " << r.value("member_count", 0) << std::endl;
+                        std::cout << "  E2EE:       " << (r.value("is_encrypted", false) ? ANSI_GREEN "yes" ANSI_RESET : "no") << std::endl;
+                        std::cout << "  DM:         " << (r.value("is_direct", false) ? "yes" : "no") << std::endl;
+                    }
+                }
+                // Last 3 messages
+                auto msgs = dbi.getEvents(room_id, 3);
+                if (!msgs.empty()) {
+                    std::cout << "\n  Last messages:" << std::endl;
+                    for (auto& ev : msgs) {
+                        std::string sender = ev.sender;
+                        auto at = sender.find(':'); if (at != std::string::npos) sender = sender.substr(1, at - 1);
+                        std::string body = ev.content.value("body", "(no body)");
+                        if (body.size() > 60) body = body.substr(0, 57) + "...";
+                        std::cout << "    " << sender << ": " << body << std::endl;
+                    }
+                }
+                // Color-coded activity (messages in last 24h)
+                int recent = 0;
+                int64_t day_ago = std::chrono::duration_cast<std::chrono::seconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count() - 86400;
+                for (auto& ev : dbi.getEvents(room_id, 100)) {
+                    if (ev.origin_server_ts / 1000 > day_ago) recent++;
+                }
+                std::string heat = recent > 20 ? ANSI_RED "● hot" : recent > 5 ? ANSI_YELLOW "● warm" : ANSI_GREEN "● quiet";
+                std::cout << "\n  Activity:    " << heat << ANSI_RESET " (" << recent << " in 24h)" << std::endl;
+            }
+        }
     } else if (!Config::instance().accessToken().empty()) {
         std::cout << "Logged in as " << Config::instance().userId() << std::endl;
         std::cout << "Homeserver: " << Config::instance().homeserverURL() << std::endl;
         std::cout << "Device ID: " << Config::instance().deviceId() << std::endl;
     } else {
         std::cout << "Not logged in. Use 'matrixcli login' to authenticate." << std::endl;
+    }
+    }; // end printStatus lambda
+
+    printStatus();
+
+    if (watch) {
+        std::cout << "\n" ANSI_DIM "  Watching (Ctrl+C to stop, " << interval << "s interval)" ANSI_RESET << std::endl;
+        while (g_running.load()) {
+            std::this_thread::sleep_for(std::chrono::seconds(interval));
+            printStatus();
+        }
     }
 
     return 0;
