@@ -4,9 +4,12 @@
 #include "../lib/matrix/client.hpp"
 #include "../lib/database/db.hpp"
 #include "../lib/util/string_utils.hpp"
+#include "../src/config.hpp"
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <termios.h>
+#include <unistd.h>
 
 using namespace matrixcli;
 
@@ -280,6 +283,88 @@ void registerBuiltinCommands() {
 
     // ── Better error messages ──
     reg.registerCli("login", nullptr); // overridden later, placeholder
+
+    // ── Setup wizard ──
+    reg.registerCli("setup", [](const cli::Args&) -> int {
+        using namespace matrixcli;
+        std::string homeserver, username, password;
+
+        std::cout << ANSI_BOLD "\n  ╔══════════════════════════════╗\n"
+                  << "  ║   matrixcli setup wizard    ║\n"
+                  << "  ╚══════════════════════════════╝\n\n" ANSI_RESET;
+
+        // Step 1: Homeserver
+        std::cout << "  Homeserver URL [" ANSI_CYAN "https://matrix.org" ANSI_RESET "]: ";
+        std::getline(std::cin, homeserver);
+        if (homeserver.empty()) homeserver = "https://matrix.org";
+
+        // Step 2: Username
+        std::cout << "  Matrix ID (e.g. " ANSI_CYAN "@user:matrix.org" ANSI_RESET "): ";
+        std::getline(std::cin, username);
+        if (username.empty()) { std::cerr << "Username required.\n"; return 1; }
+
+        // Step 3: Password (no echo)
+        std::cout << "  Password: " ANSI_DIM "(hidden)" ANSI_RESET "\n  ";
+        struct termios oldt, newt;
+        tcgetattr(STDIN_FILENO, &oldt);
+        newt = oldt; newt.c_lflag &= ~ECHO;
+        tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+        std::getline(std::cin, password);
+        tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+        std::cout << "\n";
+        if (password.empty()) { std::cerr << "Password required.\n"; return 1; }
+
+        // Step 4: Login
+        std::cout << "  Connecting to " << homeserver << "...\n";
+        matrix::Client client;
+        client.setHomeserverURL(homeserver);
+        try {
+            auto creds = client.loginPassword(username, password);
+            std::cout << ANSI_GREEN "  ✓ Logged in as " << creds.user_id << ANSI_RESET << "\n\n";
+
+            // Save
+            Config::instance().set("homeserver_url", homeserver);
+            Config::instance().set("access_token", creds.access_token);
+            Config::instance().set("user_id", creds.user_id);
+            Config::instance().set("device_id", creds.device_id);
+            Config::instance().save();
+
+            db::Database dbi;
+            dbi.open("matrixcli.db");
+            db::StoredAccount acc;
+            acc.homeserver_url = homeserver;
+            acc.user_id = creds.user_id;
+            acc.access_token = creds.access_token;
+            acc.device_id = creds.device_id;
+            dbi.saveAccount(acc);
+
+            // Quick sync to discover rooms
+            std::cout << "  Discovering rooms...\n";
+            try {
+                client.setDatabase(&dbi);
+                auto sr = client.syncOnce("", "", 5000);
+                int room_count = 0;
+                for (auto& [rid, room] : sr.rooms.join) {
+                    dbi.upsertRoom(rid, room);
+                    room_count++;
+                }
+                std::cout << ANSI_GREEN "  ✓ " << room_count << " rooms found" ANSI_RESET << "\n\n";
+            } catch (...) { std::cout << "  (sync skipped — can run 'matrixcli serve' later)\n\n"; }
+
+            std::cout << ANSI_BOLD "  What's next:\n" ANSI_RESET
+                      << "    matrixcli rooms               list your rooms\n"
+                      << "    matrixcli view \"#room\" --ts  read messages\n"
+                      << "    matrixcli send \"#room\" \"Hi\" send a message\n"
+                      << "    matrixcli serve                start API server + background sync\n"
+                      << "    matrixcli tui                  full terminal UI\n\n";
+
+        } catch (const std::exception& e) {
+            std::cerr << ANSI_RED "  ✗ Login failed: " << e.what() << ANSI_RESET << "\n";
+            std::cerr << "  Check your credentials and try again.\n";
+            return 1;
+        }
+        return 0;
+    });
 
     // ── Version ──
     reg.registerCli("version", [](const cli::Args&) -> int {

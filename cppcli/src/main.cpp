@@ -246,6 +246,8 @@ int cmdStatus(const matrixcli::cli::Args&) {
         std::cout << "Homeserver: " << acc.homeserver_url << std::endl;
         std::cout << "Device ID: " << acc.device_id << std::endl;
         std::cout << "Sync token: " << (acc.next_batch.empty() ? "(none)" : acc.next_batch.substr(0, 20) + "...") << std::endl;
+        bool offline = acc.next_batch.empty();
+        std::cout << "Status:     " << (offline ? ANSI_RED "offline (run matrixcli serve to sync)" ANSI_RESET : ANSI_GREEN "synced" ANSI_RESET) << std::endl;
     } else if (!Config::instance().accessToken().empty()) {
         std::cout << "Logged in as " << Config::instance().userId() << std::endl;
         std::cout << "Homeserver: " << Config::instance().homeserverURL() << std::endl;
@@ -313,6 +315,7 @@ int cmdView(const matrixcli::cli::Args& args) {
     bool show_ts = args.options.count("ts") || args.options.count("time");
     bool debug = args.options.count("debug") || args.options.count("raw");
     bool json_out = args.options.count("json");
+    bool expand = args.options.count("expand") || args.options.count("full");
 
     db::Database dbi;
     if (!dbi.open("matrixcli.db")) { std::cerr << "Cannot open database" << std::endl; return 1; }
@@ -383,7 +386,33 @@ int cmdView(const matrixcli::cli::Args& args) {
         }
 
         std::string body = ev.content.value("body", "(no body)");
-        if (body.size() > 120) body = body.substr(0, 120) + "...";
+        if (!expand && body.size() > 120) body = body.substr(0, 120) + "...";
+
+        // Basic markdown → ANSI
+        std::string md_body;
+        for (size_t i = 0; i < body.size(); i++) {
+            if (body[i] == '*' && i+1 < body.size() && body[i+1] == '*') {
+                i += 2; md_body += ANSI_BOLD;
+                while (i < body.size() && !(body[i] == '*' && i+1 < body.size() && body[i+1] == '*'))
+                    md_body += body[i++];
+                md_body += ANSI_RESET;
+                if (i+1 < body.size()) i++;
+                continue;
+            }
+            if (body[i] == '*' && i > 0 && body[i-1] == ' ') {
+                i++; md_body += ANSI_ITALIC;
+                while (i < body.size() && body[i] != '*') md_body += body[i++];
+                md_body += ANSI_RESET;
+                continue;
+            }
+            if (body[i] == '`') {
+                i++; md_body += ANSI_DIM;
+                while (i < body.size() && body[i] != '`') md_body += body[i++];
+                md_body += ANSI_RESET;
+                continue;
+            }
+            md_body += body[i];
+        }
         std::string sender = ev.sender;
         std::string sender_name = util::userIdToName(sender);
 
@@ -457,10 +486,10 @@ int cmdView(const matrixcli::cli::Args& args) {
         // Message grouping: collapse sender if same as previous
         if (ev.sender == prev_sender && !prev_sender.empty()) {
             std::string indent(sender_name.size() + 3, ' ');
-            std::cout << indent << prefix << body << reply_str;
+            std::cout << indent << prefix << md_body << reply_str;
         } else {
             prev_sender = ev.sender;
-            std::cout << "  " << prefix << ansiUser(ev.sender, "[" + sender_name + "]") << ts_str << " " << body << reply_str;
+            std::cout << "  " << prefix << ansiUser(ev.sender, "[" + sender_name + "]") << ts_str << " " << md_body << reply_str;
         }
 
         // Show replied-to body if available
