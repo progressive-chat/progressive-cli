@@ -29,6 +29,9 @@ namespace {
 std::atomic<bool> g_running{true};
 std::vector<std::string> _notifyKeywords;
 matrixcli::util::TypingMonitor g_typing;
+// Message queue: room_id -> [{body, retries}]
+std::map<std::string, std::vector<std::pair<std::string, int>>> g_msgQueue;
+std::mutex g_queueMutex;
 
 void signalHandler(int) {
     g_running = false;
@@ -413,6 +416,16 @@ int cmdView(const matrixcli::cli::Args& args) {
 
         if (!reply_ctx.empty()) std::cout << ANSI_GRAY "       " << reply_ctx << ANSI_RESET << std::endl;
         std::cout << "  " << prefix << ansiUser(ev.sender, "[" + sender_name + "]") << ts_str << " " << body << reply_str;
+
+        // Show replied-to body if available
+        if (ev.content.contains("m.relates_to")) {
+            auto& rel = ev.content["m.relates_to"];
+            if (rel.value("rel_type", "") == "m.in_reply_to" && ev.content.contains("m.new_content")) {
+                std::string old_body = ev.content["m.new_content"].value("body", "");
+                if (!old_body.empty())
+                    std::cout << "\n" ANSI_GRAY "       ↪ \"" << old_body.substr(0, 60) << (old_body.size() > 60 ? "..." : "") << "\"" ANSI_RESET;
+            }
+        }
         if (verbose) {
             std::cout << "\n" ANSI_GRAY "       id:" << ev.event_id;
             if (!ev.redacts.empty()) std::cout << " redacts:" << ev.redacts;
@@ -899,8 +912,29 @@ int cmdTUI(const matrixcli::cli::Args&) {
                 } else if (cmd == "pins") {
                     std::string roomId = chat.activeRoomId();
                     if (!roomId.empty()) {
-                        try { chat.setConnectionStatus("Pins: " + std::to_string(
-                            client.getPinnedEvents(roomId).value("pinned", nlohmann::json::array()).size())); } catch (...) {}
+                        try {
+                            auto p = client.getPinnedEvents(roomId);
+                            int cnt = p.value("pinned", nlohmann::json::array()).size();
+                            chat.setConnectionStatus("📌 " + std::to_string(cnt) + " pinned messages");
+                        } catch (...) {}
+                    }
+                } else if (cmd == "roomsbrowse" || cmd == "explore") {
+                    if (!args.empty()) {
+                        try {
+                            auto pubs = client.getPublicRooms("", args, 20);
+                            int total = pubs.value("total_room_count_estimate", 0);
+                            chat.setConnectionStatus("Browse: " + std::to_string(total) + " rooms matching '" + args + "'");
+                        } catch (...) {}
+                    }
+                } else if (cmd == "preview") {
+                    // Show link preview via Matrix preview_url API
+                    if (!args.empty()) {
+                        try {
+                            auto p = client.getURLPreview(args);
+                            if (p.contains("og:title"))
+                                chat.setConnectionStatus(p["og:title"].get<std::string>() +
+                                    (p.contains("og:description") ? " — " + p["og:description"].get<std::string>() : ""));
+                        } catch (...) {}
                     }
                 } else if (cmd == "stats") {
                     std::string roomId = chat.activeRoomId();
@@ -1132,14 +1166,19 @@ int cmdTUI(const matrixcli::cli::Args&) {
             }
             chat.setRooms(roomInfos);
 
-            // Set up send callback
+            // Set up send callback with retry queue
             chat.setSendCallback([&](const std::string& body) {
                 std::string roomId = chat.activeRoomId();
                 if (!roomId.empty()) {
                     try {
                         client.sendTextMessage(roomId, body);
                         client.sendTyping(roomId, false);
-                    } catch (...) {}
+                    } catch (...) {
+                        // Queue for retry
+                        std::lock_guard<std::mutex> lock(g_queueMutex);
+                        g_msgQueue[roomId].push_back({body, 0});
+                        chat.setConnectionStatus("Queued (will retry): " + body.substr(0, 40));
+                    }
                 }
             });
 
@@ -1150,8 +1189,24 @@ int cmdTUI(const matrixcli::cli::Args&) {
                 } catch (...) {}
             });
 
-            // Start sync: feed events to chat
+            // Start sync: feed events to chat, flush message queue
             client.startSync([&](const matrix::Event& ev) {
+                // Flush queued messages on successful sync
+                {
+                    std::lock_guard<std::mutex> lock(g_queueMutex);
+                    for (auto& [rid, msgs] : g_msgQueue) {
+                        for (auto it = msgs.begin(); it != msgs.end();) {
+                            try {
+                                client.sendTextMessage(rid, it->first);
+                                it = msgs.erase(it);
+                            } catch (...) {
+                                it->second++;
+                                if (it->second > 5) it = msgs.erase(it); // give up after 5 retries
+                                else ++it;
+                            }
+                        }
+                    }
+                }
                 tui::RoomInfo ri;
                 ri.id = ev.room_id;
                 ri.name = ev.room_id;
