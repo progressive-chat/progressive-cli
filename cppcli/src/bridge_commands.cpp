@@ -3,6 +3,7 @@
 #include "../lib/irc/irc_client.hpp"
 #include "../lib/matrix/client.hpp"
 #include "../lib/database/db.hpp"
+#include "../lib/util/string_utils.hpp"
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -134,8 +135,76 @@ void registerBuiltinCommands() {
         return 0;
     });
 
-    // ── Quick reply ──
-    reg.registerCli("reply", [](const cli::Args& args) -> int {
+    // ── Fuzzy room matching helper ──
+    auto findRoom = [](const std::string& query) -> std::string {
+        db::Database dbi;
+        if (!dbi.open("matrixcli.db")) return query;
+        auto rooms = dbi.listRooms();
+        std::string best; int bestScore = 0;
+        for (auto& r : rooms) {
+            std::string id = r.value("room_id", "");
+            std::string name = r.value("name", "");
+            // Exact match
+            if (id == query || name == query) return id;
+            // Prefix match
+            if (name.find(query) == 0 || id.find(query) == 0) {
+                int score = 100 - name.size();
+                if (score > bestScore) { bestScore = score; best = id; }
+            }
+            // Substring match
+            if (name.find(query) != std::string::npos) {
+                int score = 50;
+                if (score > bestScore) { bestScore = score; best = id; }
+            }
+        }
+        return best.empty() ? query : best;
+    };
+
+    // ── Human-readable errors ──
+    auto friendlyError = [](const std::string& raw) -> std::string {
+        if (raw.find("M_FORBIDDEN") != std::string::npos && raw.find("not in room") != std::string::npos)
+            return "You're not in this room. Join it first: matrixcli join <room>";
+        if (raw.find("M_UNKNOWN_TOKEN") != std::string::npos)
+            return "Invalid access token. Login again: matrixcli login";
+        if (raw.find("M_LIMIT_EXCEEDED") != std::string::npos)
+            return "Rate limited. Wait a moment and try again.";
+        if (raw.find("M_NOT_FOUND") != std::string::npos)
+            return "Room or event not found. Check the ID.";
+        if (raw.find("M_UNKNOWN") != std::string::npos)
+            return "Server error. Try again later.";
+        if (raw.find("resolve host") != std::string::npos || raw.find("connect") != std::string::npos)
+            return "Can't reach the Matrix server. Check your connection and homeserver URL.";
+        return raw; // fallback
+    };
+
+    // ── Room info ──
+    reg.registerCli("info", [findRoom, friendlyError](const cli::Args& args) -> int {
+        if (args.positional.empty()) { std::cerr << "Usage: matrixcli info <room>" << std::endl; return 1; }
+        using namespace matrixcli;
+        db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+        std::string room_id = findRoom(args.positional[0]);
+        auto rooms = dbi.listRooms();
+        for (auto& r : rooms) {
+            if (r.value("room_id", "") == room_id) {
+                std::cout << ANSI_BOLD << r.value("name", room_id) << ANSI_RESET << std::endl;
+                std::cout << "  ID:      " << room_id << std::endl;
+                std::cout << "  Topic:   " << r.value("topic", "(none)") << std::endl;
+                std::cout << "  Members: " << r.value("member_count", 0) << std::endl;
+                std::cout << "  Direct:  " << (r.value("is_direct", false) ? "yes" : "no") << std::endl;
+                std::cout << "  E2EE:    " << (r.value("is_encrypted", false) ? "yes" : "no") << std::endl;
+                int msgs = dbi.getEventCount(room_id);
+                int notif = dbi.getNotificationCount(room_id);
+                std::cout << "  Messages:" << msgs << std::endl;
+                if (notif > 0) std::cout << "  Unread:  " ANSI_BOLD << notif << ANSI_RESET << std::endl;
+                return 0;
+            }
+        }
+        std::cout << "Room not found: " << args.positional[0] << std::endl;
+        return 1;
+    });
+
+    // ── Quick reply (with fuzzy room) ──
+    reg.registerCli("reply", [findRoom, friendlyError](const cli::Args& args) -> int {
         if (args.positional.size() < 3) { std::cerr << "Usage: matrixcli reply <room> <event_id> <text>" << std::endl; return 1; }
         using namespace matrixcli;
         matrix::Client client;
@@ -143,19 +212,20 @@ void registerBuiltinCommands() {
         auto acc = dbi.loadAccount();
         if (!acc.is_logged_in()) { std::cerr << "Not logged in" << std::endl; return 1; }
         client.setHomeserverURL(acc.homeserver_url); client.setAccessToken(acc.access_token);
+        std::string room_id = findRoom(args.positional[0]);
         std::string text;
         for (size_t i = 2; i < args.positional.size(); i++) { if (i > 2) text += " "; text += args.positional[i]; }
         try {
             nlohmann::json content = {{"msgtype","m.text"},{"body",text},
                 {"m.relates_to",{{"event_id",args.positional[1]},{"rel_type","m.in_reply_to"}}}};
-            auto eid = client.sendEvent(args.positional[0], "m.room.message", content);
+            auto eid = client.sendEvent(room_id, "m.room.message", content);
             std::cout << "Replied [" << eid << "]" << std::endl;
-        } catch (const std::exception& e) { std::cerr << e.what() << std::endl; return 1; }
+        } catch (const std::exception& e) { std::cerr << friendlyError(e.what()) << std::endl; return 1; }
         return 0;
     });
 
     // ── Edit message ──
-    reg.registerCli("edit", [](const cli::Args& args) -> int {
+    reg.registerCli("edit", [findRoom, friendlyError](const cli::Args& args) -> int {
         if (args.positional.size() < 3) { std::cerr << "Usage: matrixcli edit <room> <event_id> <new_text>" << std::endl; return 1; }
         using namespace matrixcli;
         matrix::Client client;
