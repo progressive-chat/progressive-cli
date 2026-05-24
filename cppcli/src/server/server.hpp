@@ -5,13 +5,17 @@
 #include "../../lib/api/handler.hpp"
 #include "../../lib/api/demo_handler.hpp"
 #include "../../lib/matrix/client.hpp"
+#include "web_proxy.hpp"
 #include <memory>
 
 namespace matrixcli { namespace server {
 
+enum class ServerMode { Matrix, Demo, WebProxy };
+
 class APIServer {
 public:
-    explicit APIServer(int port, bool demo_mode = false);
+    APIServer(int port, ServerMode mode = ServerMode::WebProxy,
+              const std::string& homeserver = "https://matrix.org");
     ~APIServer();
 
     void start();
@@ -21,10 +25,11 @@ public:
 
 private:
     int _port;
-    bool _demo;
+    ServerMode _mode;
     matrix::Client _client;
     api::Server _server;
     std::shared_ptr<api::DemoHandler> _demoHandler;
+    std::unique_ptr<WebProxyHandler> _proxyHandler;
 };
 
 }} // namespace matrixcli::server

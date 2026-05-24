@@ -5,6 +5,7 @@ set(SOURCES
     bridge_commands.cpp
     cli/args.cpp
     server/server.cpp
+    server/web_proxy.cpp
 )
 
 add_executable(matrixcli ${SOURCES})

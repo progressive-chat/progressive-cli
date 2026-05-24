@@ -86,7 +86,10 @@ int cmdServe(const matrixcli::cli::Args& args) {
     bool demo_mode = args.options.contains("demo");
     if (!demo_mode && args.command == "demo") demo_mode = true;
 
-    server::APIServer api_server(port, demo_mode);
+    server::ServerMode mode = demo_mode ? server::ServerMode::Demo :
+                      acc.is_logged_in() ? server::ServerMode::Matrix : server::ServerMode::WebProxy;
+
+    server::APIServer api_server(port, mode, acc.is_logged_in() ? acc.homeserver_url : "https://matrix.org");
     api_server.start();
 
     // Start background sync if logged in (populates DB for CLI commands)
