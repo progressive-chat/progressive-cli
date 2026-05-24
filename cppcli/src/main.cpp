@@ -852,6 +852,41 @@ int cmdTUI(const matrixcli::cli::Args&) {
                     if (!args.empty()) try { client.ignoreUser(args); } catch (...) {}
                 } else if (cmd == "unignore") {
                     if (!args.empty()) try { client.unignoreUser(args); } catch (...) {}
+                } else if (cmd == "unban") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty()) try { client.unbanUser(roomId, args); } catch (...) {}
+                } else if (cmd == "myroomnick") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty()) {
+                        nlohmann::json c = {{"membership","join"},{"displayname",args}};
+                        try { client.sendStateEvent(roomId, "m.room.member", client.userId(), c); } catch (...) {}
+                    }
+                } else if (cmd == "spoiler") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty()) {
+                        nlohmann::json c = {{"msgtype","m.text"},{"body","||"+args+"||"},
+                            {"format","org.matrix.custom.html"},
+                            {"formatted_body","<span data-mx-spoiler>"+args+"</span>"}};
+                        try { client.sendEvent(roomId, "m.room.message", c); } catch (...) {}
+                    }
+                } else if (cmd == "plain") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && !args.empty())
+                        try { client.sendTextMessage(roomId, args); } catch (...) {}
+                } else if (cmd == "lenny") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty())
+                        try { client.sendTextMessage(roomId, args + " ( ͡° ͜ʖ ͡°)"); } catch (...) {}
+                } else if (cmd == "discardsession") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty() && client.isRoomEncrypted(roomId))
+                        try { client.enableEncryption(roomId); } catch (...) {}
+                } else if (cmd == "mute") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty()) try { client.setRoomTag(roomId, "m.lowpriority"); } catch (...) {}
+                } else if (cmd == "unmute") {
+                    std::string roomId = chat.activeRoomId();
+                    if (!roomId.empty()) try { client.deleteRoomTag(roomId, "m.lowpriority"); } catch (...) {}
                 } else if (cmd == "pin") {
                     std::string roomId = chat.activeRoomId();
                     if (!roomId.empty() && !args.empty())
