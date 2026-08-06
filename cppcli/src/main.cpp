@@ -243,6 +243,42 @@ int cmdStatus(const matrixcli::cli::Args& args) {
     // Room drill-down
     bool drill = !args.positional.empty();
 
+    bool json_out = args.options.count("json");
+    if (json_out) {
+        Config::instance().load("config.json");
+        db::Database dbi;
+        dbi.open("matrixcli.db");
+        auto acc = dbi.loadAccount();
+
+        nlohmann::json j;
+        j["logged_in"] = acc.is_logged_in();
+        if (acc.is_logged_in()) {
+            j["user_id"] = acc.user_id;
+            j["homeserver"] = acc.homeserver_url;
+            j["device_id"] = acc.device_id;
+            j["synced"] = !acc.next_batch.empty();
+
+            auto rooms = dbi.listRooms();
+            int total_msgs = 0;
+            for (auto& r : rooms) total_msgs += dbi.getEventCount(r.value("room_id", ""));
+            j["rooms"] = rooms.size();
+            j["messages"] = total_msgs;
+            j["unread"] = dbi.getNotificationCount();
+
+            j["protocols"] = {
+                {"matrix", "active"},
+                {"irc", "not connected"},
+                {"tdlib", g_tdlib.isAvailable() ? (g_tdlib.authState() == tdlib::TdAuthState::Ready ? "ready" : "configuring") : "not installed"},
+                {"lemmy", g_lemmy.isLoggedIn() ? "logged in" : "not logged in"},
+                {"deltachat", g_dc.isAvailable() ? (g_dc.isConfigured() ? "configured" : "not configured") : "not installed"}
+            };
+            struct stat st;
+            j["storage_kb"] = stat("matrixcli.db", &st) == 0 ? st.st_size / 1024 : 0;
+        }
+        std::cout << j.dump() << std::endl;
+        return 0;
+    }
+
     auto printStatus = [&]() {
     if (watch) std::cout << "\033[2J\033[H"; // clear screen
 
@@ -403,7 +439,6 @@ int cmdStatus(const matrixcli::cli::Args& args) {
         std::cout << "Homeserver: " << Config::instance().homeserverURL() << std::endl;
         std::cout << "Device ID: " << Config::instance().deviceId() << std::endl;
     } else {
-        std::cout << ANSI_BOLD "\n  matrixcli status\n" ANSI_RESET;
         std::cout << "\n  Not logged in. Use 'matrixcli login' to authenticate.\n";
         std::cout << "  Or try offline demo: matrixcli demo populate\n";
     }
@@ -438,7 +473,7 @@ int cmdStatus(const matrixcli::cli::Args& args) {
     return 0;
 }
 
-int cmdRooms(const matrixcli::cli::Args&) {
+int cmdRooms(const matrixcli::cli::Args& args) {
     using namespace matrixcli;
     db::Database dbi;
     if (!dbi.open("matrixcli.db")) {
@@ -446,6 +481,24 @@ int cmdRooms(const matrixcli::cli::Args&) {
         return 1;
     }
     auto rooms = dbi.listRooms();
+
+    bool json_out = args.options.count("json");
+    if (json_out) {
+        nlohmann::json j;
+        j["total"] = rooms.size();
+        j["rooms"] = nlohmann::json::array();
+        for (auto& r : rooms) {
+            std::string id = r.value("room_id", "");
+            j["rooms"].push_back({
+                {"room_id", id},
+                {"name", r.value("name", id)},
+                {"messages", dbi.getEventCount(id)}
+            });
+        }
+        std::cout << j.dump() << std::endl;
+        return 0;
+    }
+
     if (rooms.empty()) {
         std::cout << "No rooms in cache." << std::endl;
         std::cout << "  For demo:   matrixcli demo    (start demo server, then try again)" << std::endl;
@@ -500,33 +553,36 @@ int cmdView(const matrixcli::cli::Args& args) {
     if (!dbi.open("matrixcli.db")) { std::cerr << "Cannot open database" << std::endl; return 1; }
 
     std::string room_id;
+    std::string room_name;
+    bool found = false;
     auto rooms = dbi.listRooms();
     for (auto& r : rooms) {
         std::string id = r.value("room_id", "");
         std::string name = r.value("name", "");
         if (id == query || name == query || name.find(query) == 0) {
             room_id = id;
-            if (!thread_root.empty()) std::cout << "=== " << name << " / thread " << thread_root << " ===" << std::endl;
-            else std::cout << "=== " << name << " (" << id << ") ===" << std::endl;
+            room_name = name;
+            found = true;
             break;
         }
     }
-    if (room_id.empty()) { room_id = query; std::cout << "=== " << room_id << " ===" << std::endl; }
+    if (room_id.empty()) { room_id = query; room_name = query; }
 
-    auto events = dbi.getEvents(room_id, limit > 0 ? limit : 999999, before);
-    if (events.empty() && !before.empty()) {
-        std::cout << "(no older messages)" << std::endl;
-        return 0;
-    }
-    // JSON output mode (pipe-friendly)
+    auto events = dbi.getEvents(room_id, limit > 0 ? limit : 999999, before, from);
+
+    // JSON output mode (pipe-friendly: pure JSON on stdout, chronological order)
     if (json_out) {
         nlohmann::json j;
         j["room_id"] = room_id;
+        j["known"] = found;
         j["messages"] = nlohmann::json::array();
+        if (from.empty()) std::reverse(events.begin(), events.end());
         for (auto& ev : events) {
             nlohmann::json m;
             m["event_id"] = ev.event_id;
             m["sender"] = ev.sender;
+            m["type"] = ev.type;
+            m["msgtype"] = ev.content.value("msgtype", "m.text");
             m["body"] = ev.content.value("body", "");
             m["ts"] = ev.origin_server_ts;
             j["messages"].push_back(m);
@@ -535,19 +591,38 @@ int cmdView(const matrixcli::cli::Args& args) {
         return 0;
     }
 
-    std::reverse(events.begin(), events.end());
+    if (events.empty()) {
+        if (!before.empty()) std::cout << "(no older messages)" << std::endl;
+        else std::cout << "(no messages in cache)" << std::endl;
+        return 0;
+    }
+
+    if (from.empty()) std::reverse(events.begin(), events.end());
+
+    // Human-mode header
+    if (!thread_root.empty()) std::cout << "=== " << room_name << " / thread " << thread_root << " ===" << std::endl;
+    else std::cout << "=== " << room_name << " (" << room_id << ") ===" << std::endl;
 
     // Show pagination hint
-    bool has_newer = !before.empty();
-    bool has_older = (int)events.size() >= limit;
+    bool has_newer, has_older;
+    if (!from.empty()) {
+        has_older = true;                              // history before the anchor exists
+        has_newer = (int)events.size() >= limit;       // window full -> more newer
+    } else if (!before.empty()) {
+        has_newer = true;
+        has_older = (int)events.size() >= limit;
+    } else {
+        has_newer = false;
+        has_older = (int)events.size() >= limit;
+    }
 
     // Message grouping
     std::string prev_sender;
 
     if (has_newer || has_older) {
         std::cout << "── ";
-        if (has_newer) std::cout << "view --from " << events.front().event_id << " (newer)  ";
-        if (has_older) std::cout << "view --before " << events.back().event_id << " (older)";
+        if (has_newer) std::cout << "view --from " << events.back().event_id << " (newer)  ";
+        if (has_older) std::cout << "view --before " << events.front().event_id << " (older)";
         std::cout << " ──" << std::endl;
     }
 
@@ -739,7 +814,14 @@ int cmdSendMsg(const matrixcli::cli::Args& args) {
         } else {
             event_id = client.sendTextMessage(room_id, body);
         }
-        std::cout << "Sent [" << event_id << "]" << std::endl;
+        if (args.options.count("json")) {
+            nlohmann::json j;
+            j["event_id"] = event_id;
+            j["room_id"] = room_id;
+            std::cout << j.dump() << std::endl;
+        } else {
+            std::cout << "Sent [" << event_id << "]" << std::endl;
+        }
     } catch (const std::exception& e) {
         std::cerr << "Send failed: " << e.what() << std::endl;
         return 1;
@@ -776,6 +858,7 @@ int cmdSearch(const matrixcli::cli::Args& args) {
         auto at = sender.find(':');
         if (at != std::string::npos && sender.starts_with("@")) sender = sender.substr(1, at - 1);
         std::string room = r.value("room_name", r.value("room_id", "?"));
+        if (room.starts_with("#")) room = room.substr(1);
         std::string body = r.value("content", nlohmann::json::object()).value("body", "(no body)");
         if (body.size() > 100) body = body.substr(0, 100) + "...";
         std::cout << "  #" << room << "  [" << sender << "] " << body << std::endl;
@@ -841,7 +924,8 @@ int cmdDemoPopulate(const matrixcli::cli::Args&) {
         dbi.upsertRoom(j, r.id);
     }
 
-    int64_t ts = std::chrono::duration_cast<std::chrono::seconds>(
+    // Matrix origin_server_ts is milliseconds since epoch
+    int64_t ts = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
     struct { const char* room; const char* sender; const char* name; const char* body; } msgs[] = {
         {"!general:demo.local","@alice","Alice","Welcome! This is matrixcli — a terminal Matrix client."},

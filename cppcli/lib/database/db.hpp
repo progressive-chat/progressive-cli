@@ -45,7 +45,8 @@ public:
     // Events
     bool insertEvent(const matrix::Event& event, const std::string& decrypted = "");
     std::vector<matrix::Event> getEvents(const std::string& room_id, int limit = 50,
-                                          const std::string& before_event = "");
+                                         const std::string& before_event = "",
+                                         const std::string& from_event = "");
     int getEventCount(const std::string& room_id);
 
     // Full-text search

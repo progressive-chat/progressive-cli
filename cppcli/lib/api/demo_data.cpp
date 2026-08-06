@@ -8,7 +8,8 @@
 namespace matrixcli { namespace demo {
 
 static int64_t now_ts() {
-    return std::chrono::duration_cast<std::chrono::seconds>(
+    // Matrix origin_server_ts is milliseconds since epoch
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
 }
 

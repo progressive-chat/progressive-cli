@@ -237,13 +237,19 @@ bool Database::insertEvent(const matrix::Event& event, const std::string& decryp
 }
 
 std::vector<matrix::Event> Database::getEvents(const std::string& room_id, int limit,
-                                                const std::string& before_event) {
+                                                const std::string& before_event,
+                                                const std::string& from_event) {
     std::vector<matrix::Event> result;
     std::string sql = "SELECT event_id, sender, type, content, origin_server_ts, state_key, redacts, decrypted_content FROM events WHERE room_id = ?";
     if (!before_event.empty()) {
         sql += " AND origin_server_ts < (SELECT origin_server_ts FROM events WHERE event_id = ?)";
     }
-    sql += " ORDER BY origin_server_ts DESC LIMIT ?";
+    if (!from_event.empty()) {
+        sql += " AND origin_server_ts > (SELECT origin_server_ts FROM events WHERE event_id = ?)";
+    }
+    // From-windows return chronological order (older -> newer); regular windows newest-first.
+    sql += from_event.empty() ? " ORDER BY origin_server_ts DESC LIMIT ?"
+                              : " ORDER BY origin_server_ts ASC LIMIT ?";
 
     sqlite3_stmt* stmt;
     sqlite3_prepare_v2(_db, sql.c_str(), -1, &stmt, nullptr);
@@ -251,6 +257,9 @@ std::vector<matrix::Event> Database::getEvents(const std::string& room_id, int l
     sqlite3_bind_text(stmt, idx++, room_id.c_str(), room_id.size(), SQLITE_TRANSIENT);
     if (!before_event.empty()) {
         sqlite3_bind_text(stmt, idx++, before_event.c_str(), before_event.size(), SQLITE_TRANSIENT);
+    }
+    if (!from_event.empty()) {
+        sqlite3_bind_text(stmt, idx++, from_event.c_str(), from_event.size(), SQLITE_TRANSIENT);
     }
     sqlite3_bind_int(stmt, idx++, limit);
 
