@@ -1,0 +1,40 @@
+# Maintainer: Progressive Chat Team
+# Build from local git for development/testing
+
+_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../.."
+
+pkgname=matrixcli
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="A terminal Matrix client with E2EE, multi-format REST API, and ncurses TUI"
+arch=('x86_64')
+url="https://github.com/progressive-chat/progressive-cli"
+license=('AGPL-3.0-or-later')
+depends=('gcc-libs' 'openssl' 'libolm' 'sqlite3' 'ncurses' 'nlohmann-json')
+makedepends=('cmake' 'gcc' 'make' 'pkg-config' 'git')
+optdepends=('libnotify: desktop notifications')
+
+prepare() {
+    cp -r "${_dir}" "${srcdir}/progressive-cli"
+}
+
+build() {
+    cd "${srcdir}/progressive-cli/cppcli"
+
+    cmake -B build -S . \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DUSE_SYSTEM_OLM=ON \
+        -DBUILD_TESTS=OFF \
+        -DBUILD_TUI=ON
+
+    cmake --build build -j$(nproc)
+}
+
+package() {
+    cd "${srcdir}/progressive-cli"
+
+    install -Dm755 cppcli/build/src/matrixcli "${pkgdir}/usr/bin/matrixcli"
+    install -Dm644 gomuks/LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+    install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+}

@@ -1,0 +1,112 @@
+div.message-composer {
+	margin: -1rem var(--timeline-horizontal-padding) 0;
+	background-color: var(--composer-background-color);
+	border: 1px solid var(--border-color);
+	border-radius: 0.5rem;
+	overflow: hidden;
+	grid-area: input;
+	/* WebKit/Safari requires this hack for some reason, works fine without in other browsers */
+	min-height: 2.25rem;
+	z-index: 1;
+	box-shadow: 0 0 1rem var(--modal-box-shadow-color);
+
+	blockquote.reply-body > pre {
+		text-wrap: auto !important;
+	}
+
+	&.tombstoned, &.no-permission {
+		min-height: unset;
+		padding: .5rem;
+
+		> button {
+			padding: .25rem;
+		}
+	}
+
+	> div.input-area {
+		display: flex;
+		align-items: center;
+		margin-right: .25rem;
+
+		> textarea {
+			line-height: 1.25;
+			flex: 1;
+			resize: none;
+			font-family: var(--font-stack);
+			height: auto;
+			padding: .5rem;
+			border: none;
+			outline: none;
+		}
+
+		> button {
+			height: 2rem;
+			width: 2rem;
+			padding: .25rem;
+
+			> svg {
+				width: 1.5rem;
+				height: 1.5rem;
+			}
+		}
+
+		> input[type="file"] {
+			display: none;
+		}
+
+		@media screen and (max-width: 45rem) {
+			margin-right: 0;
+
+			> textarea:not(:empty) {
+				padding: .5rem 0;
+			}
+		}
+	}
+
+	> div.composer-media, > div.composer-location {
+		display: flex;
+		padding: .5rem .5rem 0;
+		justify-content: space-between;
+
+		> button {
+			height: 2.5rem;
+			width: 2.5rem;
+			padding: .5rem;
+		}
+	}
+
+	> div.composer-location {
+		height: 15rem;
+
+		> div.location-container {
+			height: 15rem;
+			max-width: 40rem;
+			width: 100%;
+
+			> div {
+				height: 15rem;
+				width: 100%;
+			}
+		}
+	}
+
+	> div.url-previews {
+		display: flex;
+		flex-direction: row;
+		gap: 1rem;
+		overflow-x: auto;
+		margin: 0 0.5rem;
+	}
+
+	> label.mention-confirmations {
+		display: flex;
+		align-items: center;
+		margin: .5rem .5rem 0;
+		> input[type="checkbox"] {
+			width: 1rem;
+			height: 1rem;
+			margin: 0 .25rem 0 0;
+			accent-color: var(--primary-color-dark);
+		}
+	}
+}

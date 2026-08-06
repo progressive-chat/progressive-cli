@@ -1,0 +1,374 @@
+#include "commands.hpp"
+#include "globals.hpp"
+#include "../lib/irc/irc_client.hpp"
+#include "../lib/matrix/client.hpp"
+#include "../lib/database/db.hpp"
+#include "../lib/util/string_utils.hpp"
+#include "../src/config.hpp"
+#include <iostream>
+#include <thread>
+#include <chrono>
+#include <termios.h>
+#include <unistd.h>
+
+using namespace matrixcli;
+
+static irc::IrcClient g_ircClient;
+static bool g_ircSetup = false;
+
+void registerBuiltinCommands() {
+    auto& reg = CommandRegistry::instance();
+
+    // ── IRC CLI commands ──
+    reg.registerCli("irc", [](const cli::Args& args) -> int {
+        if (args.positional.empty()) { std::cerr << "irc: connect|join|msg|leave|whois|names" << std::endl; return 1; }
+        std::string sub = args.positional[0];
+        if (sub == "connect") {
+            irc::IrcServerConfig cfg;
+            cfg.host = args.positional.size() > 1 ? args.positional[1] : "irc.libera.chat";
+            cfg.port = args.positional.size() > 2 ? std::stoi(args.positional[2]) : 6667;
+            cfg.nick = args.positional.size() > 3 ? args.positional[3] : "matrixcli";
+            g_ircClient.setConfig(cfg);
+            if (!g_ircSetup) {
+                g_ircClient.onMessage([](const irc::IrcMessage& msg) {
+                    std::cout << "[" << msg.target << "] <" << msg.prefix << "> " << msg.body << std::endl;
+                });
+                g_ircSetup = true;
+            }
+            g_ircClient.connect();
+            std::this_thread::sleep_for(std::chrono::seconds(3));
+        } else if (sub == "join" && args.positional.size() >= 2) g_ircClient.join(args.positional[1]);
+        else if (sub == "msg" && args.positional.size() >= 3) {
+            std::string t; for (size_t i = 2; i < args.positional.size(); i++) { if (i > 2) t += " "; t += args.positional[i]; }
+            g_ircClient.privmsg(args.positional[1], t);
+        } else if (sub == "leave" && args.positional.size() >= 2) g_ircClient.part(args.positional[1]);
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        return 0;
+    });
+
+    // ── Lemmy CLI commands ──
+    reg.registerCli("lemmy", [](const cli::Args& args) -> int {
+        if (args.positional.empty()) { std::cerr << "lemmy: login|posts|post|upvote|comments" << std::endl; return 1; }
+        std::string sub = args.positional[0];
+        if (sub == "login" && args.positional.size() >= 4) {
+            g_lemmy.setInstance(args.positional[1]);
+            if (g_lemmy.login(args.positional[2], args.positional[3])) std::cout << "OK" << std::endl;
+            else { std::cerr << "Fail" << std::endl; return 1; }
+        } else if (sub == "posts") {
+            auto posts = g_lemmy.listPosts(args.positional.size() > 1 ? args.positional[1] : "", "Hot");
+            for (auto& p : posts) std::cout << "[" << p.id << "] " << p.title << " ↑" << p.upvotes << " 💬" << p.comment_count << " " << p.community_name << std::endl;
+        } else if (sub == "comments" && args.positional.size() >= 2) {
+            for (auto& c : g_lemmy.listComments(std::stoi(args.positional[1])))
+                std::cout << c.creator_name << ": " << c.content.substr(0, 100) << std::endl;
+        } else if (sub == "post" && args.positional.size() >= 3) {
+            std::string b; for (size_t i = 3; i < args.positional.size(); i++) { if (i > 3) b += " "; b += args.positional[i]; }
+            std::cout << g_lemmy.createPost(args.positional[1], args.positional[2], b) << std::endl;
+        } else if (sub == "upvote" && args.positional.size() >= 2) g_lemmy.likePost(std::stoi(args.positional[1]), 1);
+        else if (sub == "downvote" && args.positional.size() >= 2) g_lemmy.likePost(std::stoi(args.positional[1]), -1);
+        return 0;
+    });
+
+    // ── TDLib CLI commands ──
+    reg.registerCli("td", [](const cli::Args& args) -> int {
+        if (args.positional.empty()) { std::cerr << "td: login|phone|code|password|chats|msg|history" << std::endl; return 1; }
+        std::string sub = args.positional[0];
+        if (sub == "login") {
+            if (!g_tdlib.isAvailable()) g_tdlib.initialize();
+            if (g_tdlib.isAvailable()) g_tdlib.setTdlibParams(94575, "a3406de8d171bb422bb6ddf3bbd8f4e2");
+        } else if (sub == "phone" && args.positional.size() >= 2) g_tdlib.sendPhoneNumber(args.positional[1]);
+        else if (sub == "code" && args.positional.size() >= 2) g_tdlib.sendAuthCode(args.positional[1]);
+        else if (sub == "chats") {
+            auto chats = g_tdlib.getChats(20);
+            for (auto& c : chats) std::cout << "[" << c.id << "] " << c.title << " (" << c.type << ")" << std::endl;
+        } else if (sub == "msg" && args.positional.size() >= 3) {
+            std::string t; for (size_t i = 2; i < args.positional.size(); i++) { if (i > 2) t += " "; t += args.positional[i]; }
+            g_tdlib.sendMessage(std::stoll(args.positional[1]), t);
+        } else if (sub == "history" && args.positional.size() >= 2) {
+            for (auto& m : g_tdlib.getChatHistory(std::stoll(args.positional[1])))
+                std::cout << (m.is_outgoing ? "→ " : "← ") << m.text.substr(0, 100) << std::endl;
+        }
+        return 0;
+    });
+
+    // ── DeltaChat CLI commands ──
+    reg.registerCli("dc", [](const cli::Args& args) -> int {
+        if (args.positional.empty()) { std::cerr << "dc: login|chats|msg|history" << std::endl; return 1; }
+        std::string sub = args.positional[0];
+        if (sub == "login") {
+            if (!g_dc.isAvailable()) g_dc.initialize();
+            if (args.positional.size() >= 3) { g_dc.setConfig("addr", args.positional[1]); g_dc.setConfig("mail_pw", args.positional[2]); }
+            g_dc.configure();
+        } else if (sub == "chats") {
+            for (auto& c : g_dc.getChatList()) std::cout << "[" << c.id << "] " << c.name << std::endl;
+        } else if (sub == "msg" && args.positional.size() >= 3) {
+            std::string t; for (size_t i = 2; i < args.positional.size(); i++) { if (i > 2) t += " "; t += args.positional[i]; }
+            g_dc.sendMessage(std::stoi(args.positional[1]), t);
+        } else if (sub == "history" && args.positional.size() >= 2) {
+            for (auto& m : g_dc.getChatMessages(std::stoi(args.positional[1])))
+                std::cout << (m.is_outgoing ? "→ " : "← ") << m.sender_name << ": " << m.text.substr(0, 100) << std::endl;
+        }
+        return 0;
+    });
+
+    // ── Shell completion ──
+    reg.registerCli("completion", [](const cli::Args& args) -> int {
+        std::string shell = args.positional.size() > 0 ? args.positional[0] : "bash";
+        auto cmds = CommandRegistry::instance().cliCommands();
+        // Add built-in commands
+        std::vector<std::string> all = {"serve","login","status","rooms","view","send","demo","tui",
+            "reply","vote","react","topic","roomname","avatar","poll","config","search",
+            "notifications","read","help","version","completion"};
+        for (auto& c : cmds) all.push_back(c);
+
+        if (shell == "bash") {
+            std::cout << "_matrixcli() {\n  local cur prev words cword\n"
+                      << "  _init_completion || return\n"
+                      << "  COMPREPLY=($(compgen -W '";
+            for (size_t i = 0; i < all.size(); i++) { if (i) std::cout << " "; std::cout << all[i]; }
+            std::cout << "' -- \"$cur\"))\n}\ncomplete -F _matrixcli matrixcli\n";
+        } else if (shell == "zsh") {
+            std::cout << "#compdef matrixcli\n_arguments '1: :(";
+            for (size_t i = 0; i < all.size(); i++) { if (i) std::cout << " "; std::cout << all[i]; }
+            std::cout << ")'\n";
+        } else if (shell == "fish") {
+            std::cout << "complete -c matrixcli -f -a '";
+            for (size_t i = 0; i < all.size(); i++) { if (i) std::cout << " "; std::cout << all[i]; }
+            std::cout << "'\n";
+        }
+        return 0;
+    });
+
+    // ── Fuzzy room matching helper ──
+    auto findRoom = [](const std::string& query) -> std::string {
+        db::Database dbi;
+        if (!dbi.open("matrixcli.db")) return query;
+        auto rooms = dbi.listRooms();
+        std::string best; int bestScore = 0;
+        for (auto& r : rooms) {
+            std::string id = r.value("room_id", "");
+            std::string name = r.value("name", "");
+            // Exact match
+            if (id == query || name == query) return id;
+            // Prefix match
+            if (name.find(query) == 0 || id.find(query) == 0) {
+                int score = 100 - name.size();
+                if (score > bestScore) { bestScore = score; best = id; }
+            }
+            // Substring match
+            if (name.find(query) != std::string::npos) {
+                int score = 50;
+                if (score > bestScore) { bestScore = score; best = id; }
+            }
+        }
+        return best.empty() ? query : best;
+    };
+
+    // ── Human-readable errors ──
+    auto friendlyError = [](const std::string& raw) -> std::string {
+        if (raw.find("M_FORBIDDEN") != std::string::npos && raw.find("not in room") != std::string::npos)
+            return "You're not in this room. Join it first: matrixcli join <room>";
+        if (raw.find("M_UNKNOWN_TOKEN") != std::string::npos)
+            return "Invalid access token. Login again: matrixcli login";
+        if (raw.find("M_LIMIT_EXCEEDED") != std::string::npos)
+            return "Rate limited. Wait a moment and try again.";
+        if (raw.find("M_NOT_FOUND") != std::string::npos)
+            return "Room or event not found. Check the ID.";
+        if (raw.find("M_UNKNOWN") != std::string::npos)
+            return "Server error. Try again later.";
+        if (raw.find("resolve host") != std::string::npos || raw.find("connect") != std::string::npos)
+            return "Can't reach the Matrix server. Check your connection and homeserver URL.";
+        return raw; // fallback
+    };
+
+    // ── Room info ──
+    reg.registerCli("info", [findRoom, friendlyError](const cli::Args& args) -> int {
+        if (args.positional.empty()) { std::cerr << "Usage: matrixcli info <room>" << std::endl; return 1; }
+        using namespace matrixcli;
+        db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+        std::string room_id = findRoom(args.positional[0]);
+        auto rooms = dbi.listRooms();
+        for (auto& r : rooms) {
+            if (r.value("room_id", "") == room_id) {
+                std::cout << ANSI_BOLD << r.value("name", room_id) << ANSI_RESET << std::endl;
+                std::cout << "  ID:      " << room_id << std::endl;
+                std::cout << "  Topic:   " << r.value("topic", "(none)") << std::endl;
+                std::cout << "  Members: " << r.value("member_count", 0) << std::endl;
+                std::cout << "  Direct:  " << (r.value("is_direct", false) ? "yes" : "no") << std::endl;
+                std::cout << "  E2EE:    " << (r.value("is_encrypted", false) ? "yes" : "no") << std::endl;
+                int msgs = dbi.getEventCount(room_id);
+                int notif = dbi.getNotificationCount(room_id);
+                std::cout << "  Messages:" << msgs << std::endl;
+                if (notif > 0) std::cout << "  Unread:  " ANSI_BOLD << notif << ANSI_RESET << std::endl;
+                return 0;
+            }
+        }
+        std::cout << "Room not found: " << args.positional[0] << std::endl;
+        return 1;
+    });
+
+    // ── Quick reply (with fuzzy room) ──
+    reg.registerCli("reply", [findRoom, friendlyError](const cli::Args& args) -> int {
+        if (args.positional.size() < 3) { std::cerr << "Usage: matrixcli reply <room> <event_id> <text>" << std::endl; return 1; }
+        using namespace matrixcli;
+        matrix::Client client;
+        db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+        auto acc = dbi.loadAccount();
+        if (!acc.is_logged_in()) { std::cerr << "Not logged in" << std::endl; return 1; }
+        client.setHomeserverURL(acc.homeserver_url); client.setAccessToken(acc.access_token);
+        std::string room_id = findRoom(args.positional[0]);
+        std::string text;
+        for (size_t i = 2; i < args.positional.size(); i++) { if (i > 2) text += " "; text += args.positional[i]; }
+        try {
+            nlohmann::json content = {{"msgtype","m.text"},{"body",text},
+                {"m.relates_to",{{"event_id",args.positional[1]},{"rel_type","m.in_reply_to"}}}};
+            auto eid = client.sendEvent(room_id, "m.room.message", content);
+            std::cout << "Replied [" << eid << "]" << std::endl;
+        } catch (const std::exception& e) { std::cerr << friendlyError(e.what()) << std::endl; return 1; }
+        return 0;
+    });
+
+    // ── Edit message ──
+    reg.registerCli("edit", [findRoom, friendlyError](const cli::Args& args) -> int {
+        if (args.positional.size() < 3) { std::cerr << "Usage: matrixcli edit <room> <event_id> <new_text>" << std::endl; return 1; }
+        using namespace matrixcli;
+        matrix::Client client;
+        db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+        auto acc = dbi.loadAccount();
+        if (!acc.is_logged_in()) { std::cerr << "Not logged in" << std::endl; return 1; }
+        client.setHomeserverURL(acc.homeserver_url); client.setAccessToken(acc.access_token);
+        std::string text;
+        for (size_t i = 2; i < args.positional.size(); i++) { if (i > 2) text += " "; text += args.positional[i]; }
+        try {
+            nlohmann::json content = {{"msgtype","m.text"},{"body","* "+text},
+                {"m.new_content",{{"msgtype","m.text"},{"body",text}}},
+                {"m.relates_to",{{"event_id",args.positional[1]},{"rel_type","m.replace"}}}};
+            auto eid = client.sendEvent(args.positional[0], "m.room.message", content);
+            std::cout << "Edited [" << eid << "]" << std::endl;
+        } catch (const std::exception& e) { std::cerr << e.what() << std::endl; return 1; }
+        return 0;
+    });
+
+    // ── Redact message ──
+    reg.registerCli("redact", [](const cli::Args& args) -> int {
+        if (args.positional.size() < 2) { std::cerr << "Usage: matrixcli redact <room> <event_id> [reason]" << std::endl; return 1; }
+        using namespace matrixcli;
+        matrix::Client client;
+        db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+        auto acc = dbi.loadAccount();
+        if (!acc.is_logged_in()) { std::cerr << "Not logged in" << std::endl; return 1; }
+        client.setHomeserverURL(acc.homeserver_url); client.setAccessToken(acc.access_token);
+        std::string reason = args.positional.size() > 2 ? args.positional[2] : "";
+        try {
+            auto eid = client.redactEvent(args.positional[0], args.positional[1], reason);
+            std::cout << "Redacted [" << eid << "]" << std::endl;
+        } catch (const std::exception& e) { std::cerr << e.what() << std::endl; return 1; }
+        return 0;
+    });
+
+    // ── Knock on room ──
+    reg.registerCli("knock", [](const cli::Args& args) -> int {
+        if (args.positional.empty()) { std::cerr << "Usage: matrixcli knock <room_id|alias> [reason]" << std::endl; return 1; }
+        using namespace matrixcli;
+        matrix::Client client;
+        db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+        auto acc = dbi.loadAccount();
+        if (!acc.is_logged_in()) { std::cerr << "Not logged in" << std::endl; return 1; }
+        client.setHomeserverURL(acc.homeserver_url); client.setAccessToken(acc.access_token);
+        std::string reason = args.positional.size() > 1 ? args.positional[1] : "";
+        if (client.knockRoom(args.positional[0], reason))
+            std::cout << "Knocked on " << args.positional[0] << std::endl;
+        else { std::cerr << "Knock failed" << std::endl; return 1; }
+        return 0;
+    });
+
+    // ── Better error messages ──
+    reg.registerCli("login", nullptr); // overridden later, placeholder
+
+    // ── Setup wizard ──
+    reg.registerCli("setup", [](const cli::Args&) -> int {
+        using namespace matrixcli;
+        std::string homeserver, username, password;
+
+        std::cout << ANSI_BOLD "\n  ╔══════════════════════════════╗\n"
+                  << "  ║   matrixcli setup wizard    ║\n"
+                  << "  ╚══════════════════════════════╝\n\n" ANSI_RESET;
+
+        // Step 1: Homeserver
+        std::cout << "  Homeserver URL [" ANSI_CYAN "https://matrix.org" ANSI_RESET "]: ";
+        std::getline(std::cin, homeserver);
+        if (homeserver.empty()) homeserver = "https://matrix.org";
+
+        // Step 2: Username
+        std::cout << "  Matrix ID (e.g. " ANSI_CYAN "@user:matrix.org" ANSI_RESET "): ";
+        std::getline(std::cin, username);
+        if (username.empty()) { std::cerr << "Username required.\n"; return 1; }
+
+        // Step 3: Password (no echo)
+        std::cout << "  Password: " ANSI_DIM "(hidden)" ANSI_RESET "\n  ";
+        struct termios oldt, newt;
+        tcgetattr(STDIN_FILENO, &oldt);
+        newt = oldt; newt.c_lflag &= ~ECHO;
+        tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+        std::getline(std::cin, password);
+        tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+        std::cout << "\n";
+        if (password.empty()) { std::cerr << "Password required.\n"; return 1; }
+
+        // Step 4: Login
+        std::cout << "  Connecting to " << homeserver << "...\n";
+        matrix::Client client;
+        client.setHomeserverURL(homeserver);
+        try {
+            auto creds = client.loginPassword(username, password);
+            std::cout << ANSI_GREEN "  ✓ Logged in as " << creds.user_id << ANSI_RESET << "\n\n";
+
+            // Save
+            Config::instance().set("homeserver_url", homeserver);
+            Config::instance().set("access_token", creds.access_token);
+            Config::instance().set("user_id", creds.user_id);
+            Config::instance().set("device_id", creds.device_id);
+            Config::instance().save();
+
+            db::Database dbi;
+            dbi.open("matrixcli.db");
+            db::StoredAccount acc;
+            acc.homeserver_url = homeserver;
+            acc.user_id = creds.user_id;
+            acc.access_token = creds.access_token;
+            acc.device_id = creds.device_id;
+            dbi.saveAccount(acc);
+
+            // Quick sync to discover rooms
+            std::cout << "  Discovering rooms...\n";
+            try {
+                client.setDatabase(&dbi);
+                auto sr = client.syncOnce("", "", 5000);
+                int room_count = 0;
+                for (auto& [rid, room] : sr.rooms.join) {
+                    dbi.upsertRoom(rid, room);
+                    room_count++;
+                }
+                std::cout << ANSI_GREEN "  ✓ " << room_count << " rooms found" ANSI_RESET << "\n\n";
+            } catch (...) { std::cout << "  (sync skipped — can run 'matrixcli serve' later)\n\n"; }
+
+            std::cout << ANSI_BOLD "  What's next:\n" ANSI_RESET
+                      << "    matrixcli rooms               list your rooms\n"
+                      << "    matrixcli view \"#room\" --ts  read messages\n"
+                      << "    matrixcli send \"#room\" \"Hi\" send a message\n"
+                      << "    matrixcli serve                start API server + background sync\n"
+                      << "    matrixcli tui                  full terminal UI\n\n";
+
+        } catch (const std::exception& e) {
+            std::cerr << ANSI_RED "  ✗ Login failed: " << e.what() << ANSI_RESET << "\n";
+            std::cerr << "  Check your credentials and try again.\n";
+            return 1;
+        }
+        return 0;
+    });
+
+    // ── Version ──
+    reg.registerCli("version", [](const cli::Args&) -> int {
+        std::cout << "matrixcli v0.1.0" << std::endl;
+        return 0;
+    });
+}

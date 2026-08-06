@@ -1,0 +1,66 @@
+// gomuks - A Matrix client written in Go.
+// Copyright (C) 2025 Tulir Asokan
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+import { EventID } from "@/api/types"
+import { modals } from "../modal"
+import { RoomContextData } from "../roomview/roomcontext.ts"
+
+export const jumpToEvent = (roomCtx: RoomContextData, evtID: EventID, allowRetry: boolean = true) => {
+	if (jumpToVisibleEvent(evtID, null, roomCtx)) {
+		console.info("Jumped to event", evtID, "in visible timeline")
+	} else if (roomCtx.store.timeline.length === 0 && allowRetry) {
+		// Hacky sleep to let the timeline load maybe?
+		console.info("Waiting for timeline to load before jumping to event", evtID)
+		setTimeout(() => jumpToEvent(roomCtx, evtID, false), 500)
+	} else {
+		console.info("Using event context modal to jump to event", evtID)
+		window.openNestableModal(modals.eventContext(roomCtx, evtID))
+	}
+}
+
+export const jumpToVisibleEvent = (evtID: EventID, parent?: Element | null, roomCtx?: RoomContextData): boolean => {
+	if (!evtID) {
+		return false
+	}
+	const targetEvt = (parent ?? document).querySelector(
+		`div[data-event-id="${CSS.escape(evtID)}"]`,
+	)
+	if (!targetEvt) {
+		return false
+	}
+	targetEvt.scrollIntoView({
+		block: "center",
+	})
+	targetEvt.classList.add("jump-highlight")
+	setTimeout(() => {
+		targetEvt.classList.add("jump-highlight-fadeout")
+		targetEvt.classList.remove("jump-highlight")
+		setTimeout(() => {
+			targetEvt.classList.remove("jump-highlight-fadeout")
+		}, 1500)
+	}, 3000)
+	if (roomCtx) {
+		const timeline = parent ?? document.querySelector("div.timeline-view")
+		roomCtx.scrolledToBottom = !timeline || timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight < 5
+	}
+	return true
+}
+
+export const jumpToEventInView = (roomCtx: RoomContextData, evtID: EventID, parent?: Element | null) => {
+	if (!parent || !jumpToVisibleEvent(evtID, parent, roomCtx)) {
+		console.info("Using event context modal to jump to event", evtID)
+		window.openNestableModal(modals.eventContext(roomCtx, evtID))
+	}
+}

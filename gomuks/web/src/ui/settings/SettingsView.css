@@ -1,0 +1,208 @@
+div.settings-view {
+	div.room-details {
+		display: flex;
+		gap: .5rem;
+
+		img.avatar {
+			margin-top: 0.5rem;
+		}
+
+		div.room-name {
+			font-size: 1.2rem;
+			font-weight: bold;
+			text-overflow: ellipsis;
+			text-wrap: nowrap;
+		}
+
+		div.room-buttons {
+			display: flex;
+			gap: .5rem;
+
+			button {
+				padding: .5rem 1rem;
+
+				&.leave-room {
+					&:hover, &:focus {
+						background-color: var(--error-color);
+						color: var(--inverted-text-color);
+					}
+				}
+			}
+		}
+	}
+
+	width: min(60rem, 80vw);
+	display: flex;
+	flex-direction: column;
+
+	h2, h3, h4 {
+		margin: 0;
+	}
+
+	summary > h3, summary > h4 {
+		display: inline;
+	}
+
+	div.preference-table {
+		display: grid;
+		grid-template-columns: auto 1fr 1fr 1fr 1fr;
+		grid-gap: .25rem;
+
+		> div.name {
+			font-weight: bold;
+			display: flex;
+			align-items: center;
+		}
+
+		> div.preference {
+			display: flex;
+			align-items: center;
+			max-width: 10rem;
+
+			&.select-preference > select {
+				padding: .25rem;
+				min-width: 0;
+			}
+
+			&.string-preference > input, &.number-preference > input {
+				border: 1px solid var(--border-color);
+				padding: .25rem;
+				min-width: 0;
+			}
+		}
+	}
+
+	> div.custom-css-input {
+		display: flex;
+		flex-direction: column;
+		gap: .5rem;
+		margin-right: 1rem;
+
+		> div.header {
+			display: flex;
+			gap: .5rem;
+		}
+
+		> textarea {
+			width: 100%;
+			box-sizing: border-box;
+			resize: vertical;
+			border: 1px solid var(--border-color);
+			outline: none;
+			height: 10rem;
+			min-height: 3rem;
+			font-family: var(--monospace-font-stack);
+		}
+
+		> div.vscode-wrapper {
+			position: fixed;
+			inset: 0;
+			top: var(--window-top-margin);
+			z-index: 10;
+			background-color: var(--background-color);
+
+			> div.loader {
+				position: absolute;
+				inset: 0;
+				display: flex;
+				justify-content: center;
+				align-items: center;
+			}
+		}
+
+		> div.buttons {
+			display: flex;
+			justify-content: right;
+			gap: .5rem;
+
+			> button {
+				padding: .5rem 1rem;
+				font-weight: bold;
+
+				&.delete:hover, &.delete:focus {
+					background-color: var(--error-color);
+					color: var(--inverted-text-color);
+				}
+			}
+		}
+	}
+
+	> div.key-export {
+		display: flex;
+		flex-direction: column;
+		gap: .5rem;
+		margin: 0 .5rem;
+		max-width: 25rem;
+
+		button {
+			padding: .5rem;
+			box-sizing: border-box;
+			width: 100%;
+		}
+
+		hr {
+			width: 100%;
+			opacity: .2;
+			margin: 0;
+		}
+
+		input {
+			border: 1px solid var(--border-color);
+			padding: .5rem;
+			border-radius: .5rem;
+		}
+
+		> div.export-buttons, > form.import-buttons, > div.key-backup-buttons {
+			display: flex;
+			gap: .5rem;
+
+			> form {
+				width: 100%;
+			}
+		}
+	}
+
+	> div.misc-buttons > button {
+		padding: .5rem 1rem;
+		display: block;
+
+		&.logout {
+			margin-top: 2rem;
+
+			&:hover, &:focus {
+				background-color: var(--error-color);
+				color: var(--inverted-text-color);
+			}
+		}
+	}
+
+	> hr {
+		width: 100%;
+		opacity: .2;
+	}
+}
+
+div.key-restore-modal-wrapper {
+	width: 100%;
+	max-width: min(30rem, 90vw) !important;
+}
+
+div.key-restore-modal {
+	display: flex;
+	flex-direction: column;
+	gap: .25rem;
+	width: 100%;
+
+	.status {
+		font-weight: bold;
+	}
+
+	.active-room-id {
+		white-space: nowrap;
+	}
+
+	progress {
+		width: 100%;
+		box-sizing: border-box;
+	}
+}

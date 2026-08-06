@@ -1,0 +1,322 @@
+:root {
+	color-scheme: light;
+	--font-stack: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+	--monospace-font-stack: "Fira Code", monospace;
+
+	--window-top-margin: env(safe-area-inset-top, 0px);
+	--background-color: #fff;
+	--login-background-color: #eee;
+	--text-color: #000;
+	--inverted-text-color: var(--background-color);
+	--secondary-text-color: #888;
+	--semisecondary-text-color: #555;
+	--link-text-color: #0467dd;
+	--visited-link-text-color: var(--link-text-color);
+	--small-font-size: .875rem;
+	--modal-max-width: 80rem;
+
+	--code-background-color: rgba(0, 0, 0, 0.15);
+	--media-placeholder-default-background: rgba(0, 0, 0, .1);
+	--media-placeholder-button-background: rgba(255, 255, 255, .5);
+
+	--primary-color: #00c853;
+	--primary-color-dark: #00b24a;
+	--error-color: red;
+
+	--border-color: #ccc;
+	--pill-background-color: #ccc;
+	--disabled-input-background-color: #ddd;
+	--url-preview-background-color: rgba(0, 0, 0, .05);
+	--highlight-pill-background-color: #c00;
+	--highlight-pill-text-color: #fff;
+	--button-hover-color: rgba(0, 0, 0, .2);
+	--light-hover-color: rgba(0, 0, 0, .1);
+
+	--composer-background-color: #f0f0f0;
+
+	--timeline-hover-bg-color: #eee;
+	--timeline-highlight-bg-color: rgba(255, 255, 0, .1);
+	--timeline-highlight-hover-bg-color: #eec;
+	--timeline-jump-bg-color: rgba(0, 255, 0, .2);
+	--timeline-jump-hover-bg-color: #cec;
+	--timeline-soft-failed-bg-color: rgba(255, 0, 0, .3);
+	--timeline-policy-server-spammy-bg-color: rgba(255, 0, 75, .2);
+
+	--room-list-background: linear-gradient(in hsl longer hue, red 0 0, magenta);
+	--room-list-background-overlay: hsla(0, 0%, 96%, .9);
+	--room-list-search-background-overlay: var(--room-list-background-overlay);
+	--space-list-background-overlay: hsla(0, 0%, 96%, .8);
+	--room-list-scrollbar-color: rgba(0, 0, 0, .4) rgba(0, 0, 0, .1);
+	--room-list-entry-hover-color: rgba(0, 0, 0, 0.075);
+	--room-list-entry-selected-color: rgba(0, 0, 0, 0.125);
+
+	--dimmed-overlay-background-color: rgba(0, 0, 0, .75);
+	--modal-box-shadow-color: rgba(0, 0, 0, 0.1);
+	--popout-widget-box-shadow-color: rgba(0, 0, 0, 0.5);
+	--popout-header-size: 2rem;
+
+	--emoji-selected-border-color: #cec;
+	--image-pack-editor-selected-color: #cec;
+
+	--unread-counter-text-color: var(--inverted-text-color);
+	--unread-counter-message-bg: rgba(0, 0, 0, 0.35);
+	--unread-counter-notification-bg: rgba(50, 150, 0, 0.7);
+	--unread-counter-marked-unread-bg: var(--unread-counter-notification-bg);
+	--unread-counter-highlight-bg: rgba(200, 0, 0, 0.7);
+	--space-unread-counter-message-bg: rgb(100, 100, 100, 0.9);
+	--space-unread-counter-notification-bg: rgb(50, 150, 0);
+	--space-unread-counter-highlight-bg: rgb(200, 0, 0);
+
+	--sender-color-0: #a4041d;
+	--sender-color-1: #9b2200;
+	--sender-color-2: #803f00;
+	--sender-color-3: #005f00;
+	--sender-color-4: #005c45;
+	--sender-color-5: #00548c;
+	--sender-color-6: #064ab1;
+	--sender-color-7: #5d26cd;
+	--sender-color-8: #822198;
+	--sender-color-9: #9f0850;
+
+	--sent-ok-color: var(--border-color);
+	--sent-error-color: var(--error-color);
+	--blockquote-border-color: var(--border-color);
+	--lightbox-button-color: var(--border-color);
+	--clickable-cursor: default;
+
+	--room-list-padding: .125rem;
+
+	--timeline-avatar-size: 2.5rem;
+	--timeline-avatar-gap: .5rem;
+	--timeline-avatar-total-size: calc(var(--timeline-avatar-size) + var(--timeline-avatar-gap));
+	--timeline-message-gap: .5rem;
+	--timeline-message-gap-same-sender: calc(var(--timeline-message-gap) / 2);
+	--timeline-message-gap-small-event: 0;
+	--timeline-message-gap-same-thread: 0;
+	--timeline-sender-name-timestamp-gap: .25rem;
+	--timeline-sender-name-content-gap: 0;
+	--timeline-vertical-padding: 0;
+	--timeline-horizontal-padding: 1.5rem;
+	--timeline-status-size: 4rem;
+
+	--image-picker-width: 22rem;
+	/* Note: this must be a constant rem or px value (no references to other variables or anything else) */
+	--image-picker-height: 34rem;
+	--image-picker-category-rows: 3;
+
+	@media screen and (max-width: 45rem) {
+		--timeline-horizontal-padding: .5rem;
+		--timeline-status-size: 2.3rem;
+	}
+
+	@media (prefers-color-scheme: dark) {
+		color-scheme: dark;
+		--background-color: #000;
+		--login-background-color: #111;
+		--text-color: #ebeef2;
+		--inverted-text-color: var(--background-color);
+		--secondary-text-color: #888;
+		--semisecondary-text-color: #bbb;
+		--link-text-color: #4187eb;
+
+		--code-background-color: rgba(255, 255, 255, 0.1);
+		--media-placeholder-default-background: rgba(255, 255, 255, .1);
+		--media-placeholder-button-background: rgba(0, 0, 0, .5);
+
+		--primary-color: #00b24a;
+		--primary-color-dark: #00c853;
+		--error-color: red;
+
+		--border-color: #222;
+		--pill-background-color: #222;
+		--disabled-input-background-color: #222;
+		--url-preview-background-color: #222;
+		--button-hover-color: rgba(255, 255, 255, .2);
+		--light-hover-color: rgba(255, 255, 255, .1);
+
+		--composer-background-color: #0a0a0a;
+
+		--timeline-hover-bg-color: #111;
+		--timeline-highlight-bg-color: rgba(255, 255, 0, .1);
+		--timeline-highlight-hover-bg-color: #331;
+		--timeline-jump-bg-color: rgba(0, 255, 0, .2);
+		--timeline-jump-hover-bg-color: #131;
+
+		--room-list-background: #171717;
+		--room-list-background-overlay: transparent;
+		--space-list-background-overlay: #222;
+		--room-list-scrollbar-color: rgba(255, 255, 255, .4) rgba(255, 255, 255, .1);
+		--room-list-entry-hover-color: rgba(255, 255, 255, 0.075);
+		--room-list-entry-selected-color: rgba(255, 255, 255, 0.125);
+
+		--modal-box-shadow-color: rgba(255, 255, 255, 0.04);
+		--popout-widget-box-shadow-color: rgba(255, 255, 255, 0.2);
+
+		--emoji-selected-border-color: #131;
+		--image-pack-editor-selected-color: #131;
+
+		--unread-counter-message-bg: rgba(255, 255, 255, 0.5);
+		--unread-counter-notification-bg: rgba(150, 255, 0, 0.7);
+		--unread-counter-highlight-bg: rgba(255, 50, 50, 0.7);
+		--space-unread-counter-message-bg: rgb(200, 200, 200, 0.8);
+		--space-unread-counter-notification-bg: rgb(150, 255, 0);
+		--space-unread-counter-highlight-bg: rgb(255, 50, 50);
+
+		--sender-color-0: #ff877c;
+		--sender-color-1: #f6913d;
+		--sender-color-2: #db9f00;
+		--sender-color-3: #56c02c;
+		--sender-color-4: #1fc090;
+		--sender-color-5: #21bacd;
+		--sender-color-6: #7aacf4;
+		--sender-color-7: #ad9cfe;
+		--sender-color-8: #d991de;
+		--sender-color-9: #fe84a2;
+
+		--sent-ok-color: #444;
+		--blockquote-border-color: #444;
+		--lightbox-button-color: #ccc;
+	}
+}
+
+body {
+	font-family: var(--font-stack);
+	margin: 0;
+	padding: 0;
+	background-color: var(--background-color);
+	line-height: 1.5;
+	touch-action: none;
+	color: var(--text-color);
+	min-height: 100vh;
+}
+
+html {
+	touch-action: none;
+	background-color: var(--background-color);
+	font-size: 16px;
+}
+
+#root {
+	display: flex;
+	justify-content: center;
+}
+
+main {
+	background-color: var(--background-color);
+}
+
+pre, code {
+	font-family: var(--monospace-font-stack);
+}
+
+input, textarea {
+	color: inherit;
+	background-color: inherit;
+	font-size: 1em;
+	font-family: var(--font-stack);
+}
+
+button, a.button, span.button {
+	cursor: var(--clickable-cursor);
+	font-size: 1em;
+	background: none;
+	border: none;
+	border-radius: .25rem;
+	padding: 0;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	color: inherit;
+	/* Buttons sometimes have their own fonts? */
+	font-family: var(--font-stack);
+
+	&:hover, &:focus {
+		background-color: var(--button-hover-color);
+	}
+
+	&:disabled {
+		cursor: default;
+		color: var(--secondary-text-color);
+		background: none;
+	}
+
+	&.primary-color-button:not(:disabled) {
+		background-color: var(--primary-color);
+		color: var(--inverted-text-color);
+
+		&:hover, &:focus {
+			background-color: var(--primary-color-dark);
+		}
+	}
+
+	&.thin-button {
+		padding: .5rem 1rem;
+	}
+
+	&.reset-button:not(:disabled) {
+		color: var(--error-color);
+
+		&:hover, &:focus {
+			background-color: var(--error-color);
+			color: var(--inverted-text-color);
+		}
+	}
+}
+
+div.connection-error-wrapper {
+	position: fixed;
+	inset: var(--window-top-margin) 0 0;
+	z-index: 100;
+	display: flex;
+	align-items: center;
+	flex-direction: column;
+	justify-content: center;
+
+	&.post-connect {
+		background-color: var(--dimmed-overlay-background-color);
+	}
+
+	> div.connection-error-inner {
+		background-color: var(--background-color);
+		border: 2px solid var(--error-color);
+		border-radius: .5rem;
+		margin-top: 2rem;
+		padding: 1rem;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 1rem;
+	}
+}
+
+div.pre-main {
+	position: fixed;
+	inset: var(--window-top-margin) 0 0;
+	background-color: var(--login-background-color);
+
+	&.waiting-to-connect {
+		padding-top: 2rem;
+		text-align: center;
+	}
+}
+
+a {
+	text-decoration: none;
+	color: var(--link-text-color);
+
+	&:visited {
+		color: var(--visited-link-text-color);
+	}
+
+	&:hover:not(.button) {
+		text-decoration: underline;
+	}
+}
+
+.hidden {
+	display: none !important;
+}
+
+.bidi-isolate {
+	unicode-bidi: isolate;
+}
