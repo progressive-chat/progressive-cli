@@ -69,8 +69,68 @@ Response DemoHandler::handleStatus(const Request& req) {
         "/api/sync?since=&timeout=",
         "POST /api/send ({\"room_id\":\"...\", \"body\":\"...\"})"
     };
-    resp.content_type = "application/json";
-    resp.body = j.dump(2);
+
+    auto fmt = req.format;
+    if (fmt == Format::Text) {
+        resp.content_type = "text/plain";
+        std::ostringstream oss;
+        oss << "Progressive Chat CLI — demo server\n"
+            << "══════════════════════════════════════\n"
+            << "User:     " << j["user_id"].get<std::string>() << "\n"
+            << "Device:   " << j["device_id"].get<std::string>() << "\n"
+            << "Rooms:    " << j["rooms_count"].get<int>() << "\n"
+            << "Messages: " << j["messages_count"].get<int>() << "\n"
+            << "Devices:  " << j["devices_count"].get<int>() << "\n\n"
+            << "Formats:  json, text, markdown, gemini, html\n\n"
+            << "Endpoints:\n";
+        for (auto& e : j["endpoints"]) oss << "  " << e.get<std::string>() << "\n";
+        resp.body = oss.str();
+    } else if (fmt == Format::Markdown) {
+        resp.content_type = "text/markdown";
+        std::ostringstream oss;
+        oss << "# Status\n\n"
+            << "| Key | Value |\n|---|---|\n"
+            << "| user_id | `" << j["user_id"].get<std::string>() << "` |\n"
+            << "| device_id | `" << j["device_id"].get<std::string>() << "` |\n"
+            << "| rooms | " << j["rooms_count"].get<int>() << " |\n"
+            << "| messages | " << j["messages_count"].get<int>() << " |\n"
+            << "| devices | " << j["devices_count"].get<int>() << " |\n\n"
+            << "## Endpoints\n\n";
+        for (auto& e : j["endpoints"]) oss << "- `" << e.get<std::string>() << "`\n";
+        resp.body = oss.str();
+    } else if (fmt == Format::Gemini) {
+        resp.content_type = "text/gemini";
+        std::ostringstream oss;
+        oss << "# Status\n\n"
+            << "@demo:demo.local (DEMODEVICE)\n"
+            << j["rooms_count"].get<int>() << " rooms · "
+            << j["messages_count"].get<int>() << " messages · "
+            << j["devices_count"].get<int>() << " devices\n\n"
+            << "## Endpoints\n\n"
+            << "=> /api/rooms Rooms\n"
+            << "=> /api/devices Devices\n"
+            << "=> /api/sync Sync\n";
+        resp.body = oss.str();
+    } else if (fmt == Format::HTML) {
+        resp.content_type = "text/html";
+        std::ostringstream oss;
+        oss << "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Status</title>"
+            << "<style>body{font-family:monospace;background:#1e1e1e;color:#d4d4d4;padding:20px;}"
+            << "table{border-collapse:collapse}.k{color:#569cd6;padding:2px 12px 2px 0}.v{color:#ce9178;}"
+            << "li{color:#9cdcfe}</style></head><body><h1>Status</h1><table>"
+            << "<tr><td class='k'>user_id</td><td class='v'>@demo:demo.local</td></tr>"
+            << "<tr><td class='k'>device_id</td><td class='v'>DEMODEVICE</td></tr>"
+            << "<tr><td class='k'>rooms</td><td class='v'>" << j["rooms_count"].get<int>() << "</td></tr>"
+            << "<tr><td class='k'>messages</td><td class='v'>" << j["messages_count"].get<int>() << "</td></tr>"
+            << "<tr><td class='k'>devices</td><td class='v'>" << j["devices_count"].get<int>() << "</td></tr>"
+            << "</table><h2>Endpoints</h2><ul>";
+        for (auto& e : j["endpoints"]) oss << "<li>" << e.get<std::string>() << "</li>";
+        oss << "</ul></body></html>";
+        resp.body = oss.str();
+    } else {
+        resp.content_type = "application/json";
+        resp.body = j.dump(2);
+    }
     return resp;
 }
 
@@ -455,7 +515,61 @@ Response DemoHandler::handleSync(const Request& req) {
         {"left", json::array()}
     };
 
-    resp.body = result.dump(2);
+    auto fmt = req.format;
+    if (fmt == Format::Text) {
+        resp.content_type = "text/plain";
+        std::ostringstream oss;
+        oss << "Sync (demo)\n"
+            << "══════════════════════════════════════\n"
+            << "next_batch: " << result["next_batch"].get<std::string>() << "\n"
+            << "rooms:      " << rooms.size() << "\n\n";
+        for (auto& [rid, rd] : rooms.items()) {
+            int n = rd["timeline"]["events"].size();
+            oss << rid << " (" << n << " events)\n";
+        }
+        resp.body = oss.str();
+    } else if (fmt == Format::Markdown) {
+        resp.content_type = "text/markdown";
+        std::ostringstream oss;
+        oss << "# Sync\n\n"
+            << "- **next_batch**: `" << result["next_batch"].get<std::string>() << "`\n"
+            << "- **rooms**: " << rooms.size() << "\n\n"
+            << "## Rooms\n\n";
+        for (auto& [rid, rd] : rooms.items()) {
+            int n = rd["timeline"]["events"].size();
+            oss << "- " << rid << " — " << n << " events\n";
+        }
+        resp.body = oss.str();
+    } else if (fmt == Format::Gemini) {
+        resp.content_type = "text/gemini";
+        std::ostringstream oss;
+        oss << "# Sync\n\n"
+            << "next_batch: " << result["next_batch"].get<std::string>() << "\n"
+            << rooms.size() << " rooms\n\n"
+            << "## Rooms\n\n";
+        for (auto& [rid, rd] : rooms.items()) {
+            int n = rd["timeline"]["events"].size();
+            oss << "=> /api/rooms/" << rid << "/messages " << rid << " (" << n << " events)\n";
+        }
+        resp.body = oss.str();
+    } else if (fmt == Format::HTML) {
+        resp.content_type = "text/html";
+        std::ostringstream oss;
+        oss << "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Sync</title>"
+            << "<style>body{font-family:monospace;background:#1e1e1e;color:#d4d4d4;padding:20px;}"
+            << "li{color:#9cdcfe}</style></head><body><h1>Sync</h1>"
+            << "<p>next_batch: " << result["next_batch"].get<std::string>() << "</p>"
+            << "<p>" << rooms.size() << " rooms</p><ul>";
+        for (auto& [rid, rd] : rooms.items()) {
+            int n = rd["timeline"]["events"].size();
+            oss << "<li>" << rid << " — " << n << " events</li>";
+        }
+        oss << "</ul></body></html>";
+        resp.body = oss.str();
+    } else {
+        resp.content_type = "application/json";
+        resp.body = result.dump(2);
+    }
     return resp;
 }
 

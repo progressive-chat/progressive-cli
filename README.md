@@ -73,33 +73,43 @@ The login screen supports connection types:
 | Yggdrasil | Mesh network (200::/7, .ygg domains) | URL rewrite |
 | Custom | User-specified proxy | Configurable host/port/credentials |
 
-### REST API
+### REST API (C++ `matrixcli serve` / `matrixcli demo`)
 
-The backend exposes a format-aware REST API at `/_gomuks/api/v1/`:
+The C++ server exposes a format-aware REST API under `/api/` (default port 8080,
+`--port` to change). Demo mode (`matrixcli demo`) serves the same API with
+synthetic data and no account:
 
 ```bash
+# Start the API server (demo mode, no account needed)
+matrixcli demo --port=8080
+
 # Get client status
-curl http://localhost:29325/_gomuks/api/v1/status?format=json
+curl "http://localhost:8080/api/status?format=json"
 
 # List rooms as Markdown
-curl http://localhost:29325/_gomuks/api/v1/rooms?format=markdown
+curl "http://localhost:8080/api/rooms?format=markdown"
 
 # Get room messages as plain text
-curl "http://localhost:29325/_gomuks/api/v1/rooms/!roomid:server/messages?format=text&limit=20"
+curl "http://localhost:8080/api/rooms/!roomid:server/messages?format=text&limit=20"
 
 # Get room messages as HTML
-curl "http://localhost:29325/_gomuks/api/v1/rooms/!roomid:server/messages?format=html"
+curl "http://localhost:8080/api/rooms/!roomid:server/messages?format=html"
 
-# Get room info as Gemtext
-curl http://localhost:29325/_gomuks/api/v1/rooms/!roomid:server?format=gemini
+# Get room messages as Gemtext
+curl "http://localhost:8080/api/rooms/!roomid:server/messages?format=gemini"
 ```
 
 Available formats: `json` (default), `text`, `markdown`, `gemini`, `html`.
 
 Format can also be selected via the `Accept:` header:
 ```bash
-curl -H "Accept: text/markdown" http://localhost:29325/_gomuks/api/v1/status
+curl -H "Accept: text/markdown" http://localhost:8080/api/status
 ```
+
+Full endpoint list is returned by `/api/status` itself.
+
+> Note: the Go gomuks fork exposes its own API under `/_gomuks/api/v1/`.
+> The C++ server intentionally uses plain `/api/` paths.
 
 ## C++ build (cppcli/)
 

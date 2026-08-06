@@ -1,5 +1,6 @@
 #include "handler.hpp"
 #include <nlohmann/json.hpp>
+#include <sstream>
 
 namespace matrixcli { namespace api {
 
@@ -7,14 +8,48 @@ MatrixHandler::MatrixHandler(matrix::Client& client) : _client(client) {}
 
 Response MatrixHandler::handleStatus(const Request& req) {
     Response resp;
-    resp.content_type = "application/json";
 
     nlohmann::json j;
     j["logged_in"] = _client.isLoggedIn();
     if (_client.isLoggedIn()) {
         j["user_id"] = _client.userId();
     }
-    resp.body = j.dump(2);
+
+    auto fmt = req.format;
+    if (fmt == Format::Text) {
+        resp.content_type = "text/plain";
+        std::ostringstream oss;
+        oss << "Progressive Chat CLI\n"
+            << "══════════════════════════════════════\n"
+            << "Logged in: " << (j["logged_in"].get<bool>() ? "yes" : "no") << "\n";
+        if (_client.isLoggedIn()) oss << "User:      " << j["user_id"].get<std::string>() << "\n";
+        resp.body = oss.str();
+    } else if (fmt == Format::Markdown) {
+        resp.content_type = "text/markdown";
+        std::ostringstream oss;
+        oss << "# Status\n\n"
+            << "- **logged_in**: " << (j["logged_in"].get<bool>() ? "yes" : "no") << "\n";
+        if (_client.isLoggedIn()) oss << "- **user_id**: `" << j["user_id"].get<std::string>() << "`\n";
+        resp.body = oss.str();
+    } else if (fmt == Format::Gemini) {
+        resp.content_type = "text/gemini";
+        std::ostringstream oss;
+        oss << "# Status\n\n"
+            << (j["logged_in"].get<bool>() ? "@" + j["user_id"].get<std::string>() : "not logged in") << "\n";
+        resp.body = oss.str();
+    } else if (fmt == Format::HTML) {
+        resp.content_type = "text/html";
+        std::ostringstream oss;
+        oss << "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Status</title>"
+            << "<style>body{font-family:monospace;background:#1e1e1e;color:#d4d4d4;padding:20px;}"
+            << ".v{color:#ce9178}</style></head><body><h1>Status</h1><p class='v'>"
+            << (j["logged_in"].get<bool>() ? "logged in as " + j["user_id"].get<std::string>() : "not logged in")
+            << "</p></body></html>";
+        resp.body = oss.str();
+    } else {
+        resp.content_type = "application/json";
+        resp.body = j.dump(2);
+    }
     return resp;
 }
 
