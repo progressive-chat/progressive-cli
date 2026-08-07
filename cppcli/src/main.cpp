@@ -1012,6 +1012,11 @@ int cmdConfig(const matrixcli::cli::Args& args) {
     using namespace matrixcli;
     const std::string path = "matrixcli.toml";
 
+#ifndef BUILD_TUI
+    (void)args; (void)path;
+    std::cerr << "TUI config is unavailable — this binary was built without the TUI (BUILD_TUI=OFF)" << std::endl;
+    return 1;
+#else
     if (args.options.count("set") && args.positional.size() >= 1) {
         tui::TUIConfig cfg = tui::TUIConfig::load(path);
         std::string key = args.options.at("set");
@@ -1046,6 +1051,7 @@ int cmdConfig(const matrixcli::cli::Args& args) {
         std::cout << "\nSet:  matrixcli config --set key value" << std::endl;
     }
     return 0;
+#endif
 }
 
 int cmdDemoPopulate(const matrixcli::cli::Args&) {
