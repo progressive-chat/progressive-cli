@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'cppcli/lib/ecore/**'
+      - 'cppcli/lib/CMakeLists.txt'
       - 'cppcli/tests/**'
       - 'cppcli/src/**'
       - 'cppcli/lib/api/**'
@@ -14,7 +14,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'cppcli/lib/ecore/**'
+      - 'cppcli/lib/CMakeLists.txt'
       - 'cppcli/tests/**'
       - 'cppcli/src/**'
       - 'cppcli/lib/api/**'

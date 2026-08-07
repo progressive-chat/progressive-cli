@@ -4,10 +4,10 @@
 #include <memory>
 #include <string>
 
-#include "../lib/ecore/core/matrix_client.hpp"
-#include "../lib/ecore/core/session_store.hpp"
-#include "../lib/ecore/core/sync_engine.hpp"
-#include "../lib/ecore/core/fast_sync.hpp"
+#include "core/matrix_client.hpp"
+#include "core/session_store.hpp"
+#include "core/sync_engine.hpp"
+#include "core/fast_sync.hpp"
 
 namespace matrixcli { namespace pcore {
 

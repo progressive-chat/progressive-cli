@@ -4,7 +4,7 @@
 #include "../../lib/api/router.hpp"
 #include "../../lib/api/handler.hpp"
 #include "../../lib/api/demo_handler.hpp"
-#include "../../lib/ecore/core/matrix_client.hpp"
+#include "core/matrix_client.hpp"
 #include "web_proxy.hpp"
 #include <memory>
 

@@ -11,7 +11,7 @@
 #include "commands.hpp"
 #include "globals.hpp"
 #include "pcore.hpp"
-#include "../lib/ecore/core/crash_handler.hpp"
+#include "core/crash_handler.hpp"
 #include "server/server.hpp"
 #include "../lib/matrix/client.hpp"
 #include "../lib/tdlib/tdlib_bridge.hpp"

@@ -7,7 +7,7 @@
 #include "commands.hpp"
 #include "pcore.hpp"
 #include "../lib/database/db.hpp"
-#include "../lib/ecore/core/http_client.hpp"
+#include "core/http_client.hpp"
 #include <progressive/llm.hpp>
 #include <progressive/agent_executor.hpp>
 #include <progressive/typing_indicator.hpp>

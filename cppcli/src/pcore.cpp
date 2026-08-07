@@ -5,7 +5,7 @@
 
 #include "../lib/database/db.hpp"
 #include "../lib/matrix/events.hpp"
-#include "../lib/ecore/core/utils.hpp"
+#include "core/utils.hpp"
 
 namespace matrixcli { namespace pcore {
 

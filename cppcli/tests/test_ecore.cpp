@@ -57,9 +57,14 @@ static void test_sas() {
     assert(!formatSasEmojis(emojis).empty() && "emoji formatting works");
     assert(!formatSasDecimals(decimals).empty() && "decimal formatting works");
 
-    // Two sessions with the same shared secret must produce identical emoji sets
+    // Two sessions with the same shared secret must produce identical emoji
+    // sets (current core API: sessions are created and keys exchanged first).
     std::string secret = "shared-secret-bytes";
-    SasSession a{}, b{};
+    SasSession a = sasCreate();
+    SasSession b = sasCreate();
+    assert(a.valid && b.valid && "SAS sessions created");
+    assert(sasSetTheirKey(a, b.ourPubkey) && "A accepts B's key");
+    assert(sasSetTheirKey(b, a.ourPubkey) && "B accepts A's key");
     auto bytesA = sasGenerateBytes(a, secret);
     auto bytesB = sasGenerateBytes(b, secret);
     assert(!bytesA.empty() && "SAS bytes generated");

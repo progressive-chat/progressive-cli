@@ -1,7 +1,7 @@
 #pragma once
 
 #include "server.hpp"
-#include "../ecore/core/matrix_client.hpp"
+#include "core/matrix_client.hpp"
 
 namespace matrixcli { namespace api {
 

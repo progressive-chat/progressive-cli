@@ -2,8 +2,8 @@
 // core (lib/ecore). Moved out of main.cpp during the command refactor.
 #include "commands.hpp"
 #include "pcore.hpp"
-#include "../lib/ecore/core/crypto/verify_controller.hpp"
-#include "../lib/ecore/core/crypto/sas_emojis.hpp"
+#include "core/crypto/verify_controller.hpp"
+#include "core/crypto/sas_emojis.hpp"
 #include <nlohmann/json.hpp>
 #include <chrono>
 #include <iostream>

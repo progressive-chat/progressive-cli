@@ -9,10 +9,31 @@ option(BUILD_TESTS "Build tests" ON)
 option(BUILD_TUI "Build terminal UI" ON)
 option(USE_SYSTEM_OLM "Use system libolm" OFF)
 
+# --- Canonical core: progressive-chat/progressive-core (FetchContent) ---
+# The shared Qt-free core (matrix_client, sync_engine, decryptor, …) — it
+# also brings its own libolm 3.2.16, which is why the olm import below is
+# guarded by if(NOT TARGET olm).
+include(FetchContent)
+FetchContent_Declare(
+    progressive-core
+    GIT_REPOSITORY https://github.com/progressive-chat/progressive-core.git
+    GIT_TAG        main
+    GIT_SHALLOW    TRUE
+)
+set(PROGRESSIVE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(progressive-core)
+# Keep the historical target name so all consumers (api, src, tui) link
+# unchanged against the fetched core.
+add_library(matrixcli_ecore ALIAS progressive_core)
+
+# libolm — only when the fetched canonical core hasn't provided one yet
+# (progressive-core brings its own olm 3.2.16 via FetchContent).
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
 
-# libolm
+# libolm — only when the fetched canonical core hasn't provided one yet
+# (progressive-core brings its own olm 3.2.16 via FetchContent).
+if(NOT TARGET olm)
 if(USE_SYSTEM_OLM)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(LIBOLM REQUIRED olm)
@@ -46,7 +67,11 @@ else()
             INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/../libolm/include"
         )
     endif()
-endif()
+endif()  # USE_SYSTEM_OLM
+else()
+    # olm comes from FetchContent(progressive-core).
+    set(OLM_FOUND TRUE)
+endif()  # NOT TARGET olm
 
 # nlohmann/json
 include(FetchContent)
