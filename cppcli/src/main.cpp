@@ -1902,6 +1902,158 @@ int cmdE2ee(const matrixcli::cli::Args& args) {
     return 1;
 }
 
+// Session helpers shared by backup/crosssign/ssss.
+static bool requireSession() {
+    using namespace matrixcli;
+    if (!pcore::init() || !pcore::loadSavedSession()) {
+        std::cerr << "Not logged in. Run 'matrixcli login' first." << std::endl;
+        return false;
+    }
+    return true;
+}
+
+int cmdBackup(const matrixcli::cli::Args& args) {
+    using namespace matrixcli;
+    if (!requireSession()) return 1;
+    auto& core = pcore::core();
+    std::string sub = args.positional.empty() ? "status" : args.positional[0];
+    bool json_out = args.options.count("json");
+
+    if (sub == "create") {
+        // Returns the recovery key — caller must show it ONCE.
+        std::string recoveryKey = core.sync->createKeyBackupNow();
+        if (recoveryKey.empty()) {
+            std::cerr << "Backup creation failed." << std::endl;
+            return 1;
+        }
+        if (json_out) {
+            nlohmann::json j;
+            j["recovery_key"] = recoveryKey;
+            std::cout << j.dump() << std::endl;
+        } else {
+            std::cout << "Key backup created. SAVE THIS RECOVERY KEY — it is shown once:\n\n"
+                      << ANSI_BOLD << recoveryKey << ANSI_RESET << "\n\n";
+        }
+        return 0;
+    }
+    if (sub == "upload") {
+        bool ok = core.sync->uploadKeyBackupNow();
+        if (json_out) {
+            nlohmann::json j; j["ok"] = ok; std::cout << j.dump() << std::endl;
+        } else {
+            std::cout << (ok ? "Backup uploaded." : "Backup upload failed.") << std::endl;
+        }
+        return ok ? 0 : 1;
+    }
+    if (sub == "restore") {
+        std::string key = args.options.count("recovery-key") ? args.options.at("recovery-key") : (args.positional.size() > 1 ? args.positional[1] : "");
+        if (key.empty()) {
+            std::cerr << "Usage: matrixcli backup restore --recovery-key <key>" << std::endl;
+            return 1;
+        }
+        int n = core.sync->restoreKeyBackupNow(key);
+        if (json_out) {
+            nlohmann::json j; j["sessions_imported"] = n; std::cout << j.dump() << std::endl;
+        } else {
+            std::cout << "Restored " << n << " sessions from key backup." << std::endl;
+        }
+        return n > 0 ? 0 : 1;
+    }
+    if (sub == "delete") {
+        bool ok = core.sync->deleteKeyBackupNow();
+        if (json_out) {
+            nlohmann::json j; j["ok"] = ok; std::cout << j.dump() << std::endl;
+        } else {
+            std::cout << (ok ? "Key backup deleted." : "Key backup deletion failed.") << std::endl;
+        }
+        return ok ? 0 : 1;
+    }
+    std::cerr << "Usage: matrixcli backup <create|upload|restore|delete>" << std::endl;
+    return 1;
+}
+
+int cmdCrossSign(const matrixcli::cli::Args& args) {
+    using namespace matrixcli;
+    if (!requireSession()) return 1;
+    auto& core = pcore::core();
+    std::string sub = args.positional.empty() ? "status" : args.positional[0];
+    bool json_out = args.options.count("json");
+
+    std::string password = args.options.count("password") ? args.options.at("password") : "";
+
+    auto report = [&](bool ok, const std::string& what) {
+        if (json_out) {
+            nlohmann::json j; j["ok"] = ok; j["action"] = what; std::cout << j.dump() << std::endl;
+        } else {
+            std::cout << (ok ? ("Cross-signing " + what + ": OK.") : ("Cross-signing " + what + ": FAILED.")) << std::endl;
+        }
+        return ok ? 0 : 1;
+    };
+
+    if (sub == "setup") {
+        if (core.sync->setupCrossSigning()) return report(true, "setup");
+        // UIA challenge — retry with password if provided.
+        if (!core.sync->uiaSession().empty()) {
+            if (password.empty()) {
+                if (json_out) {
+                    nlohmann::json j; j["ok"] = false; j["need_password"] = true;
+                    j["error"] = "server requires password confirmation (UIA) — retry with --password";
+                    std::cout << j.dump() << std::endl;
+                } else {
+                    std::cerr << "Server requires password confirmation — retry with --password." << std::endl;
+                }
+                return 1;
+            }
+            if (core.sync->setupCrossSigningWithPassword(password)) return report(true, "setup");
+            return report(false, "setup");
+        }
+        return report(false, "setup");
+    }
+    if (sub == "reset") {
+        if (core.sync->resetCrossSigning()) return report(true, "reset");
+        if (!core.sync->uiaSession().empty() && !password.empty())
+            if (core.sync->setupCrossSigningWithPassword(password)) return report(true, "reset");
+        return report(false, "reset");
+    }
+    std::cerr << "Usage: matrixcli crosssign <setup|reset> [--password <pw>]" << std::endl;
+    return 1;
+}
+
+int cmdSsss(const matrixcli::cli::Args& args) {
+    using namespace matrixcli;
+    if (!requireSession()) return 1;
+    auto& core = pcore::core();
+    std::string sub = args.positional.empty() ? "status" : args.positional[0];
+    bool json_out = args.options.count("json");
+
+    std::string key = args.options.count("recovery-key") ? args.options.at("recovery-key") : (args.positional.size() > 1 ? args.positional[1] : "");
+    if (key.empty()) {
+        std::cerr << "Usage: matrixcli ssss <upload|retrieve> --recovery-key <key>" << std::endl;
+        return 1;
+    }
+
+    if (sub == "upload") {
+        bool ok = core.sync->uploadSsssSecrets(key);
+        if (json_out) {
+            nlohmann::json j; j["ok"] = ok; std::cout << j.dump() << std::endl;
+        } else {
+            std::cout << (ok ? "SSSS secrets uploaded (encrypted to recovery key)." : "SSSS upload failed.") << std::endl;
+        }
+        return ok ? 0 : 1;
+    }
+    if (sub == "retrieve") {
+        int n = core.sync->retrieveSsssSecrets(key);
+        if (json_out) {
+            nlohmann::json j; j["result"] = n; std::cout << j.dump() << std::endl;
+        } else {
+            std::cout << (n > 0 ? "SSSS secrets retrieved and stored locally." : "SSSS retrieval failed (missing secrets or wrong key).") << std::endl;
+        }
+        return n > 0 ? 0 : 1;
+    }
+    std::cerr << "Usage: matrixcli ssss <upload|retrieve> --recovery-key <key>" << std::endl;
+    return 1;
+}
+
 int main(int argc, char* argv[]) {
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
@@ -1949,6 +2101,18 @@ int main(int argc, char* argv[]) {
 
     if (args.command == "e2ee") {
         return cmdE2ee(args);
+    }
+
+    if (args.command == "backup") {
+        return cmdBackup(args);
+    }
+
+    if (args.command == "crosssign") {
+        return cmdCrossSign(args);
+    }
+
+    if (args.command == "ssss") {
+        return cmdSsss(args);
     }
 
     if (args.command == "send") {
