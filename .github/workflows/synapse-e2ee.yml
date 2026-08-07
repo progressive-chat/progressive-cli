@@ -103,3 +103,7 @@ jobs:
     - name: Run Synapse E2EE integration test
       run: |
         SYNAPSE_URL=http://localhost:8008 ./build/tests/matrixcli_synapse_e2ee_test
+
+    - name: Run CLI end-to-end test
+      run: |
+        SYNAPSE_URL=http://localhost:8008 bash cppcli/tests/test_cli_e2e.sh build/src/matrixcli

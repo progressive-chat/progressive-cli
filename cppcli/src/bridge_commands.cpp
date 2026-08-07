@@ -13,9 +13,11 @@
 
 using namespace matrixcli;
 
-// Declared in e2ee_commands.cpp / room_commands.cpp (registered via registry).
+// Declared in e2ee_commands.cpp / room_commands.cpp / matrix_commands.cpp
+// (registered via registry).
 void registerE2eeCommands();
 void registerRoomCommands();
+void registerMatrixCommands();
 
 static irc::IrcClient g_ircClient;
 static bool g_ircSetup = false;
@@ -26,6 +28,7 @@ void registerBuiltinCommands() {
     // Vendored desktop-core command groups (lib/ecore).
     registerE2eeCommands();
     registerRoomCommands();
+    registerMatrixCommands();
 
     // ── IRC CLI commands ──
     reg.registerCli("irc", [](const cli::Args& args) -> int {
