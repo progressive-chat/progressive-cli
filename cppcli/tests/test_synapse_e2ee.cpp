@@ -107,7 +107,7 @@ static bool setupE2EE(TestUser& u, const std::string& hs) {
 // Joined member user IDs for a room (same parsing as room_key_helper.cpp).
 static std::vector<std::string> joinedMembers(MatrixClient& client, const std::string& roomId) {
     std::vector<std::string> userIds;
-    auto m = client.getRoomMembers(roomId);
+    auto m = client.getRoomMembers(roomId, true);
     if (!m.ok) return userIds;
     simdjson::dom::parser p;
     auto doc = p.parse(m.data);
