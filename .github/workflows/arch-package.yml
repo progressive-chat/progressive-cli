@@ -22,7 +22,7 @@ jobs:
           pacman -Syu --noconfirm
           pacman -S --noconfirm --needed \
             base-devel git cmake gcc make pkg-config \
-            openssl sqlite3 ncurses nlohmann-json libolm \
+            openssl sqlite3 ncurses nlohmann-json libolm libsodium curl \
             sudo fakeroot
 
       - name: Create builder user
