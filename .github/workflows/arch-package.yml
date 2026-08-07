@@ -37,6 +37,9 @@ jobs:
       - name: Fix ownership
         run: chown -R builder:builder "$GITHUB_WORKSPACE"
 
+      - name: Check no Qt in vendored core
+        run: ./scripts/check_no_qt_in_core.sh
+
       - name: Build C++ project
         run: |
           sudo -u builder bash -c '

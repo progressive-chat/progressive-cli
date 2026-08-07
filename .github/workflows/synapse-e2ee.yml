@@ -35,6 +35,9 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
+    - name: Check no Qt in vendored core
+      run: ./scripts/check_no_qt_in_core.sh
+
     - name: Install dependencies
       run: |
         sudo apt-get update

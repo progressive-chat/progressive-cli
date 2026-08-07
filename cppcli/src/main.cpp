@@ -11,6 +11,7 @@
 #include "commands.hpp"
 #include "globals.hpp"
 #include "pcore.hpp"
+#include "../lib/ecore/core/crash_handler.hpp"
 #include "server/server.hpp"
 #include "../lib/matrix/client.hpp"
 #include "../lib/tdlib/tdlib_bridge.hpp"
@@ -1843,6 +1844,7 @@ int cmdTUI(const matrixcli::cli::Args&) {
 int main(int argc, char* argv[]) {
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
+    progressive::crash::installCrashHandler();
 
     // Register all commands via registry (extensible, no if/else)
     extern void registerBuiltinCommands();

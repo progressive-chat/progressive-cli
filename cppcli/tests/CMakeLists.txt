@@ -39,7 +39,7 @@ if(BASH_PROGRAM)
 endif()
 
 # Ported progressive-desktop tests (vendored ecore E2EE/core suite)
-foreach(t e2ee_account e2ee_otk_count e2ee_sas e2ee_store olm_inbound megolm_inbound media_crypto sync_applier)
+foreach(t e2ee_account e2ee_otk_count e2ee_sas e2ee_store olm_inbound megolm_inbound media_crypto sync_applier e2ee_verify_protocol phase1 phase4)
     add_executable(matrixcli_${t}_test test_${t}.cpp)
     target_link_libraries(matrixcli_${t}_test PRIVATE matrixcli_ecore)
     add_test(NAME ${t} COMMAND matrixcli_${t}_test)
