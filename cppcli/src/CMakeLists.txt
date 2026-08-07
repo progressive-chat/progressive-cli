@@ -3,6 +3,7 @@ set(SOURCES
     config.cpp
     commands.cpp
     bridge_commands.cpp
+    pcore.cpp
     cli/args.cpp
     server/server.cpp
     server/web_proxy.cpp
@@ -23,6 +24,7 @@ target_link_libraries(matrixcli PRIVATE
     matrixcli_lemmy
     matrixcli_irc
     matrixcli_deltachat
+    matrixcli_ecore
     Threads::Threads
 )
 

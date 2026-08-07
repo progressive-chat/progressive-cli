@@ -57,6 +57,7 @@ void printUsage() {
               << "Commands:\n"
               << "  login         Login to a Matrix homeserver\n"
               << "  status        Show login status and sync token\n"
+              << "  e2ee          E2EE status and key management (status/upload/fallback)\n"
               << "  rooms         List joined rooms\n"
               << "  view          View room messages (offline from cache)\n"
               << "  send          Send a message to a room\n"

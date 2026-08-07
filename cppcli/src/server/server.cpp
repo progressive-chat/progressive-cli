@@ -7,8 +7,9 @@
 
 namespace matrixcli { namespace server {
 
-APIServer::APIServer(int port, ServerMode mode, const std::string& homeserver)
-    : _port(port), _server(port), _mode(mode) {
+APIServer::APIServer(int port, ServerMode mode, const std::string& homeserver,
+                     std::shared_ptr<progressive::desktop::MatrixClient> client)
+    : _port(port), _server(port), _mode(mode), _client(std::move(client)) {
     api::Router router;
 
     if (_mode == ServerMode::Demo) {
@@ -17,13 +18,13 @@ APIServer::APIServer(int port, ServerMode mode, const std::string& homeserver)
         _demoHandler->load();
         _demoHandler->registerRoutes(router);
         util::Logger::instance().info("Demo mode enabled — no Matrix account required");
-    } else if (_mode == ServerMode::Matrix) {
-        api::MatrixHandler handler(_client);
+    } else if (_mode == ServerMode::Matrix && _client) {
+        api::MatrixHandler handler(*_client);
         router.get("/api/status", [&](const api::Request& req) { return handler.handleStatus(req); });
         router.post("/api/login", [&](const api::Request& req) { return handler.handleLogin(req); });
         router.get("/api/sync", [&](const api::Request& req) { return handler.handleSync(req); });
         router.post("/api/send", [&](const api::Request& req) { return handler.handleSendMessage(req); });
-        util::Logger::instance().info("Matrix mode — using saved credentials");
+        util::Logger::instance().info("Matrix mode — vendored desktop core client");
     } else {
         // WebProxy: stateless — token lives in browser, server is a proxy
         _proxyHandler = std::make_unique<WebProxyHandler>(homeserver);

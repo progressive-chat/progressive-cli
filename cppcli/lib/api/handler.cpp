@@ -4,7 +4,7 @@
 
 namespace matrixcli { namespace api {
 
-MatrixHandler::MatrixHandler(matrix::Client& client) : _client(client) {}
+MatrixHandler::MatrixHandler(progressive::desktop::MatrixClient& client) : _client(client) {}
 
 Response MatrixHandler::handleStatus(const Request& req) {
     Response resp;
@@ -12,7 +12,10 @@ Response MatrixHandler::handleStatus(const Request& req) {
     nlohmann::json j;
     j["logged_in"] = _client.isLoggedIn();
     if (_client.isLoggedIn()) {
-        j["user_id"] = _client.userId();
+        auto acct = _client.account();
+        j["user_id"] = acct.userId;
+        j["device_id"] = acct.deviceId;
+        j["homeserver"] = acct.homeserverUrl;
     }
 
     auto fmt = req.format;
@@ -22,20 +25,29 @@ Response MatrixHandler::handleStatus(const Request& req) {
         oss << "Progressive Chat CLI\n"
             << "══════════════════════════════════════\n"
             << "Logged in: " << (j["logged_in"].get<bool>() ? "yes" : "no") << "\n";
-        if (_client.isLoggedIn()) oss << "User:      " << j["user_id"].get<std::string>() << "\n";
+        if (_client.isLoggedIn()) {
+            auto acct = _client.account();
+            oss << "User:      " << acct.userId << "\n"
+                << "Device:    " << acct.deviceId << "\n"
+                << "Server:    " << acct.homeserverUrl << "\n";
+        }
         resp.body = oss.str();
     } else if (fmt == Format::Markdown) {
         resp.content_type = "text/markdown";
         std::ostringstream oss;
         oss << "# Status\n\n"
             << "- **logged_in**: " << (j["logged_in"].get<bool>() ? "yes" : "no") << "\n";
-        if (_client.isLoggedIn()) oss << "- **user_id**: `" << j["user_id"].get<std::string>() << "`\n";
+        if (_client.isLoggedIn()) {
+            auto acct = _client.account();
+            oss << "- **user_id**: `" << acct.userId << "`\n"
+                << "- **device_id**: `" << acct.deviceId << "`\n";
+        }
         resp.body = oss.str();
     } else if (fmt == Format::Gemini) {
         resp.content_type = "text/gemini";
         std::ostringstream oss;
         oss << "# Status\n\n"
-            << (j["logged_in"].get<bool>() ? "@" + j["user_id"].get<std::string>() : "not logged in") << "\n";
+            << (_client.isLoggedIn() ? "@" + _client.account().userId : "not logged in") << "\n";
         resp.body = oss.str();
     } else if (fmt == Format::HTML) {
         resp.content_type = "text/html";
@@ -43,7 +55,7 @@ Response MatrixHandler::handleStatus(const Request& req) {
         oss << "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Status</title>"
             << "<style>body{font-family:monospace;background:#1e1e1e;color:#d4d4d4;padding:20px;}"
             << ".v{color:#ce9178}</style></head><body><h1>Status</h1><p class='v'>"
-            << (j["logged_in"].get<bool>() ? "logged in as " + j["user_id"].get<std::string>() : "not logged in")
+            << (_client.isLoggedIn() ? "logged in as " + _client.account().userId : "not logged in")
             << "</p></body></html>";
         resp.body = oss.str();
     } else {
@@ -63,16 +75,27 @@ Response MatrixHandler::handleLogin(const Request& req) {
         std::string password = j.value("password", "");
         std::string device_name = j.value("device_name", "matrixcli");
 
-        auto creds = _client.loginPassword(username, password, device_name);
+        auto r = _client.loginWithPassword(username, password, device_name);
+        if (!r.ok) {
+            resp.status = 401;
+            nlohmann::json err;
+            err["error"] = r.error.message.empty() ? "login failed" : r.error.message;
+            if (!r.error.code.empty()) err["errcode"] = r.error.code;
+            resp.body = err.dump();
+            return resp;
+        }
 
+        _client.persistSession();
+        auto acct = _client.account();
         nlohmann::json result;
-        result["user_id"] = creds.user_id;
-        result["device_id"] = creds.device_id;
-        result["access_token"] = creds.access_token;
+        result["user_id"] = acct.userId;
+        result["device_id"] = acct.deviceId;
+        result["access_token"] = acct.accessToken;
+        result["homeserver"] = acct.homeserverUrl;
         resp.body = result.dump(2);
         resp.status = 200;
     } catch (const std::exception& e) {
-        resp.status = 401;
+        resp.status = 400;
         nlohmann::json err;
         err["error"] = e.what();
         resp.body = err.dump();
@@ -114,12 +137,18 @@ Response MatrixHandler::handleSendMessage(const Request& req) {
         std::string body = j.value("body", "");
         std::string msgtype = j.value("msgtype", "m.text");
 
-        auto event_id = _client.sendMessage(room_id, body, msgtype);
+        auto r = _client.sendMessage(room_id, body, msgtype);
 
         nlohmann::json result;
-        result["event_id"] = event_id;
-        resp.body = result.dump(2);
-        resp.status = 200;
+        if (r.ok) {
+            result["event_id"] = r.data;
+            resp.body = result.dump(2);
+            resp.status = 200;
+        } else {
+            resp.status = 400;
+            result["error"] = r.error.message.empty() ? "send failed" : r.error.message;
+            resp.body = result.dump();
+        }
     } catch (const std::exception& e) {
         resp.status = 400;
         nlohmann::json err;

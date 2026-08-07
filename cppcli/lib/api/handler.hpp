@@ -1,13 +1,14 @@
 #pragma once
 
 #include "server.hpp"
-#include "../matrix/client.hpp"
+#include "../ecore/core/matrix_client.hpp"
 
 namespace matrixcli { namespace api {
 
+// Matrix-mode API handler backed by the vendored desktop core (lib/ecore).
 class MatrixHandler {
 public:
-    explicit MatrixHandler(matrix::Client& client);
+    explicit MatrixHandler(progressive::desktop::MatrixClient& client);
 
     Response handleStatus(const Request& req);
     Response handleLogin(const Request& req);
@@ -15,7 +16,7 @@ public:
     Response handleSendMessage(const Request& req);
 
 private:
-    matrix::Client& _client;
+    progressive::desktop::MatrixClient& _client;
 };
 
 }} // namespace matrixcli::api

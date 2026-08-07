@@ -10,6 +10,7 @@
 #include "cli/args.hpp"
 #include "commands.hpp"
 #include "globals.hpp"
+#include "pcore.hpp"
 #include "server/server.hpp"
 #include "../lib/matrix/client.hpp"
 #include "../lib/tdlib/tdlib_bridge.hpp"
@@ -63,43 +64,68 @@ int cmdServe(const matrixcli::cli::Args& args) {
     }
 
     Config::instance().load("config.json");
-    matrix::Client client;
-
-    // Try loading credentials from database first, fall back to config
-    db::Database dbi;
-    dbi.open("matrixcli.db");
-    auto acc = dbi.loadAccount();
-    if (acc.is_logged_in()) {
-        client.setHomeserverURL(acc.homeserver_url);
-        client.setAccessToken(acc.access_token);
-        util::Logger::instance().info("Loaded saved session for " + acc.user_id);
-    } else if (!Config::instance().homeserverURL().empty()) {
-        client.setHomeserverURL(Config::instance().homeserverURL());
-        client.setAccessToken(Config::instance().accessToken());
-    }
-    client.setDatabase(&dbi);
-
-    // Initialize crypto if logged in
-    if (acc.is_logged_in()) {
-        client.initCrypto(acc.user_id, acc.device_id);
-    }
 
     bool demo_mode = args.options.contains("demo");
     if (!demo_mode && args.command == "demo") demo_mode = true;
 
-    server::ServerMode mode = demo_mode ? server::ServerMode::Demo :
-                      acc.is_logged_in() ? server::ServerMode::Matrix : server::ServerMode::WebProxy;
+    server::ServerMode mode;
+    std::string homeserver = "https://matrix.org";
 
-    server::APIServer api_server(port, mode, acc.is_logged_in() ? acc.homeserver_url : "https://matrix.org");
-    api_server.start();
+    if (demo_mode) {
+        mode = server::ServerMode::Demo;
+    } else if (pcore::init() && pcore::loadSavedSession()) {
+        mode = server::ServerMode::Matrix;
+        homeserver = pcore::core().client->account().homeserverUrl;
+        util::Logger::instance().info("Loaded saved session for " + pcore::core().client->account().userId);
 
-    // Start background sync if logged in (populates DB for CLI commands)
-    if (!demo_mode && acc.is_logged_in()) {
-        client.startSync([&](const matrix::Event&) {
-            // Events auto-saved to DB by Client's built-in sync handler
+        // E2EE bootstrap (olm account + device keys) — non-fatal on failure.
+        std::string e2ee_note = pcore::bootstrap();
+        if (!e2ee_note.empty()) util::Logger::instance().warn(e2ee_note);
+
+        // Feed the offline cache from every /sync response (the bridge keeps
+        // view/rooms/search/API working on the legacy db::Database store).
+        pcore::startSync([](const progressive::desktop::FastSyncResponse& resp) {
+            db::Database dbi;
+            if (!dbi.open("matrixcli.db")) return;
+            for (auto& [roomIdView, room] : resp.joinedRooms) {
+                std::string room_id(roomIdView);
+                std::string room_name = room_id;
+                for (auto& ev : room.stateEvents) {
+                    if (ev.type == "m.room.name") {
+                        try {
+                            auto cj = nlohmann::json::parse(std::string(ev.contentJson));
+                            room_name = cj.value("name", room_id);
+                        } catch (...) {}
+                        break;
+                    }
+                }
+                nlohmann::json rj;
+                rj["name"] = room_name;
+                rj["topic"] = "";
+                rj["member_count"] = 0;
+                rj["is_encrypted"] = room.isEncrypted;
+                dbi.upsertRoom(rj, room_id);
+
+                for (auto& ev : room.timeline.events) {
+                    matrix::Event mev;
+                    mev.event_id = std::string(ev.eventId);
+                    mev.room_id = room_id;
+                    mev.sender = std::string(ev.senderId);
+                    mev.type = std::string(ev.type);
+                    mev.origin_server_ts = ev.originServerTs;
+                    try { mev.content = nlohmann::json::parse(std::string(ev.contentJson)); } catch (...) {}
+                    dbi.insertEvent(mev);
+                }
+            }
         });
-        util::Logger::instance().info("Background sync started");
+        util::Logger::instance().info("Background sync started (vendored desktop core)");
+    } else {
+        mode = server::ServerMode::WebProxy;
+        util::Logger::instance().info("No saved session — falling back to web proxy mode");
     }
+
+    server::APIServer api_server(port, mode, homeserver, pcore::core().client);
+    api_server.start();
 
     std::cout << "API server running on http://localhost:" << port << std::endl;
     std::cout << "Press Ctrl+C to stop" << std::endl;
@@ -108,7 +134,7 @@ int cmdServe(const matrixcli::cli::Args& args) {
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 
-    client.stopSync();
+    pcore::stopSync();
     api_server.stop();
     return 0;
 }
@@ -117,7 +143,6 @@ int cmdLogin(const matrixcli::cli::Args& args) {
     using namespace matrixcli;
 
     Config::instance().load("config.json");
-    matrix::Client client;
 
     std::string homeserver;
     auto hs_it = args.options.find("homeserver");
@@ -130,12 +155,87 @@ int cmdLogin(const matrixcli::cli::Args& args) {
         return 1;
     }
 
+    bool json_out = args.options.count("json");
+
+    // Password login via the vendored desktop core (lib/ecore).
+    auto token_it = args.options.find("token");
+    auto reg_it = args.options.find("register");
+    if (token_it == args.options.end() && reg_it == args.options.end()) {
+        std::string username;
+        auto user_it = args.options.find("username");
+        if (user_it != args.options.end()) {
+            username = user_it->second;
+        } else if (args.positional.size() >= 1) {
+            username = args.positional[0];
+        } else {
+            std::cerr << "Error: --username required" << std::endl;
+            return 1;
+        }
+
+        std::string password;
+        auto pass_it = args.options.find("password");
+        if (pass_it != args.options.end()) {
+            password = pass_it->second;
+        } else if (args.positional.size() >= 2) {
+            password = args.positional[1];
+        } else {
+            std::cerr << "Error: --password required" << std::endl;
+            return 1;
+        }
+
+        if (!pcore::init()) return 1;
+        auto& core = pcore::core();
+
+        // Resolve the homeserver (well-known aware) and stage it in the account.
+        auto disc = core.client->discoverHomeserver(homeserver);
+        if (!disc.ok || disc.data.empty()) {
+            std::cerr << "Login failed: cannot resolve homeserver " << homeserver << std::endl;
+            return 1;
+        }
+        progressive::desktop::AccountInfo staged;
+        staged.homeserverUrl = disc.data;
+        core.client->setAccount(staged);
+
+        auto r = core.client->loginWithPassword(username, password, "matrixcli");
+        if (!r.ok) {
+            std::string err = r.error.message.empty() ? "login failed" : r.error.message;
+            if (!r.error.code.empty()) err = "[" + r.error.code + "] " + err;
+            std::cerr << "Login failed: " << err << " (HTTP " << r.httpStatus << ")" << std::endl;
+            return 1;
+        }
+
+        auto acct = core.client->account();
+        core.client->persistSession();
+
+        // Compatibility: also record the session in config.json.
+        Config::instance().set("homeserver_url", acct.homeserverUrl);
+        Config::instance().set("access_token", acct.accessToken);
+        Config::instance().set("user_id", acct.userId);
+        Config::instance().set("device_id", acct.deviceId);
+        Config::instance().save();
+
+        std::string e2ee_note = pcore::bootstrap();
+
+        if (json_out) {
+            nlohmann::json j;
+            j["user_id"] = acct.userId;
+            j["device_id"] = acct.deviceId;
+            j["homeserver"] = acct.homeserverUrl;
+            j["e2ee"] = e2ee_note.empty();
+            std::cout << j.dump() << std::endl;
+        } else {
+            std::cout << "Logged in as " << acct.userId << " (device " << acct.deviceId << ")" << std::endl;
+            if (!e2ee_note.empty()) std::cout << "Warning: " << e2ee_note << std::endl;
+            else std::cout << "E2EE ready — device keys uploaded." << std::endl;
+        }
+        return 0;
+    }
+
+    // Token / registration: legacy path on the old client (transitional).
+    matrix::Client client;
     client.setHomeserverURL(homeserver);
 
     try {
-        auto token_it = args.options.find("token");
-        auto reg_it = args.options.find("register");
-
         if (token_it != args.options.end()) {
             auto creds = client.loginToken(token_it->second);
             std::cout << "Logged in as " << creds.user_id << std::endl;
@@ -154,8 +254,7 @@ int cmdLogin(const matrixcli::cli::Args& args) {
             acc.access_token = creds.access_token;
             acc.device_id = creds.device_id;
             dbi.saveAccount(acc);
-        } else if (reg_it != args.options.end()) {
-            // Registration
+        } else {
             std::string username;
             auto user_it = args.options.find("username");
             if (user_it != args.options.end()) username = user_it->second;
@@ -168,7 +267,6 @@ int cmdLogin(const matrixcli::cli::Args& args) {
 
             auto creds = client.registerAccount(username, password);
             std::cout << "Registered as " << creds.user_id << std::endl;
-            // Save to DB
             Config::instance().set("homeserver_url", homeserver);
             Config::instance().set("access_token", creds.access_token);
             Config::instance().set("user_id", creds.user_id);
@@ -182,47 +280,6 @@ int cmdLogin(const matrixcli::cli::Args& args) {
             sacc.access_token = creds.access_token;
             sacc.device_id = creds.device_id;
             dbi2.saveAccount(sacc);
-        } else {
-            std::string username;
-            auto user_it = args.options.find("username");
-            if (user_it != args.options.end()) {
-                username = user_it->second;
-            } else if (args.positional.size() >= 1) {
-                username = args.positional[0];
-            } else {
-                std::cerr << "Error: --username required" << std::endl;
-                return 1;
-            }
-
-            std::string password;
-            auto pass_it = args.options.find("password");
-            if (pass_it != args.options.end()) {
-                password = pass_it->second;
-            } else if (args.positional.size() >= 2) {
-                password = args.positional[1];
-            } else {
-                std::cerr << "Error: --password required" << std::endl;
-                return 1;
-            }
-
-            auto creds = client.loginPassword(username, password);
-            std::cout << "Logged in as " << creds.user_id << std::endl;
-
-            Config::instance().set("homeserver_url", homeserver);
-            Config::instance().set("access_token", creds.access_token);
-            Config::instance().set("user_id", creds.user_id);
-            Config::instance().set("device_id", creds.device_id);
-            Config::instance().save();
-
-            // Save to database for persistent sync state
-            db::Database dbi;
-            dbi.open("matrixcli.db");
-            db::StoredAccount acc;
-            acc.homeserver_url = homeserver;
-            acc.user_id = creds.user_id;
-            acc.access_token = creds.access_token;
-            acc.device_id = creds.device_id;
-            dbi.saveAccount(acc);
         }
     } catch (const std::exception& e) {
         std::cerr << "Login failed: " << e.what() << std::endl;
@@ -244,6 +301,57 @@ int cmdStatus(const matrixcli::cli::Args& args) {
     bool drill = !args.positional.empty();
 
     bool json_out = args.options.count("json");
+
+    // ecore session (vendored desktop core) takes precedence over the legacy db.
+    if (pcore::init() && pcore::loadSavedSession()) {
+        auto& core = pcore::core();
+        auto acct = core.client->account();
+        auto syncToken = core.store->loadSyncToken(acct.userId);
+        bool synced = syncToken.has_value() && !syncToken->empty();
+        bool e2ee = core.sync->decryptor()->isInitialized();
+
+        // Cache stats from the legacy offline store (fed by the sync bridge).
+        int rooms_c = 0, msgs_c = 0, notif_c = 0;
+        db::Database dbi;
+        if (dbi.open("matrixcli.db")) {
+            auto rooms = dbi.listRooms();
+            rooms_c = (int)rooms.size();
+            for (auto& r : rooms) msgs_c += dbi.getEventCount(r.value("room_id", ""));
+            notif_c = dbi.getNotificationCount();
+        }
+
+        if (json_out) {
+            nlohmann::json j;
+            j["logged_in"] = true;
+            j["user_id"] = acct.userId;
+            j["homeserver"] = acct.homeserverUrl;
+            j["device_id"] = acct.deviceId;
+            j["synced"] = synced;
+            j["e2ee"] = e2ee;
+            j["rooms"] = rooms_c;
+            j["messages"] = msgs_c;
+            j["unread"] = notif_c;
+            std::cout << j.dump() << std::endl;
+            return 0;
+        }
+
+        std::cout << ANSI_BOLD "\n  matrixcli status\n" ANSI_RESET << std::endl;
+        std::cout << ANSI_CYAN "\n  ── Account ──\n" ANSI_RESET;
+        std::cout << "  User:       " << acct.userId << std::endl;
+        std::cout << "  Homeserver: " << acct.homeserverUrl << std::endl;
+        std::cout << "  Device:     " << acct.deviceId << std::endl;
+        std::cout << ANSI_CYAN "\n  ── E2EE ──\n" ANSI_RESET;
+        std::cout << "  Device keys: " << (e2ee ? ANSI_GREEN "● ready" ANSI_RESET : "○ not initialized") << std::endl;
+        std::cout << ANSI_CYAN "\n  ── Sync ──\n" ANSI_RESET;
+        std::cout << "  Status:     " << (synced ? ANSI_GREEN "● synced" ANSI_RESET : "○ not synced — run 'matrixcli serve'") << std::endl;
+        std::cout << ANSI_CYAN "\n  ── Cache ──\n" ANSI_RESET;
+        std::cout << "  Rooms:      " << rooms_c << std::endl;
+        std::cout << "  Messages:   " << msgs_c << std::endl;
+        std::cout << "  Unread:     " << notif_c << std::endl;
+        std::cout << "\n  • Run " ANSI_BOLD "matrixcli serve" ANSI_RESET " to sync messages into the cache\n";
+        return 0;
+    }
+
     if (json_out) {
         Config::instance().load("config.json");
         db::Database dbi;
@@ -780,6 +888,38 @@ int cmdSendMsg(const matrixcli::cli::Args& args) {
     std::string body;
     for (size_t i = 1; i < args.positional.size(); i++) {
         if (i > 1) body += " "; body += args.positional[i];
+    }
+
+    bool json_out = args.options.count("json");
+
+    // Vendored desktop core path (preferred). Thread replies still use the
+    // legacy client.
+    if (thread_root.empty() && pcore::init() && pcore::loadSavedSession()) {
+        auto& core = pcore::core();
+        std::string room_id = query;
+        db::Database dbi;
+        if (dbi.open("matrixcli.db")) {
+            for (auto& r : dbi.listRooms()) {
+                std::string id = r.value("room_id", "");
+                std::string name = r.value("name", "");
+                if (id == query || name == query || name.find(query) == 0) { room_id = id; break; }
+            }
+        }
+        auto r = core.client->sendMessage(room_id, body, "m.text");
+        if (!r.ok) {
+            std::string err = r.error.message.empty() ? "send failed" : r.error.message;
+            std::cerr << "Send failed: " << err << std::endl;
+            return 1;
+        }
+        if (json_out) {
+            nlohmann::json j;
+            j["event_id"] = r.data;
+            j["room_id"] = room_id;
+            std::cout << j.dump() << std::endl;
+        } else {
+            std::cout << "Sent [" << r.data << "]" << std::endl;
+        }
+        return 0;
     }
 
     Config::instance().load("config.json");
@@ -1712,6 +1852,56 @@ int cmdTUI(const matrixcli::cli::Args&) {
 }
 #endif
 
+int cmdE2ee(const matrixcli::cli::Args& args) {
+    using namespace matrixcli;
+    if (!pcore::init() || !pcore::loadSavedSession()) {
+        std::cerr << "Not logged in. Run 'matrixcli login' first." << std::endl;
+        return 1;
+    }
+    auto& core = pcore::core();
+    auto acct = core.client->account();
+    std::string sub = args.positional.empty() ? "status" : args.positional[0];
+    bool json_out = args.options.count("json");
+
+    if (sub == "status" || sub == "info") {
+        bool ready = core.sync->decryptor()->isInitialized();
+        std::string pickleKey = acct.userId + "/" + acct.deviceId;
+        auto rec = core.store->loadOlmAccount(pickleKey);
+        int otk = rec ? rec->uploadedKeyCount : 0;
+        bool shared = rec ? rec->shared : false;
+
+        if (json_out) {
+            nlohmann::json j;
+            j["user_id"] = acct.userId;
+            j["device_id"] = acct.deviceId;
+            j["ready"] = ready;
+            j["olm_account_persisted"] = rec.has_value();
+            j["one_time_keys_uploaded"] = otk;
+            j["account_shared"] = shared;
+            std::cout << j.dump() << std::endl;
+            return 0;
+        }
+        std::cout << "E2EE status for " << acct.userId << " (" << acct.deviceId << "):" << std::endl;
+        std::cout << "  Decryptor:            " << (ready ? ANSI_GREEN "● ready" ANSI_RESET : "○ not initialized") << std::endl;
+        std::cout << "  Olm account:          " << (rec ? "persisted" : "not persisted") << std::endl;
+        std::cout << "  One-time keys sent:   " << otk << std::endl;
+        std::cout << "  Account shared:       " << (shared ? "yes" : "no") << std::endl;
+        return 0;
+    }
+    if (sub == "upload") {
+        core.sync->uploadDeviceKeys(true);
+        std::cout << "Device keys upload scheduled." << std::endl;
+        return 0;
+    }
+    if (sub == "fallback") {
+        core.sync->uploadFallbackKey();
+        std::cout << "Fallback key upload scheduled." << std::endl;
+        return 0;
+    }
+    std::cerr << "Usage: matrixcli e2ee <status|upload|fallback>" << std::endl;
+    return 1;
+}
+
 int main(int argc, char* argv[]) {
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
@@ -1755,6 +1945,10 @@ int main(int argc, char* argv[]) {
 
     if (args.command == "status") {
         return cmdStatus(args);
+    }
+
+    if (args.command == "e2ee") {
+        return cmdE2ee(args);
     }
 
     if (args.command == "send") {
