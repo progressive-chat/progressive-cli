@@ -7,6 +7,7 @@ set(SOURCES
     e2ee_commands.cpp
     room_commands.cpp
     matrix_commands.cpp
+    agent_commands.cpp
     cli/args.cpp
     server/server.cpp
     server/web_proxy.cpp

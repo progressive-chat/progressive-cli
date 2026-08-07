@@ -46,11 +46,14 @@ add_library(matrixcli_ecore STATIC
     core/crypto/ssss.cpp
     core/crypto/verification.cpp
     core/crypto/verify_controller.cpp
+    native/agent_executor.cpp
     native/canonical_json.cpp
     native/content_utils.cpp
     native/crypto_algorithms.cpp
     native/event_models.cpp
+    native/eventdb.cpp
     native/json_parser.cpp
+    native/llm.cpp
     native/login_flow.cpp
     native/markdown.cpp
     native/matrix_error.cpp
@@ -62,8 +65,13 @@ add_library(matrixcli_ecore STATIC
     native/olm_manager.cpp
     native/olm_session.cpp
     native/room_encryption.cpp
+    native/search_engine.cpp
+    native/state_resolver.cpp
     native/string_utils.cpp
     native/sync_models.cpp
+    native/typing_indicator.cpp
+    native/typing_monitor.cpp
+    native/typing_utils.cpp
     native/well_known.cpp
 )
 

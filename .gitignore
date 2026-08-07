@@ -47,3 +47,4 @@ cppcli/build/
 *.o
 *.a
 *.so
+build-dbg/

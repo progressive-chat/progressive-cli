@@ -18,6 +18,7 @@ using namespace matrixcli;
 void registerE2eeCommands();
 void registerRoomCommands();
 void registerMatrixCommands();
+void registerAgentCommands();
 
 static irc::IrcClient g_ircClient;
 static bool g_ircSetup = false;
@@ -29,6 +30,7 @@ void registerBuiltinCommands() {
     registerE2eeCommands();
     registerRoomCommands();
     registerMatrixCommands();
+    registerAgentCommands();
 
     // ── IRC CLI commands ──
     reg.registerCli("irc", [](const cli::Args& args) -> int {
