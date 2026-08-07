@@ -39,11 +39,12 @@ echo ">> Desktop core: ${DESKTOP_HEAD:0:7} (git)"
 echo ">> Native:       ${NATIVE_HEAD:0:7} (git)"
 echo ">> Mode:         $([ "$APPLY" -eq 1 ] && echo APPLY || echo dry-run)"
 
-changed=0; copied=0
+changed=0; copied=0; diffs=0
 copy_if_changed() {
     local src="$1" dst="$2"
     if [ ! -f "$src" ]; then echo "  WARN: source missing: $src"; return; fi
     if ! cmp -s "$src" "$dst"; then
+        diffs=$((diffs+1))
         echo "  DIFF: ${dst#$E/}  (desktop ${src#$D/})"
         if [ "$APPLY" -eq 1 ]; then
             cp "$src" "$dst"
@@ -56,9 +57,9 @@ copy_if_changed() {
 echo ">> Comparing $(find "$E/core" "$E/native" -name '*.cpp' -o -name '*.hpp' | wc -l) vendored files..."
 
 # ecore/core/* <-> desktop src/core/*
-for f in $(cd "$E/core" && find . \( -name '*.cpp' -o -name '*.hpp' \) | sort); do
+for f in $(cd "$E/core" && find . \( -name '*.cpp' -o -name '*.hpp' \) | sed 's|^\./||' | sort); do
     case "$f" in
-        ./version.h) continue ;;   # CLI-local build marker
+        version.h) continue ;;   # CLI-local build marker
     esac
     copy_if_changed "$D/src/core/$f" "$E/core/$f"
 done
@@ -80,7 +81,7 @@ copy_if_changed "$D/third_party/android_shim/android/log.h" "$E/native/android/l
 # New desktop core files not yet vendored (worth reviewing)
 echo ">> New desktop core files not vendored:"
 newfiles=0
-for f in $(cd "$D/src/core" && find . \( -name '*.cpp' -o -name '*.hpp' \) | sort); do
+for f in $(cd "$D/src/core" && find . \( -name '*.cpp' -o -name '*.hpp' \) | sed 's|^\./||' | sort); do
     [ -f "$E/core/$f" ] || { echo "  NEW: $f"; newfiles=$((newfiles+1)); }
 done
 [ "$newfiles" -eq 0 ] && echo "  (none)"
@@ -92,8 +93,14 @@ if [ "$APPLY" -eq 1 ]; then
 fi
 
 echo
-echo ">> Compared $changed files; $copied would be/ were updated; $newfiles new core files"
-[ "$copied" -eq 0 ] && [ "$newfiles" -eq 0 ] && echo ">> ecore is in sync with the desktop"
+echo ">> Compared $changed files; $diffs diff(s); $copied updated; $newfiles new core files"
+if [ "$diffs" -eq 0 ] && [ "$newfiles" -eq 0 ]; then
+    echo ">> ecore is in sync with the desktop"
+elif [ "$APPLY" -eq 1 ] && [ "$copied" -eq "$diffs" ] && [ "$newfiles" -eq 0 ]; then
+    echo ">> ecore updated to match the desktop"
+else
+    echo ">> ecore differs from the desktop ($([ "$APPLY" -eq 1 ] && echo "see remaining DIFF lines" || echo "run with --apply to sync"))"
+fi
 
 if [ "$REBUILD" -eq 1 ]; then
     echo ">> Rebuilding + testing..."
