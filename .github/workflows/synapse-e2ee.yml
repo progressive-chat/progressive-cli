@@ -1,0 +1,105 @@
+name: Synapse E2EE Integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cppcli/lib/ecore/**'
+      - 'cppcli/tests/**'
+      - 'cppcli/src/**'
+      - 'cppcli/lib/api/**'
+      - 'cppcli/CMakeLists.txt'
+      - 'libolm/**'
+      - '.github/workflows/synapse-e2ee.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'cppcli/lib/ecore/**'
+      - 'cppcli/tests/**'
+      - 'cppcli/src/**'
+      - 'cppcli/lib/api/**'
+      - 'cppcli/CMakeLists.txt'
+      - 'libolm/**'
+      - '.github/workflows/synapse-e2ee.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: synapse-e2ee-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  synapse-e2ee:
+    runs-on: ubuntu-24.04
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build g++ make \
+          libcurl4-openssl-dev libsqlite3-dev libsodium-dev libssl-dev
+
+    - name: Generate Synapse config
+      run: |
+        mkdir -p synapse-data
+        docker run --rm \
+          -v "$PWD/synapse-data:/data" \
+          -e SYNAPSE_SERVER_NAME=localhost \
+          -e SYNAPSE_REPORT_STATS=no \
+          matrixdotorg/synapse:latest generate
+        sudo python3 -c "
+        import re
+        p = 'synapse-data/homeserver.yaml'
+        s = open(p).read()
+        for key in ('enable_registration', 'enable_registration_without_verification'):
+            if re.search(r'^' + key + r':.*$', s, re.M):
+                s = re.sub(r'^' + key + r':.*$', key + ': true', s, count=1, flags=re.M)
+            else:
+                s += chr(10) + key + ': true' + chr(10)
+        if re.search(r'^rc_registration:.*$', s, re.M):
+            s = re.sub(r'^rc_registration:.*$',
+                       'rc_registration: {per_second: 100, burst_count: 100}', s, count=1, flags=re.M)
+        else:
+            s += chr(10) + 'rc_registration: {per_second: 100, burst_count: 100}' + chr(10)
+        # Raise login rate limits (the test logs in several devices per user).
+        rc_login_line = ('rc_login: {address: {per_second: 1000, burst_count: 1000}, '
+                         'account: {per_second: 1000, burst_count: 1000}, '
+                         'failed_attempts: {per_second: 1000, burst_count: 1000}}')
+        if re.search(r'^rc_login:.*$', s, re.M):
+            s = re.sub(r'^rc_login:.*$', rc_login_line, s, count=1, flags=re.M)
+        else:
+            s += chr(10) + rc_login_line + chr(10)
+        open(p, 'w').write(s)
+        "
+        sudo chown 991:991 synapse-data/homeserver.yaml
+        grep -E '^enable_registration' synapse-data/homeserver.yaml || true
+
+    - name: Start Synapse
+      run: |
+        docker run -d --name synapse \
+          -v "$PWD/synapse-data:/data" \
+          -p 8008:8008 \
+          matrixdotorg/synapse:latest
+        for i in $(seq 1 90); do
+          if curl -sf http://localhost:8008/_matrix/client/versions >/dev/null; then
+            echo "Synapse ready after ${i}s"
+            exit 0
+          fi
+          sleep 1
+        done
+        docker logs synapse
+        echo "Synapse failed to start"
+        exit 1
+
+    - name: Configure
+      run: cmake -B build -S cppcli -DCMAKE_BUILD_TYPE=Release \
+        -DUSE_SYSTEM_OLM=OFF -DBUILD_TESTS=ON -DBUILD_TUI=OFF
+
+    - name: Build
+      run: cmake --build build -j$(nproc)
+
+    - name: Run Synapse E2EE integration test
+      run: |
+        SYNAPSE_URL=http://localhost:8008 ./build/tests/matrixcli_synapse_e2ee_test

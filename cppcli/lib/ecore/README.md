@@ -48,11 +48,19 @@ Integration status:
 - [x] ported progressive-desktop test suite: e2ee_account, e2ee_otk_count,
       e2ee_sas, e2ee_store, olm_inbound, megolm_inbound, media_crypto,
       sync_applier — all green in ctest (10/10 total)
+- [x] live-Synapse integration: test_synapse_e2ee ported; runs in CI via
+      .github/workflows/synapse-e2ee.yml (fresh matrixdotorg/synapse container,
+      registration + login rate limits raised); verified locally against a
+      user-local Synapse — ALL SYNAPSE E2EE TESTS PASSED, ctest 11/11 with a
+      reachable server (graceful SKIP without one)
 - [ ] adapters: MatrixClient/SessionStore backed by CLI http/db
       (surface used by crypto: MatrixClient::queryKeys/sendToDevice/account/
       uploadRoomKeys/getRoomKeys/createRoomKeysVersion; SessionStore::saveBackupInfo)
-- [ ] wire decryptor/verification into CLI commands (E2EE verify, key backup)
-- [ ] live-Synapse integration test (port test_synapse_e2ee + CI workflow)
+      — NOTE: superseded — the full core is vendored and wired (pcore facade);
+      this item is historical
+- [x] wire decryptor/verification into CLI commands (e2ee status/upload/fallback,
+      backup create/upload/restore/delete, crosssign setup/reset, ssss
+      upload/retrieve)
 
 Build notes:
 - native/*.cpp compiled with -include progressive_compat.h (transitive STL
