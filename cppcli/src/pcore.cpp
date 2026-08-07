@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <string>
 
+#include "../lib/database/db.hpp"
+#include "../lib/matrix/events.hpp"
 #include "../lib/ecore/core/utils.hpp"
 
 namespace matrixcli { namespace pcore {
@@ -63,6 +65,56 @@ void startSync(const std::function<void(const progressive::desktop::FastSyncResp
 
 void stopSync() {
     if (core().sync) core().sync->stop();
+}
+
+bool requireSession() {
+    if (!init() || !loadSavedSession()) {
+        std::fprintf(stderr, "Not logged in. Run 'matrixcli login' first.\n");
+        return false;
+    }
+    return true;
+}
+
+void feedCache(const progressive::desktop::FastSyncResponse& resp) {
+    // Room metadata + timeline events -> legacy offline store, keeping
+    // view/rooms/search/API working against the cache.
+    db::Database dbi;
+    if (!dbi.open("matrixcli.db")) return;
+    for (auto& [roomIdView, room] : resp.joinedRooms) {
+        std::string room_id(roomIdView);
+        std::string room_name = room_id;
+        std::string room_topic;
+        std::string room_avatar;
+        int member_count = 0;
+        for (auto& ev : room.stateEvents) {
+            std::string type(ev.type);
+            try {
+                auto cj = nlohmann::json::parse(std::string(ev.contentJson));
+                if (type == "m.room.name") room_name = cj.value("name", room_id);
+                else if (type == "m.room.topic") room_topic = cj.value("topic", "");
+                else if (type == "m.room.avatar") room_avatar = cj.value("url", "");
+                else if (type == "m.room.member" && ev.senderId == ev.stateKey && cj.value("membership", "") == "join") member_count++;
+            } catch (...) {}
+        }
+        nlohmann::json rj;
+        rj["name"] = room_name;
+        rj["topic"] = room_topic;
+        rj["avatar"] = room_avatar;
+        rj["member_count"] = member_count;
+        rj["is_encrypted"] = room.isEncrypted;
+        dbi.upsertRoom(rj, room_id);
+
+        for (auto& ev : room.timeline.events) {
+            matrix::Event mev;
+            mev.event_id = std::string(ev.eventId);
+            mev.room_id = room_id;
+            mev.sender = std::string(ev.senderId);
+            mev.type = std::string(ev.type);
+            mev.origin_server_ts = ev.originServerTs;
+            try { mev.content = nlohmann::json::parse(std::string(ev.contentJson)); } catch (...) {}
+            dbi.insertEvent(mev);
+        }
+    }
 }
 
 }} // namespace matrixcli::pcore

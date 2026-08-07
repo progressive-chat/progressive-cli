@@ -4,6 +4,8 @@ set(SOURCES
     commands.cpp
     bridge_commands.cpp
     pcore.cpp
+    e2ee_commands.cpp
+    room_commands.cpp
     cli/args.cpp
     server/server.cpp
     server/web_proxy.cpp

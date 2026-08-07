@@ -42,4 +42,13 @@ void startSync(const std::function<void(const progressive::desktop::FastSyncResp
 // Stop the sync loop (blocks until the in-flight request finishes).
 void stopSync();
 
+// Session guard for commands: init + load the saved session; prints an
+// error and returns false when there is no active session.
+bool requireSession();
+
+// Feed the offline cache (matrixcli.db) from a /sync response: room
+// metadata + timeline events. Used by serve (every response) and by the
+// one-shot `sync` command.
+void feedCache(const progressive::desktop::FastSyncResponse& resp);
+
 }} // namespace matrixcli::pcore
