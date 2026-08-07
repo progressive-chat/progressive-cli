@@ -40,8 +40,24 @@ simdjson v3.13.0 (FetchContent, same pin as desktop), olm 3.2.16 (vendored
 at repo root).
 
 Integration status:
-- [x] builds as libmatrixcli_ecore.a (static)
+- [x] builds as libmatrixcli_ecore.a (static) — full core: crypto/*, matrix_client,
+      sync_engine, session_store, fast_sync, http_client, engine/*, thread_pool,
+      memory_stats, json_utils + progressive_native Tier A modules needed by them
+      (olm wrapper, models, megolm decryptor, olm_session, crypto_algorithms,
+      room_encryption, string_utils, canonical_json, ...)
+- [x] ported progressive-desktop test suite: e2ee_account, e2ee_otk_count,
+      e2ee_sas, e2ee_store, olm_inbound, megolm_inbound, media_crypto,
+      sync_applier — all green in ctest (10/10 total)
 - [ ] adapters: MatrixClient/SessionStore backed by CLI http/db
       (surface used by crypto: MatrixClient::queryKeys/sendToDevice/account/
       uploadRoomKeys/getRoomKeys/createRoomKeysVersion; SessionStore::saveBackupInfo)
 - [ ] wire decryptor/verification into CLI commands (E2EE verify, key backup)
+- [ ] live-Synapse integration test (port test_synapse_e2ee + CI workflow)
+
+Build notes:
+- native/*.cpp compiled with -include progressive_compat.h (transitive STL
+  includes, same as the desktop's progressive_native build)
+- <android/log.h> resolves via native/android/log.h shim (fprintf-based)
+- vendored libolm (repo root) Makefile: version script removed so the
+  _olm_crypto_* internals used by crypto_algorithms.cpp are exported —
+  matches the FetchContent/CMake olm build the desktop uses

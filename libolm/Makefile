@@ -18,8 +18,10 @@ ifeq ($(UNAME),Darwin)
 	OLM_LDFLAGS :=
 else
 	SO := so
-	OLM_LDFLAGS := -Wl,-soname,libolm.so.$(MAJOR) \
-                       -Wl,--version-script,version_script.ver
+	# Version script removed: it hides _olm_crypto_* internals that
+	# progressive_native's crypto_algorithms.cpp needs (the FetchContent/CMake
+	# olm build used by progressive-desktop exports them). Matches that build.
+	OLM_LDFLAGS := -Wl,-soname,libolm.so.$(MAJOR)
 endif
 
 RELEASE_TARGET := $(BUILD_DIR)/libolm.$(SO).$(VERSION)
