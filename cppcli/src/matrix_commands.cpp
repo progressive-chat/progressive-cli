@@ -174,10 +174,119 @@ int cmdNotifications(const cli::Args& args) {
         return 0;
 }
 
+// ── filter ── permanent view filters (stored in config.json "filters").
+// Positive (--senders): show only these users. Negative (--hide): drop users.
+// Both optional per-room (--room); without --room they apply globally.
+// Temporary variants live on `view` (--senders/--hide last one invocation).
+int cmdFilter(const cli::Args& args) {
+    bool json_out = args.options.count("json");
+    Config::instance().load("config.json");
+    nlohmann::json flt = Config::instance().filters();
+    if (!flt.is_object()) flt = nlohmann::json::object();
+
+    auto parseList = [](const std::string& csv) {
+        std::vector<std::string> out;
+        std::string cur;
+        for (char c : csv) {
+            if (c == ',') { if (!cur.empty()) out.push_back(cur); cur.clear(); }
+            else cur += c;
+        }
+        if (!cur.empty()) out.push_back(cur);
+        return out;
+    };
+    auto toJsonArray = [](const std::vector<std::string>& list) {
+        nlohmann::json arr = nlohmann::json::array();
+        for (auto& s : list) arr.push_back(s);
+        return arr;
+    };
+
+    std::string room = args.options.count("room") ? args.options.at("room") : "";
+    if (!room.empty() && room[0] != '!') {
+        // resolve by name (room ids start with '!'); #names and bare names too
+        db::Database dbi;
+        if (dbi.open("matrixcli.db")) {
+            for (auto& r : dbi.listRooms()) {
+                std::string id = r.value("room_id", "");
+                std::string name = r.value("name", "");
+                if (id == room || name == room || name.find(room) == 0) { room = id; break; }
+            }
+        }
+    }
+
+    if (args.options.count("senders")) {
+        auto list = parseList(args.options.at("senders"));
+        if (room.empty()) flt["senders"] = toJsonArray(list);
+        else {
+            if (!flt.contains("rooms") || !flt["rooms"].is_object()) flt["rooms"] = nlohmann::json::object();
+            flt["rooms"][room]["senders"] = toJsonArray(list);
+        }
+        Config::instance().setFilters(flt);
+        Config::instance().save();
+        std::cout << "Positive filter set: show only " << list.size() << " user(s)"
+                  << (room.empty() ? " (all rooms)" : " in " + room) << std::endl;
+        return 0;
+    }
+    if (args.options.count("hide")) {
+        auto list = parseList(args.options.at("hide"));
+        if (room.empty()) flt["hide"] = toJsonArray(list);
+        else {
+            if (!flt.contains("rooms") || !flt["rooms"].is_object()) flt["rooms"] = nlohmann::json::object();
+            flt["rooms"][room]["hide"] = toJsonArray(list);
+        }
+        Config::instance().setFilters(flt);
+        Config::instance().save();
+        std::cout << "Hidden users set: " << list.size() << " user(s)"
+                  << (room.empty() ? " (all rooms)" : " in " + room) << std::endl;
+        return 0;
+    }
+    bool want_clear = args.options.count("clear") || (!args.positional.empty() && args.positional[0] == "clear");
+    if (want_clear) {
+        if (room.empty()) {
+            flt = nlohmann::json::object();
+            std::cout << "All filters cleared." << std::endl;
+        } else {
+            if (flt.contains("rooms") && flt["rooms"].is_object()) flt["rooms"].erase(room);
+            std::cout << "Filters cleared for " << room << "." << std::endl;
+        }
+        Config::instance().setFilters(flt);
+        Config::instance().save();
+        return 0;
+    }
+
+    // status
+    if (json_out) {
+        std::cout << flt.dump() << std::endl;
+    } else {
+        auto printList = [](const nlohmann::json& j, const std::string& key, const std::string& indent) {
+            if (j.is_object() && j.contains(key) && j[key].is_array() && !j[key].empty()) {
+                std::cout << indent << (key == "senders" ? "show only: " : "hide: ");
+                bool first = true;
+                for (auto& v : j[key]) { if (!first) std::cout << ", "; std::cout << v.get<std::string>(); first = false; }
+                std::cout << std::endl;
+            }
+        };
+        if (flt.empty()) { std::cout << "No filters set." << std::endl; }
+        printList(flt, "senders", "");
+        printList(flt, "hide", "");
+        if (flt.contains("rooms") && flt["rooms"].is_object()) {
+            for (auto& [rid, rj] : flt["rooms"].items()) {
+                if (rj.is_object() && (rj.contains("senders") || rj.contains("hide"))) {
+                    std::cout << "room " << rid << ":" << std::endl;
+                    printList(rj, "senders", "  ");
+                    printList(rj, "hide", "  ");
+                }
+            }
+        }
+    }
+    return 0;
+}
+
 void registerMatrixCommands() {
+    using namespace matrixcli;
     auto& reg = CommandRegistry::instance();
     reg.registerCli("vote", cmdVote, "Vote in a poll: vote <room> <poll_event_id> <answer1>[,answer2...]");
     reg.registerCli("react", cmdReact, "React to a message: react <room> <event_id> <emoji>");
+    reg.registerCli("filter", cmdFilter, "Permanent view filters: filter --senders @u,@u2 [--room X] | --hide @u [--room X] | status | clear [--room X]");
     reg.registerCli("topic", cmdTopic, "Set room topic: topic <room> <text>");
     reg.registerCli("roomname", cmdRoomname, "Set room name: roomname <room> <name>");
     reg.registerCli("avatar", cmdAvatar, "Set room avatar: avatar <room> <mxc-url>");

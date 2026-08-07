@@ -47,6 +47,8 @@ public:
     std::vector<matrix::Event> getEvents(const std::string& room_id, int limit = 50,
                                          const std::string& before_event = "",
                                          const std::string& from_event = "");
+    // Fetch a single event by id (for reply-chain rendering). Returns false if absent.
+    bool getEventById(const std::string& event_id, matrix::Event& ev);
     int getEventCount(const std::string& room_id);
 
     // Full-text search

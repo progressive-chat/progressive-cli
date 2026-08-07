@@ -58,6 +58,20 @@ void Config::set(const std::string& key, const std::string& value) {
     _data[key] = value;
 }
 
+nlohmann::json Config::filters() const {
+    try {
+        auto raw = get("filters", "{}");
+        auto j = nlohmann::json::parse(raw);
+        return j.is_object() ? j : nlohmann::json::object();
+    } catch (...) {
+        return nlohmann::json::object();
+    }
+}
+
+void Config::setFilters(const nlohmann::json& filters) {
+    set("filters", filters.is_object() ? filters.dump() : "{}");
+}
+
 std::string Config::homeserverURL() const {
     return get("homeserver_url");
 }

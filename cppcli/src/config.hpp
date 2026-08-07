@@ -16,6 +16,11 @@ public:
     std::string get(const std::string& key, const std::string& default_val = "") const;
     void set(const std::string& key, const std::string& value);
 
+    // Permanent view filters (stored under "filters" as a JSON string):
+    //   {"senders": [...], "hide": [...], "rooms": {"!id": {"senders": [...], "hide": [...]}}}
+    nlohmann::json filters() const;
+    void setFilters(const nlohmann::json& filters);
+
     std::string homeserverURL() const;
     std::string accessToken() const;
     std::string userId() const;

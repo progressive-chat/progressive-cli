@@ -186,7 +186,8 @@ std::vector<json> Database::listRooms() {
     sqlite3_prepare_v2(_db, "SELECT room_id, name, topic, avatar_url, is_direct, is_encrypted, member_count FROM rooms ORDER BY name", -1, &stmt, nullptr);
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         json r;
-        r["room_id"] = (const char*)sqlite3_column_text(stmt, 0);
+        auto rid = (const char*)sqlite3_column_text(stmt, 0);
+        if (rid) r["room_id"] = rid;
         auto name = (const char*)sqlite3_column_text(stmt, 1);
         if (name) r["name"] = name;
         auto topic = (const char*)sqlite3_column_text(stmt, 2);
@@ -265,7 +266,8 @@ std::vector<matrix::Event> Database::getEvents(const std::string& room_id, int l
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         matrix::Event ev;
-        ev.event_id = (const char*)sqlite3_column_text(stmt, 0);
+        auto eid = (const char*)sqlite3_column_text(stmt, 0);
+        ev.event_id = eid ? eid : "";
         ev.sender = (const char*)sqlite3_column_text(stmt, 1) ?: "";
         ev.type = (const char*)sqlite3_column_text(stmt, 2) ?: "";
         auto content_str = (const char*)sqlite3_column_text(stmt, 3);
@@ -282,6 +284,33 @@ std::vector<matrix::Event> Database::getEvents(const std::string& room_id, int l
     }
     sqlite3_finalize(stmt);
     return result;
+}
+
+bool Database::getEventById(const std::string& event_id, matrix::Event& ev) {
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(_db,
+        "SELECT event_id, sender, type, content, origin_server_ts, state_key, redacts, decrypted_content "
+        "FROM events WHERE event_id = ? LIMIT 1", -1, &stmt, nullptr);
+    sqlite3_bind_text(stmt, 1, event_id.c_str(), event_id.size(), SQLITE_TRANSIENT);
+    bool found = false;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        found = true;
+        auto eid = (const char*)sqlite3_column_text(stmt, 0);
+        ev.event_id = eid ? eid : "";
+        ev.sender = (const char*)sqlite3_column_text(stmt, 1) ?: "";
+        ev.type = (const char*)sqlite3_column_text(stmt, 2) ?: "";
+        auto content_str = (const char*)sqlite3_column_text(stmt, 3);
+        if (content_str) {
+            try { ev.content = json::parse(content_str); } catch (...) {}
+        }
+        ev.origin_server_ts = sqlite3_column_int64(stmt, 4);
+        auto sk = (const char*)sqlite3_column_text(stmt, 5);
+        if (sk) ev.state_key = sk;
+        auto rd = (const char*)sqlite3_column_text(stmt, 6);
+        if (rd) ev.redacts = rd;
+    }
+    sqlite3_finalize(stmt);
+    return found;
 }
 
 int Database::getEventCount(const std::string& room_id) {
@@ -310,8 +339,10 @@ std::vector<json> Database::search(const std::string& query, int limit) {
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         json r;
-        r["event_id"] = (const char*)sqlite3_column_text(stmt, 0);
-        r["room_id"] = (const char*)sqlite3_column_text(stmt, 1);
+        auto eid = (const char*)sqlite3_column_text(stmt, 0);
+        if (eid) r["event_id"] = eid;
+        auto rid = (const char*)sqlite3_column_text(stmt, 1);
+        if (rid) r["room_id"] = rid;
         r["sender"] = (const char*)sqlite3_column_text(stmt, 2) ?: "";
         auto ct = (const char*)sqlite3_column_text(stmt, 3);
         if (ct) {
@@ -355,8 +386,10 @@ std::vector<json> Database::getNotifications(int limit, bool unread_only) {
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         json n;
         n["id"] = sqlite3_column_int(stmt, 0);
-        n["room_id"] = (const char*)sqlite3_column_text(stmt, 1);
-        n["event_id"] = (const char*)sqlite3_column_text(stmt, 2);
+        auto rid = (const char*)sqlite3_column_text(stmt, 1);
+        if (rid) n["room_id"] = rid;
+        auto eid = (const char*)sqlite3_column_text(stmt, 2);
+        if (eid) n["event_id"] = eid;
         n["sender"] = (const char*)sqlite3_column_text(stmt, 3) ?: "";
         n["body"] = (const char*)sqlite3_column_text(stmt, 4) ?: "";
         n["highlight"] = sqlite3_column_int(stmt, 5) == 1;

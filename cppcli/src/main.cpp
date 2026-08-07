@@ -605,7 +605,10 @@ int cmdRooms(const matrixcli::cli::Args& args) {
 int cmdView(const matrixcli::cli::Args& args) {
     using namespace matrixcli;
     if (args.positional.empty()) {
-        std::cerr << "Usage: matrixcli view <room> [limit] [--thread event_id]" << std::endl;
+        std::cerr << "Usage: matrixcli view <room> [limit] [--thread event_id] [--before eid] [--from eid]\n"
+                     "       [--senders @u:h,@u2:h] [--hide @u:h] [--replies N|off] [--no-replies]\n"
+                     "       [--no-filter] [--json] [--expand] [--verbose] [--ts]"
+                  << std::endl;
         return 1;
     }
     std::string query = args.positional[0];
@@ -631,6 +634,36 @@ int cmdView(const matrixcli::cli::Args& args) {
     std::string from;
     auto fm_it = args.options.find("from");
     if (fm_it != args.options.end()) from = fm_it->second;
+
+    // Temporary sender filters (this invocation only)
+    auto splitMxids = [](const std::string& csv) {
+        std::vector<std::string> out;
+        std::string cur;
+        for (char c : csv) {
+            if (c == ',') { if (!cur.empty()) out.push_back(cur); cur.clear(); }
+            else cur += c;
+        }
+        if (!cur.empty()) out.push_back(cur);
+        return out;
+    };
+    std::vector<std::string> tmp_senders, tmp_hide;
+    auto sn_it = args.options.find("senders");
+    if (sn_it != args.options.end()) tmp_senders = splitMxids(sn_it->second);
+    auto hd_it = args.options.find("hide");
+    if (hd_it != args.options.end()) tmp_hide = splitMxids(hd_it->second);
+    bool no_filter = args.options.count("no-filter");
+
+    // Reply chains (element-web style): show the replied-to message(s), and one
+    // level further if that message is itself a reply. Depth defaults to 3.
+    bool show_replies = true;
+    int reply_depth = 3;
+    if (args.options.count("no-replies")) show_replies = false;
+    auto rp_it = args.options.find("replies");
+    if (rp_it != args.options.end()) {
+        std::string rv = rp_it->second;
+        if (rv == "0" || rv == "off" || rv == "no") show_replies = false;
+        else { try { reply_depth = std::stoi(rv); if (reply_depth <= 0) show_replies = false; } catch (...) {} }
+    }
 
     bool verbose = args.options.count("verbose") || args.options.count("ids");
     bool show_ts = args.options.count("ts") || args.options.count("time");
@@ -659,6 +692,37 @@ int cmdView(const matrixcli::cli::Args& args) {
 
     auto events = dbi.getEvents(room_id, limit > 0 ? limit : 999999, before, from);
 
+    // Effective filters: temporary flags (--senders/--hide) take precedence over
+    // permanent config filters (per-room, then global). --no-filter disables all.
+    Config::instance().load("config.json");
+    std::vector<std::string> senders_filter = tmp_senders;
+    std::vector<std::string> hide_filter = tmp_hide;
+    if (!no_filter) {
+        nlohmann::json flt = Config::instance().filters();
+        auto applyJsonList = [](const nlohmann::json& j, const std::string& key, std::vector<std::string>& out) {
+            if (j.is_object() && j.contains(key) && j[key].is_array())
+                for (auto& v : j[key]) if (v.is_string()) out.push_back(v.get<std::string>());
+        };
+        nlohmann::json room_flt;
+        if (flt.contains("rooms") && flt["rooms"].is_object() && flt["rooms"].contains(room_id))
+            room_flt = flt["rooms"][room_id];
+        if (senders_filter.empty()) applyJsonList(room_flt, "senders", senders_filter);
+        if (senders_filter.empty()) applyJsonList(flt, "senders", senders_filter);
+        applyJsonList(room_flt, "hide", hide_filter);
+        applyJsonList(flt, "hide", hide_filter);
+    }
+    if (!senders_filter.empty() || !hide_filter.empty()) {
+        events.erase(std::remove_if(events.begin(), events.end(), [&](const matrix::Event& e) {
+            if (!senders_filter.empty()) {
+                bool ok = false;
+                for (auto& s : senders_filter) if (e.sender == s) { ok = true; break; }
+                if (!ok) return true;
+            }
+            for (auto& h : hide_filter) if (e.sender == h) return true;
+            return false;
+        }), events.end());
+    }
+
     // JSON output mode (pipe-friendly: pure JSON on stdout, chronological order)
     if (json_out) {
         nlohmann::json j;
@@ -674,6 +738,22 @@ int cmdView(const matrixcli::cli::Args& args) {
             m["msgtype"] = ev.content.value("msgtype", "m.text");
             m["body"] = ev.content.value("body", "");
             m["ts"] = ev.origin_server_ts;
+            m["reply_to"] = nlohmann::json::array();
+            if (ev.content.contains("m.relates_to") && ev.content["m.relates_to"].contains("m.in_reply_to")) {
+                std::string cur = ev.content["m.relates_to"]["m.in_reply_to"].value("event_id", "");
+                for (int lvl = 0; !cur.empty() && lvl < reply_depth; ++lvl) {
+                    matrix::Event anc;
+                    if (!dbi.getEventById(cur, anc)) break;
+                    nlohmann::json r;
+                    r["event_id"] = anc.event_id;
+                    r["sender"] = anc.sender;
+                    r["body"] = anc.content.value("body", "");
+                    m["reply_to"].push_back(r);
+                    cur.clear();
+                    if (anc.content.contains("m.relates_to") && anc.content["m.relates_to"].contains("m.in_reply_to"))
+                        cur = anc.content["m.relates_to"]["m.in_reply_to"].value("event_id", "");
+                }
+            }
             j["messages"].push_back(m);
         }
         std::cout << j.dump() << std::endl;
@@ -729,6 +809,25 @@ int cmdView(const matrixcli::cli::Args& args) {
         }
 
         std::string body = ev.content.value("body", "(no body)");
+        // element-web style: strip the fallback "> quote" block from reply bodies
+        // (the quote is rendered as reply context instead).
+        auto stripFallbackQuote = [](std::string& s) {
+            if (s.compare(0, 2, "> ") != 0) return;
+            size_t start = 0;
+            while (start < s.size()) {
+                if (s.compare(start, 2, "> ") == 0) {
+                    auto nl = s.find('\n', start);
+                    if (nl == std::string::npos) { start = s.size(); break; }
+                    start = nl + 1;
+                } else break;
+            }
+            while (start < s.size() && (s[start] == '\n' || s[start] == ' ')) start++;
+            s = start >= s.size() ? "" : s.substr(start);
+        };
+        if (show_replies && ev.content.contains("m.relates_to") &&
+            ev.content["m.relates_to"].contains("m.in_reply_to")) {
+            stripFallbackQuote(body);
+        }
         if (!expand && body.size() > 120) body = body.substr(0, 120) + "...";
 
         // Basic markdown → ANSI
@@ -808,11 +907,25 @@ int cmdView(const matrixcli::cli::Args& args) {
             }
         }
 
-        // Reply context
-        std::string reply_ctx;
-        if (ev.content.contains("m.relates_to") &&
-            ev.content["m.relates_to"].value("rel_type", "") == "m.in_reply_to") {
-            reply_ctx = replyContext("(reply)");
+        // Reply context — element-web style multilevel chain: show the
+        // replied-to message(s), one level deeper if those are replies too.
+        if (show_replies && ev.content.contains("m.relates_to") &&
+            ev.content["m.relates_to"].contains("m.in_reply_to")) {
+            std::string cur = ev.content["m.relates_to"]["m.in_reply_to"].value("event_id", "");
+            for (int lvl = 0; !cur.empty() && lvl < reply_depth; ++lvl) {
+                matrix::Event anc;
+                if (!dbi.getEventById(cur, anc)) break;
+                if (anc.type == "m.room.message" || anc.type == "m.text" || anc.type == "m.emote") {
+                    std::string abody = anc.content.value("body", "");
+                    stripFallbackQuote(abody);   // ancestors may be replies themselves
+                    if (!expand && abody.size() > 100) abody = abody.substr(0, 100) + "...";
+                    std::cout << "    " << std::string(lvl * 2, ' ') << ANSI_DIM "↱ "
+                              << util::userIdToName(anc.sender) << ": " << abody << ANSI_RESET << std::endl;
+                }
+                cur.clear();
+                if (anc.content.contains("m.relates_to") && anc.content["m.relates_to"].contains("m.in_reply_to"))
+                    cur = anc.content["m.relates_to"]["m.in_reply_to"].value("event_id", "");
+            }
         }
 
         // Link detection
@@ -823,8 +936,6 @@ int cmdView(const matrixcli::cli::Args& args) {
 
         std::string reply_str;
         if (reply_count > 0) reply_str = " [" + std::to_string(reply_count) + " replies]";
-
-        if (!reply_ctx.empty()) std::cout << ANSI_GRAY "       " << reply_ctx << ANSI_RESET << std::endl;
 
         // Message grouping: collapse sender if same as previous
         if (ev.sender == prev_sender && !prev_sender.empty()) {
@@ -1075,8 +1186,41 @@ int cmdDemoPopulate(const matrixcli::cli::Args&) {
         ts -= 60;
     }
 
+    // Multilevel reply chain (element-web style): bob replies to alice's
+    // "Welcome!", alice replies to bob's reply (reply-of-reply). The fallback
+    // "> quote" block is what real clients embed in reply bodies.
+    {
+        std::string alice_welcome = "$demo_" + std::to_string(ts + 8 * 60);
+        matrix::Event r1;
+        r1.event_id = "$demo_" + std::to_string(ts);
+        r1.room_id = "!general:demo.local"; r1.sender = "@bob";
+        r1.type = "m.room.message";
+        r1.content = {{"body",
+            "> <@alice:demo.local> Welcome! This is matrixcli — a terminal Matrix client.\n\n"
+            "It even renders reply chains!"},
+            {"msgtype", "m.text"},
+            {"m.relates_to", {{"m.in_reply_to", {{"event_id", alice_welcome}}}}}};
+        r1.origin_server_ts = ts;
+        dbi.insertEvent(r1);
+        std::string bob_reply = r1.event_id;
+        ts -= 60;
+
+        matrix::Event r2;
+        r2.event_id = "$demo_" + std::to_string(ts);
+        r2.room_id = "!general:demo.local"; r2.sender = "@alice";
+        r2.type = "m.room.message";
+        r2.content = {{"body",
+            "> <@bob:demo.local> It even renders reply chains!\n\n"
+            "…and the reply to that too."},
+            {"msgtype", "m.text"},
+            {"m.relates_to", {{"m.in_reply_to", {{"event_id", bob_reply}}}}}};
+        r2.origin_server_ts = ts;
+        dbi.insertEvent(r2);
+        ts -= 60;
+    }
+
     std::cout << "Populated DB: " << (sizeof(rooms)/sizeof(rooms[0])) << " rooms, "
-              << (sizeof(msgs)/sizeof(msgs[0])) << " messages." << std::endl;
+              << (sizeof(msgs)/sizeof(msgs[0])) + 2 << " messages." << std::endl;
     std::cout << "Try:  matrixcli rooms | matrixcli view #general | matrixcli view #dev" << std::endl;
     return 0;
 }
