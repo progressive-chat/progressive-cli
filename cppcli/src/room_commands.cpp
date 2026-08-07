@@ -3,7 +3,9 @@
 // threads, public room directory. Registered via CommandRegistry.
 #include "commands.hpp"
 #include "pcore.hpp"
+#include "config.hpp"
 #include "../lib/database/db.hpp"
+#include "../lib/util/string_utils.hpp"
 #include <progressive/markdown.hpp>
 #include <nlohmann/json.hpp>
 #include <atomic>
@@ -271,6 +273,108 @@ int cmdMarkdown(const cli::Args& args) {
     return 0;
 }
 
+// ── accounts ── list accounts the client is logged in as; hide/show them.
+// Hidden accounts come from config.json "hidden_accounts" (permanent,
+// undone via --show); --temporary-hide filters this invocation only.
+int cmdAccounts(const cli::Args& args) {
+    bool json_out = args.options.count("json");
+    bool show_all = args.options.count("all");
+
+    Config::instance().load("config.json");
+    std::vector<std::string> hidden = Config::instance().hiddenAccounts();
+    std::string cur_user = Config::instance().get("user_id");
+    std::string cur_dev  = Config::instance().get("device_id");
+    std::string cur_hs   = Config::instance().get("homeserver_url");
+    std::string cur_tok  = Config::instance().get("access_token");
+
+    // Accounts from the vendored SessionStore (one row per user) + the
+    // config.json account (may not be persisted into session.db yet).
+    pcore::init();   // ensure the session store is open (accounts needs no session)
+    std::vector<progressive::desktop::AccountInfo> accounts;
+    auto& core = pcore::core();
+    if (core.storeOk) accounts = core.store->listAccounts();
+    bool found_cur = false;
+    for (auto& a : accounts) if (a.userId == cur_user && a.deviceId == cur_dev) { found_cur = true; break; }
+    if (!found_cur && !cur_user.empty()) {
+        progressive::desktop::AccountInfo a;
+        a.userId = cur_user; a.deviceId = cur_dev; a.homeserverUrl = cur_hs; a.accessToken = cur_tok;
+        accounts.push_back(a);
+    }
+
+    // --hide / --show (permanent, config.json) or --temporary-hide (this run)
+    auto splitList = [](const std::string& csv) {
+        std::vector<std::string> out;
+        std::string cur;
+        for (char c : csv) {
+            if (c == ',') { if (!cur.empty()) out.push_back(cur); cur.clear(); }
+            else cur += c;
+        }
+        if (!cur.empty()) out.push_back(cur);
+        return out;
+    };
+    auto hide_it = args.options.find("hide");
+    auto show_it = args.options.find("show");
+    if (hide_it != args.options.end() || show_it != args.options.end()) {
+        std::string mxid = hide_it != args.options.end() ? hide_it->second : show_it->second;
+        if (mxid.empty()) { std::cerr << "Usage: accounts --hide <mxid> | --show <mxid>" << std::endl; return 1; }
+        if (hide_it != args.options.end()) {
+            if (std::find(hidden.begin(), hidden.end(), mxid) == hidden.end()) {
+                hidden.push_back(mxid);
+                Config::instance().setHiddenAccounts(hidden);
+                Config::instance().save();
+            }
+            std::cout << "Account " << mxid << " hidden from the accounts list (undo: accounts --show "
+                      << mxid << ")." << std::endl;
+        } else {
+            hidden.erase(std::remove(hidden.begin(), hidden.end(), mxid), hidden.end());
+            Config::instance().setHiddenAccounts(hidden);
+            Config::instance().save();
+            std::cout << "Account " << mxid << " visible again." << std::endl;
+        }
+        return 0;
+    }
+    std::vector<std::string> tmp_hidden;
+    auto th_it = args.options.find("temporary-hide");
+    if (th_it != args.options.end()) tmp_hidden = splitList(th_it->second);
+
+    auto isHidden = [&](const progressive::desktop::AccountInfo& a) {
+        if (std::find(tmp_hidden.begin(), tmp_hidden.end(), a.userId) != tmp_hidden.end()) return true;
+        return std::find(hidden.begin(), hidden.end(), a.userId) != hidden.end();
+    };
+    auto isActive = [&](const progressive::desktop::AccountInfo& a) {
+        return !cur_user.empty() && a.userId == cur_user && (cur_dev.empty() || a.deviceId == cur_dev);
+    };
+
+    if (json_out) {
+        nlohmann::json j = nlohmann::json::array();
+        for (auto& a : accounts) {
+            if (isHidden(a) && !show_all) continue;
+            nlohmann::json e;
+            e["user_id"] = a.userId;
+            e["device_id"] = a.deviceId;
+            e["homeserver_url"] = a.homeserverUrl;
+            e["active"] = isActive(a);
+            e["hidden"] = isHidden(a);
+            j.push_back(e);
+        }
+        std::cout << j.dump() << std::endl;
+        return 0;
+    }
+
+    if (accounts.empty()) { std::cout << "No accounts. Run 'matrixcli login'." << std::endl; return 0; }
+    int shown = 0;
+    for (auto& a : accounts) {
+        if (isHidden(a) && !show_all) continue;
+        shown++;
+        std::string act = isActive(a) ? ANSI_GREEN " [active]" ANSI_RESET : "";
+        std::string hid = isHidden(a) ? ANSI_DIM " (hidden)" ANSI_RESET : "";
+        std::cout << "  " << a.userId << " (" << a.deviceId << ") @ " << a.homeserverUrl
+                  << act << hid << std::endl;
+    }
+    if (shown == 0) std::cout << "(no visible accounts — accounts --all shows hidden ones)" << std::endl;
+    return 0;
+}
+
 void registerRoomCommands() {
     auto& reg = CommandRegistry::instance();
     reg.registerCli("sync", cmdSync, "One-shot sync into the offline cache");
@@ -282,5 +386,6 @@ void registerRoomCommands() {
     reg.registerCli("members", cmdMembers, "List room members: members <room>");
     reg.registerCli("threads", cmdThreads, "List room threads: threads <room> [--limit N]");
     reg.registerCli("search-public", cmdSearchPublic, "Search public room directory: search-public <query> [--server hs]");
+    reg.registerCli("accounts", cmdAccounts, "List logged-in accounts: accounts [--all] [--json] | --hide <mxid> | --show <mxid> | --temporary-hide <mxid>");
     reg.registerCli("markdown", cmdMarkdown, "Render markdown to HTML: markdown <text> | echo <text> | matrixcli markdown");
 }

@@ -1,8 +1,9 @@
 #pragma once
 
-#include <string>
-#include <filesystem>
 #include <nlohmann/json.hpp>
+#include <filesystem>
+#include <string>
+#include <vector>
 
 namespace matrixcli {
 
@@ -20,6 +21,10 @@ public:
     //   {"senders": [...], "hide": [...], "rooms": {"!id": {"senders": [...], "hide": [...]}}}
     nlohmann::json filters() const;
     void setFilters(const nlohmann::json& filters);
+
+    // Accounts hidden from the accounts list (stored under "hidden_accounts").
+    std::vector<std::string> hiddenAccounts() const;
+    void setHiddenAccounts(const std::vector<std::string>& mxids);
 
     std::string homeserverURL() const;
     std::string accessToken() const;

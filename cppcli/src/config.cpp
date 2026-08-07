@@ -69,7 +69,24 @@ nlohmann::json Config::filters() const {
 }
 
 void Config::setFilters(const nlohmann::json& filters) {
+    if (filters.is_object() && filters.empty()) { _data.erase("filters"); return; }
     set("filters", filters.is_object() ? filters.dump() : "{}");
+}
+
+std::vector<std::string> Config::hiddenAccounts() const {
+    std::vector<std::string> out;
+    try {
+        auto j = nlohmann::json::parse(get("hidden_accounts", "[]"));
+        if (j.is_array()) for (auto& v : j) if (v.is_string()) out.push_back(v.get<std::string>());
+    } catch (...) {}
+    return out;
+}
+
+void Config::setHiddenAccounts(const std::vector<std::string>& mxids) {
+    if (mxids.empty()) { _data.erase("hidden_accounts"); return; }
+    nlohmann::json arr = nlohmann::json::array();
+    for (auto& m : mxids) arr.push_back(m);
+    set("hidden_accounts", arr.dump());
 }
 
 std::string Config::homeserverURL() const {

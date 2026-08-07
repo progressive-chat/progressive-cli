@@ -74,6 +74,7 @@ void printUsage() {
               << "  agent         Agentic loop with Matrix tools: agent <task> [--room X] [--token t]\n"
               << "  typing        Who is typing: typing <room>\n"
               << "  rooms         List joined rooms\n"
+              << "  accounts      Logged-in accounts: accounts [--all] [--json] | --hide <mxid> | --show <mxid>\n"
               << "  view          View room messages (offline from cache): view <room> [limit] [--senders @u] [--hide @u] [--replies N]\n"
               << "  filter        Permanent view filters: filter --senders @u [--room X] | --hide @u [--room X] | status | clear\n"
               << "  send          Send a message to a room\n"
