@@ -11,6 +11,8 @@
 #include "commands.hpp"
 #include "globals.hpp"
 #include "pcore.hpp"
+#include "../lib/ecore/core/crypto/verify_controller.hpp"
+#include "../lib/ecore/core/crypto/sas_emojis.hpp"
 #include "server/server.hpp"
 #include "../lib/matrix/client.hpp"
 #include "../lib/tdlib/tdlib_bridge.hpp"
@@ -2054,6 +2056,141 @@ int cmdSsss(const matrixcli::cli::Args& args) {
     return 1;
 }
 
+// SAS device verification (interactive). Requires the sync loop (to-device
+// events) — started for the duration of the verification.
+//
+//   matrixcli verify @user:server --device <deviceId> [--confirm] [--timeout s] [--json]
+//
+// Without --confirm the command prompts "Do the emojis match? [y/N]" on
+// stdin once the SAS emojis are displayed.
+int cmdVerify(const matrixcli::cli::Args& args) {
+    using namespace matrixcli;
+    if (!requireSession()) return 1;
+    if (args.positional.empty()) {
+        std::cerr << "Usage: matrixcli verify <@user:server> --device <deviceId> [--confirm] [--timeout s] [--json]" << std::endl;
+        return 1;
+    }
+
+    auto& core = pcore::core();
+    auto acct = core.client->account();
+    std::string targetUser = args.positional[0];
+    std::string targetDevice = args.options.count("device") ? args.options.at("device") : "";
+    bool autoConfirm = args.options.count("confirm");
+    bool json_out = args.options.count("json");
+    int timeoutSec = 120;
+    if (args.options.count("timeout")) {
+        try { timeoutSec = std::stoi(args.options.at("timeout")); } catch (...) {}
+    }
+
+    if (targetDevice.empty()) {
+        std::cerr << "Error: --device <deviceId> required" << std::endl;
+        return 1;
+    }
+
+    // Wire the SAS controller (sendToDevice + device-key resolution via client).
+    progressive::desktop::VerificationController controller;
+    controller.setClient(core.client);
+    controller.setVerificationManager(&core.sync->verificationManager());
+    controller.setSyncEngine(core.sync.get());
+
+    // The sync loop feeds m.key.verification.* to-device events into the VM.
+    pcore::startSync(nullptr);
+
+    if (targetUser == acct.userId) {
+        controller.startSelfVerification(acct.userId, acct.deviceId, targetDevice);
+    } else {
+        controller.startUserVerification(targetUser, targetDevice);
+    }
+
+    // Locate our initiated transaction.
+    progressive::desktop::VerificationTransaction* txn = nullptr;
+    for (auto* t : core.sync->verificationManager().activeTransactions()) {
+        if (t->weInitiated && t->otherUserId == targetUser &&
+            t->otherDeviceId == targetDevice && t->state != progressive::desktop::VerificationState::Done) {
+            txn = t;
+            break;
+        }
+    }
+    if (!txn) {
+        std::cerr << "Verify failed: could not start the verification transaction" << std::endl;
+        pcore::stopSync();
+        return 1;
+    }
+    std::string txnId = txn->transactionId;
+    auto& vm = core.sync->verificationManager();
+
+    std::cout << "Verification started with " << targetUser << "/" << targetDevice
+              << " (txn " << txnId.substr(0, 8) << "...) — waiting for the other device..."
+              << std::endl;
+
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeoutSec);
+    bool confirmed = false;
+    int rc = 1;
+
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto* t = vm.findTransaction(txnId);
+        if (!t) { std::cerr << "Verify failed: transaction gone" << std::endl; break; }
+
+        if (t->state == progressive::desktop::VerificationState::Cancelled) {
+            std::cerr << "Verification cancelled by the other side ("
+                      << progressive::desktop::cancelCodeToString(
+                             t->cancelCode.value_or(progressive::desktop::CancelCode::Other)) << ")" << std::endl;
+            break;
+        }
+        if (t->state == progressive::desktop::VerificationState::KeyReceived && !confirmed) {
+            // SAS emojis ready — show them and ask for confirmation.
+            auto emojis = vm.computeEmojis(*t);
+            if (!emojis.empty()) {
+                std::cout << "\nCompare these emojis on both devices:\n";
+                for (auto& e : emojis) {
+                    std::cout << "  " << e.emoji << "  " << e.description << "\n";
+                }
+                std::cout << std::endl;
+            }
+            if (autoConfirm) {
+                confirmed = true;
+                controller.confirmMatch(txnId);
+                std::cout << "Emojis confirmed (--confirm) — sending MAC..." << std::endl;
+            } else {
+                std::cout << "Do the emojis match? [y/N]: " << std::flush;
+                std::string answer;
+                std::getline(std::cin, answer);
+                if (answer == "y" || answer == "Y" || answer == "yes" || answer == "YES") {
+                    confirmed = true;
+                    controller.confirmMatch(txnId);
+                    std::cout << "Emojis match confirmed — sending MAC..." << std::endl;
+                } else {
+                    controller.cancelVerification(txnId, "m.user");
+                    std::cerr << "Verification cancelled (emojis don't match)" << std::endl;
+                    break;
+                }
+            }
+        }
+        if (t->state == progressive::desktop::VerificationState::Done) {
+            core.store->saveVerifiedDevice(targetUser, targetDevice);
+            if (json_out) {
+                nlohmann::json j;
+                j["ok"] = true;
+                j["user_id"] = targetUser;
+                j["device_id"] = targetDevice;
+                std::cout << j.dump() << std::endl;
+            } else {
+                std::cout << ANSI_GREEN "\n  ✓ Device verified: " << targetUser << "/" << targetDevice << ANSI_RESET << std::endl;
+            }
+            rc = 0;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    if (rc != 0 && !confirmed) {
+        std::cerr << "Verification timed out after " << timeoutSec << "s" << std::endl;
+        controller.cancelVerification(txnId, "m.timeout");
+    }
+    pcore::stopSync();
+    return rc;
+}
+
 int main(int argc, char* argv[]) {
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
@@ -2113,6 +2250,10 @@ int main(int argc, char* argv[]) {
 
     if (args.command == "ssss") {
         return cmdSsss(args);
+    }
+
+    if (args.command == "verify") {
+        return cmdVerify(args);
     }
 
     if (args.command == "send") {

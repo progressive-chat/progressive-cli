@@ -61,6 +61,7 @@ void printUsage() {
               << "  backup        Key backup: create/upload/restore/delete (--recovery-key)\n"
               << "  crosssign     Cross-signing: setup/reset (--password for UIA)\n"
               << "  ssss          Secret storage: upload/retrieve (--recovery-key)\n"
+              << "  verify        SAS-verify a device: verify <user> --device <id> [--confirm]\n"
               << "  rooms         List joined rooms\n"
               << "  view          View room messages (offline from cache)\n"
               << "  send          Send a message to a room\n"
