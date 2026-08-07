@@ -69,6 +69,7 @@ void printUsage() {
               << "  members       Room members: members <room>\n"
               << "  threads       Room threads: threads <room> [--limit N]\n"
               << "  search-public Public room directory: search-public <query> [--server hs]\n"
+              << "  markdown      Render markdown to HTML: markdown <text> | echo <text> | matrixcli markdown\n"
               << "  rooms         List joined rooms\n"
               << "  view          View room messages (offline from cache)\n"
               << "  send          Send a message to a room\n"

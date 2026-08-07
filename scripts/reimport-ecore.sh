@@ -59,7 +59,8 @@ echo ">> Comparing $(find "$E/core" "$E/native" -name '*.cpp' -o -name '*.hpp' |
 # ecore/core/* <-> desktop src/core/*
 for f in $(cd "$E/core" && find . \( -name '*.cpp' -o -name '*.hpp' \) | sed 's|^\./||' | sort); do
     case "$f" in
-        version.h) continue ;;   # CLI-local build marker
+        version.h) continue ;;       # CLI-local build marker
+        crash_handler.hpp) continue ;;  # CLI deviation: install-message removed
     esac
     copy_if_changed "$D/src/core/$f" "$E/core/$f"
 done

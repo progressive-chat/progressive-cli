@@ -52,6 +52,7 @@ add_library(matrixcli_ecore STATIC
     native/event_models.cpp
     native/json_parser.cpp
     native/login_flow.cpp
+    native/markdown.cpp
     native/matrix_error.cpp
     native/megolm_decryptor.cpp
     native/megolm_v4.cpp

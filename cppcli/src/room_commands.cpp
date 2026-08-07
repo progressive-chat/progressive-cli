@@ -4,6 +4,7 @@
 #include "commands.hpp"
 #include "pcore.hpp"
 #include "../lib/database/db.hpp"
+#include <progressive/markdown.hpp>
 #include <nlohmann/json.hpp>
 #include <atomic>
 #include <chrono>
@@ -11,6 +12,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <unistd.h>
 
 using namespace matrixcli;
 
@@ -229,6 +231,46 @@ int cmdSearchPublic(const cli::Args& args) {
     return 0;
 }
 
+// Render markdown to HTML with the vendored desktop renderer
+// (progressive::markdownToHtml from lib/ecore/native/markdown.cpp).
+//   matrixcli markdown <text>          — positional text
+//   echo <text> | matrixcli markdown   — stdin pipe
+//   --json — {html, input}; --no-tables/--no-links/--no-code/--no-scroll
+int cmdMarkdown(const cli::Args& args) {
+    progressive::MdConfig cfg;
+    if (args.options.count("no-tables")) cfg.enableTables = false;
+    if (args.options.count("no-links")) cfg.enableLinks = false;
+    if (args.options.count("no-code")) cfg.enableCodeBlocks = false;
+    if (args.options.count("no-scroll")) cfg.enableHorizontalScroll = false;
+    bool json_out = args.options.count("json");
+
+    std::string md;
+    if (!args.positional.empty()) {
+        for (size_t i = 0; i < args.positional.size(); i++) {
+            if (i) md += " ";
+            md += args.positional[i];
+        }
+    } else if (!isatty(STDIN_FILENO)) {
+        std::string line;
+        while (std::getline(std::cin, line)) { md += line; md += "\n"; }
+    }
+    if (md.empty()) {
+        std::cerr << "Usage: matrixcli markdown <text> | echo <text> | matrixcli markdown --json" << std::endl;
+        return 1;
+    }
+
+    std::string html = progressive::markdownToHtml(md, cfg);
+    if (json_out) {
+        nlohmann::json j;
+        j["html"] = html;
+        j["input"] = md;
+        std::cout << j.dump() << std::endl;
+    } else {
+        std::cout << html;
+    }
+    return 0;
+}
+
 void registerRoomCommands() {
     auto& reg = CommandRegistry::instance();
     reg.registerCli("sync", cmdSync, "One-shot sync into the offline cache");
@@ -240,4 +282,5 @@ void registerRoomCommands() {
     reg.registerCli("members", cmdMembers, "List room members: members <room>");
     reg.registerCli("threads", cmdThreads, "List room threads: threads <room> [--limit N]");
     reg.registerCli("search-public", cmdSearchPublic, "Search public room directory: search-public <query> [--server hs]");
+    reg.registerCli("markdown", cmdMarkdown, "Render markdown to HTML: markdown <text> | echo <text> | matrixcli markdown");
 }

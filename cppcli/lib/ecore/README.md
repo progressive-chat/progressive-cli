@@ -69,3 +69,9 @@ Build notes:
 - vendored libolm (repo root) Makefile: version script removed so the
   _olm_crypto_* internals used by crypto_algorithms.cpp are exported —
   matches the FetchContent/CMake olm build the desktop uses
+
+Documented deviations from the desktop originals (reimport-ecore.sh skips):
+- core/crash_handler.hpp: the "[crash] handler installed" stderr line is
+  removed — every matrixcli invocation would print it
+- tests/test_synapse_e2ee.cpp: g_runSuffix for idempotent re-runs
+  (documented in the test header)

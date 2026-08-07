@@ -43,7 +43,8 @@ inline void installCrashHandler() {
     std::signal(SIGABRT, handler);
     std::signal(SIGFPE,  handler);
     std::signal(SIGILL,  handler);
-    std::fprintf(stderr, "[crash] handler installed\n");
+    // CLI deviation from the desktop original: no "handler installed" noise
+    // on stderr — every matrixcli invocation would print it.
 }
 
 } // namespace
