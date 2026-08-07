@@ -33,10 +33,14 @@ echo "server up: $HS"
 fail=0
 check() {
     local label="$1"; shift
-    if eval "$*" >/dev/null 2>&1; then
+    local out rc=0
+    out=$(eval "$*" 2>&1) || rc=$?
+    if [ "$rc" -eq 0 ]; then
         echo "ok: $label"
     else
         echo "FAIL: $label"
+        echo "--- output:"
+        echo "$out" | tail -6
         fail=1
     fi
 }
@@ -55,7 +59,7 @@ T=$(mktemp -d)
 cd "$T" || exit 1
 
 check "login (E2EE bootstrap)" \
-    "$BIN login --homeserver $HS --username $USER --password $PASS 2>/dev/null | grep -q 'Logged in as'"
+    "$BIN login --homeserver $HS --username $USER --password $PASS 2>&1 | grep -q 'Logged in as'"
 check "status --json logged_in" \
     "$BIN status --json 2>/dev/null | grep -q '\"logged_in\":true'"
 check "e2ee status ready" \
