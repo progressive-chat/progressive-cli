@@ -22,6 +22,11 @@ if [ -z "$BIN" ] || [ ! -x "$BIN" ]; then
     echo "FAIL: matrixcli binary not found: $BIN"
     exit 1
 fi
+# The test runs from a temp dir — the binary path must be absolute.
+case "$BIN" in
+    /*) ;;
+    *) BIN="$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN")" ;;
+esac
 
 # Graceful skip without a homeserver (same pattern as test_synapse_e2ee).
 if ! curl -sf "$HS/_matrix/client/versions" >/dev/null 2>&1; then
@@ -31,16 +36,17 @@ fi
 echo "server up: $HS"
 
 fail=0
+# check <label> <command> <grep-pattern>: runs command, greps its output
+# (stdout+stderr), prints the output on mismatch.
 check() {
-    local label="$1"; shift
-    local out rc=0
-    out=$(eval "$*" 2>&1) || rc=$?
-    if [ "$rc" -eq 0 ]; then
+    local label="$1" cmd="$2" pattern="$3" out rc=0
+    out=$(eval "$cmd" 2>&1) || rc=$?
+    if echo "$out" | grep -qE "$pattern"; then
         echo "ok: $label"
     else
-        echo "FAIL: $label"
+        echo "FAIL: $label (rc=$rc)"
         echo "--- output:"
-        echo "$out" | tail -6
+        echo "$out" | tail -8
         fail=1
     fi
 }
@@ -59,19 +65,26 @@ T=$(mktemp -d)
 cd "$T" || exit 1
 
 check "login (E2EE bootstrap)" \
-    "$BIN login --homeserver $HS --username $USER --password $PASS 2>&1 | grep -q 'Logged in as'"
+    "$BIN login --homeserver $HS --username $USER --password $PASS" \
+    "Logged in as"
 check "status --json logged_in" \
-    "$BIN status --json 2>/dev/null | grep -q '\"logged_in\":true'"
+    "$BIN status --json" \
+    '"logged_in":true'
 check "e2ee status ready" \
-    "$BIN e2ee status --json 2>/dev/null | grep -q '\"ready\":true'"
+    "$BIN e2ee status --json" \
+    '"ready":true'
 check "backup create recovery key" \
-    "$BIN backup create 2>/dev/null | grep -qE '[A-Za-z0-9+/=]{40,}'"
+    "$BIN backup create" \
+    '[A-Za-z0-9+/=]{40,}'
 check "sync one-shot" \
-    "$BIN sync 2>/dev/null | grep -q 'Synced'"
+    "$BIN sync" \
+    "Synced"
 check "rooms --json after sync" \
-    "$BIN rooms --json 2>/dev/null | grep -q '\"total\":0'"
+    "$BIN rooms --json" \
+    '"total":0'
 check "search-public runs" \
-    "$BIN search-public test --json 2>/dev/null | grep -q '{'"
+    "$BIN search-public test --json" \
+    '{'
 
 cd / || exit 1
 rm -rf "$T"
