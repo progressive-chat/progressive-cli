@@ -599,16 +599,13 @@ static bool test_media_roundtrip(const std::string& hs, TestUser& u) {
     auto sep = rest.find('/');
     std::string srv = rest.substr(0, sep);
     std::string mid = rest.substr(sep + 1);
-    auto dl = httpGet(hs + "/_matrix/media/v3/download/" + srv + "/" + mid,
+    // STRICT: upload must round-trip through the media API. The v1 media
+    // endpoint is tried first (current servers serve media only there);
+    // a 404 here is a real failure now — the legacy 'CI quirk' was the
+    // v3-only endpoint bug.
+    auto dl = httpGet(hs + "/_matrix/client/v1/media/download/" + srv + "/" + mid,
                       {{"Authorization", "Bearer " + u.token}}, 30000);
-    if (!dl.success) {
-        // The CI Synapse container serves uploads but 404s downloads (same
-        // quirk as the encrypted-media scenario) — skip here, fail on real
-        // servers where the download must work.
-        if (dl.statusCode == 404) {
-            std::cout << "media: " << mxc << " -> download 404 in this environment (skip)\n";
-            return true;
-        }
+    if (!dl.success || dl.statusCode != 200) {
         std::cerr << "[media] download failed: http=" << dl.statusCode
                   << " err=" << dl.errorMessage << "\n";
         return false;
