@@ -22,6 +22,12 @@ make -j$(nproc)
 # Login
 ./matrixcli login --homeserver https://matrix.org --username @user:matrix.org --password xxxxx
 
+# Register a new account (m.login.dummy)
+./matrixcli login --register --homeserver https://matrix.org --username newuser --password xxxxx
+
+# Register with a registration token (m.login.registration_token)
+./matrixcli login --register --homeserver https://matrix.org --username newuser --password xxxxx --reg-token s3cret
+
 # Check status
 ./matrixcli status
 ```

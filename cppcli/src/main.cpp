@@ -211,56 +211,120 @@ int cmdLogin(const matrixcli::cli::Args& args) {
         return 0;
     }
 
-    // Token / registration: legacy path on the old client (transitional).
+    // Registration via the vendored desktop core (lib/ecore) — supports
+    // m.login.registration_token via --reg-token.
+    if (reg_it != args.options.end()) {
+        std::string username;
+        auto user_it = args.options.find("username");
+        if (user_it != args.options.end()) {
+            username = user_it->second;
+        } else if (args.positional.size() >= 1) {
+            username = args.positional[0];
+        } else {
+            std::cerr << "Error: --username required for registration" << std::endl;
+            return 1;
+        }
+        // Registration takes the LOCALPART: strip @ and :server if the user
+        // passed a full Matrix ID (same as the desktop login dialog).
+        if (!username.empty() && username[0] == '@') {
+            auto colon = username.find(':');
+            if (colon != std::string::npos) username = username.substr(1, colon - 1);
+            else username = username.substr(1);
+        }
+
+        std::string password;
+        auto pass_it = args.options.find("password");
+        if (pass_it != args.options.end()) {
+            password = pass_it->second;
+        } else if (args.positional.size() >= 2) {
+            password = args.positional[1];
+        } else {
+            std::cerr << "Error: --password required for registration" << std::endl;
+            return 1;
+        }
+
+        std::string regToken;
+        auto rt_it = args.options.find("reg-token");
+        if (rt_it != args.options.end()) regToken = rt_it->second;
+
+        if (!pcore::init()) return 1;
+        auto& core = pcore::core();
+
+        // Resolve the homeserver (same rules as login: explicit scheme honored,
+        // scheme-less input goes through well-known discovery).
+        std::string resolvedHs;
+        if (homeserver.rfind("http://", 0) == 0 || homeserver.rfind("https://", 0) == 0) {
+            resolvedHs = homeserver;
+            while (!resolvedHs.empty() && resolvedHs.back() == '/') resolvedHs.pop_back();
+        } else {
+            auto disc = core.client->discoverHomeserver(homeserver);
+            if (!disc.ok || disc.data.empty()) {
+                std::cerr << "Registration failed: cannot resolve homeserver " << homeserver << std::endl;
+                return 1;
+            }
+            resolvedHs = disc.data;
+        }
+
+        auto r = core.client->registerAccount(username, password, resolvedHs, regToken);
+        if (!r.ok) {
+            std::string err = r.error.message.empty() ? "registration failed" : r.error.message;
+            if (!r.error.code.empty()) err = "[" + r.error.code + "] " + err;
+            std::cerr << "Registration failed: " << err << " (HTTP " << r.httpStatus << ")" << std::endl;
+            return 1;
+        }
+
+        // registerAccount returns the account in r.data without installing it —
+        // install, persist (session.db), and bootstrap E2EE like a login.
+        core.client->setAccount(r.data);
+        auto acct = core.client->account();
+        core.client->persistSession();
+
+        // Compatibility: also record the session in config.json.
+        Config::instance().set("homeserver_url", acct.homeserverUrl);
+        Config::instance().set("access_token", acct.accessToken);
+        Config::instance().set("user_id", acct.userId);
+        Config::instance().set("device_id", acct.deviceId);
+        Config::instance().save();
+
+        std::string e2ee_note = pcore::bootstrap();
+
+        if (json_out) {
+            nlohmann::json j;
+            j["user_id"] = acct.userId;
+            j["device_id"] = acct.deviceId;
+            j["homeserver"] = acct.homeserverUrl;
+            j["e2ee"] = e2ee_note.empty();
+            std::cout << j.dump() << std::endl;
+        } else {
+            std::cout << "Registered as " << acct.userId << " (device " << acct.deviceId << ")" << std::endl;
+            if (!e2ee_note.empty()) std::cout << "Warning: " << e2ee_note << std::endl;
+            else std::cout << "E2EE ready — device keys uploaded." << std::endl;
+        }
+        return 0;
+    }
+
+    // Token login: legacy path on the old client (transitional).
     matrix::Client client;
     client.setHomeserverURL(homeserver);
 
     try {
-        if (token_it != args.options.end()) {
-            auto creds = client.loginToken(token_it->second);
-            std::cout << "Logged in as " << creds.user_id << std::endl;
+        auto creds = client.loginToken(token_it->second);
+        std::cout << "Logged in as " << creds.user_id << std::endl;
 
-            Config::instance().set("homeserver_url", homeserver);
-            Config::instance().set("access_token", creds.access_token);
-            Config::instance().set("user_id", creds.user_id);
-            Config::instance().set("device_id", creds.device_id);
-            Config::instance().save();
+        Config::instance().set("homeserver_url", homeserver);
+        Config::instance().set("access_token", creds.access_token);
+        Config::instance().set("user_id", creds.user_id);
+        Config::instance().set("device_id", creds.device_id);
+        Config::instance().save();
 
-            db::Database dbi;
-            dbi.open("matrixcli.db");
-            db::StoredAccount acc;
-            acc.homeserver_url = homeserver;
-            acc.user_id = creds.user_id;
-            acc.access_token = creds.access_token;
-            acc.device_id = creds.device_id;
-            dbi.saveAccount(acc);
-        } else {
-            std::string username;
-            auto user_it = args.options.find("username");
-            if (user_it != args.options.end()) username = user_it->second;
-            else { std::cerr << "Error: --username required for registration" << std::endl; return 1; }
-
-            std::string password;
-            auto pass_it = args.options.find("password");
-            if (pass_it != args.options.end()) password = pass_it->second;
-            else { std::cerr << "Error: --password required for registration" << std::endl; return 1; }
-
-            auto creds = client.registerAccount(username, password);
-            std::cout << "Registered as " << creds.user_id << std::endl;
-            Config::instance().set("homeserver_url", homeserver);
-            Config::instance().set("access_token", creds.access_token);
-            Config::instance().set("user_id", creds.user_id);
-            Config::instance().set("device_id", creds.device_id);
-            Config::instance().save();
-            db::Database dbi2;
-            dbi2.open("matrixcli.db");
-            db::StoredAccount sacc;
-            sacc.homeserver_url = homeserver;
-            sacc.user_id = creds.user_id;
-            sacc.access_token = creds.access_token;
-            sacc.device_id = creds.device_id;
-            dbi2.saveAccount(sacc);
-        }
+        db::Database dbi;
+        dbi.open("matrixcli.db");
+        db::StoredAccount acc;
+        acc.homeserver_url = homeserver;
+        acc.user_id = creds.user_id;
+        acc.access_token = creds.access_token;
+        acc.device_id = creds.device_id;
+        dbi.saveAccount(acc);
     } catch (const std::exception& e) {
         std::cerr << "Login failed: " << e.what() << std::endl;
         return 1;

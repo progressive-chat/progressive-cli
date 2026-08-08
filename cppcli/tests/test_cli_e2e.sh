@@ -2,9 +2,9 @@
 # tests/test_cli_e2e.sh — CLI end-to-end test against a live homeserver.
 #
 # Drives the REAL matrixcli binary through the ecore-backed command surface:
-#   login (E2EE bootstrap) -> status --json -> e2ee status --json ->
-#   backup create (recovery key) -> sync (one-shot cache fill) ->
-#   search-public (directory)
+#   register (--register) -> login (E2EE bootstrap) -> status --json ->
+#   e2ee status --json -> backup create (recovery key) -> sync (one-shot
+#   cache fill) -> search-public (directory)
 #
 # Env: SYNAPSE_URL (default http://localhost:8008). Skips gracefully when no
 # homeserver is reachable. Run from a fresh temp dir so session.db /
@@ -63,6 +63,15 @@ echo "registered: $USER"
 
 T=$(mktemp -d)
 cd "$T" || exit 1
+
+# Register a SECOND user through the CLI itself (--register, m.login.dummy).
+REGUSER="cli_reg_$(date +%s)"
+check "register via CLI (m.login.dummy)" \
+    "$BIN login --register --homeserver $HS --username $REGUSER --password $PASS" \
+    "Registered as"
+check "register via CLI --json" \
+    "$BIN login --register --homeserver $HS --username ${REGUSER}2 --password $PASS --json" \
+    '"user_id"'
 
 check "login (E2EE bootstrap)" \
     "$BIN login --homeserver $HS --username $USER --password $PASS" \

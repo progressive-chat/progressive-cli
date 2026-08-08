@@ -121,6 +121,8 @@ void printUsage() {
               << "  --username    Matrix username (@user:server)\n"
               << "  --password    Password\n"
               << "  --token       Login with access token\n"
+              << "  --register    Register a new account (with --username/--password)\n"
+              << "  --reg-token   Registration token (m.login.registration_token)\n"
               << "\n"
               << "General options:\n"
               << "  --help        Show this help\n"
