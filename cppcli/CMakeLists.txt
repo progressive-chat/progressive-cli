@@ -21,6 +21,9 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 set(PROGRESSIVE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+# Download the prebuilt core for this commit (fast builds). Falls back to
+# compiling from source automatically when the artifact isn't published yet.
+set(PROGRESSIVE_CORE_USE_ARTIFACT ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(progressive-core)
 # Keep the historical target name so all consumers (api, src, tui) link
 # unchanged against the fetched core.
