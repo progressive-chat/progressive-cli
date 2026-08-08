@@ -137,9 +137,6 @@ int cmdLogin(const matrixcli::cli::Args& args) {
             username = user_it->second;
         } else if (args.positional.size() >= 1) {
             username = args.positional[0];
-        } else {
-            std::cerr << "Error: --username required" << std::endl;
-            return 1;
         }
 
         std::string password;
@@ -148,7 +145,19 @@ int cmdLogin(const matrixcli::cli::Args& args) {
             password = pass_it->second;
         } else if (args.positional.size() >= 2) {
             password = args.positional[1];
-        } else {
+        }
+
+        // Report ALL missing credentials at once (both when neither given).
+        if (username.empty() && password.empty()) {
+            std::cerr << "Error: --username and --password required"
+                      << " (e.g. --username @me:server --password s3cret)" << std::endl;
+            return 1;
+        }
+        if (username.empty()) {
+            std::cerr << "Error: --username required" << std::endl;
+            return 1;
+        }
+        if (password.empty()) {
             std::cerr << "Error: --password required" << std::endl;
             return 1;
         }
