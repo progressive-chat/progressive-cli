@@ -5,6 +5,8 @@
 #include <fstream>
 #include <algorithm>
 #include <sys/stat.h>
+#include <termios.h>
+#include <unistd.h>
 
 #include "config.hpp"
 #include "cli/args.hpp"
@@ -147,18 +149,43 @@ int cmdLogin(const matrixcli::cli::Args& args) {
             password = args.positional[1];
         }
 
-        // Report ALL missing credentials at once (both when neither given).
+        // --interactive: prompt for whatever is missing (password hidden).
+        if (args.options.count("interactive")) {
+            if (username.empty()) {
+                std::cout << "Matrix ID (e.g. @user:matrix.org): " << std::flush;
+                std::getline(std::cin, username);
+            }
+            if (password.empty()) {
+                std::cout << "Password: " << std::flush;
+                struct termios oldt, newt;
+                tcgetattr(STDIN_FILENO, &oldt);
+                newt = oldt; newt.c_lflag &= ~ECHO;
+                tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+                std::getline(std::cin, password);
+                tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+                std::cout << std::endl;
+            }
+        }
+
+        // Report ALL missing credentials at once (both when neither given),
+        // and point at --interactive when the prompt flag was not used.
         if (username.empty() && password.empty()) {
             std::cerr << "Error: --username and --password required"
-                      << " (e.g. --username @me:server --password s3cret)" << std::endl;
+                      << " (e.g. --username @me:server --password s3cret)"
+                      << " — or add --interactive to enter them interactively"
+                      << std::endl;
             return 1;
         }
         if (username.empty()) {
-            std::cerr << "Error: --username required" << std::endl;
+            std::cerr << "Error: --username required"
+                      << " — or add --interactive to enter it interactively"
+                      << std::endl;
             return 1;
         }
         if (password.empty()) {
-            std::cerr << "Error: --password required" << std::endl;
+            std::cerr << "Error: --password required"
+                      << " — or add --interactive to enter it interactively"
+                      << std::endl;
             return 1;
         }
 

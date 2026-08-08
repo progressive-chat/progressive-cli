@@ -124,6 +124,7 @@ void printUsage() {
               << "  --token       Login with access token\n"
               << "  --register    Register a new account (with --username/--password)\n"
               << "  --reg-token   Registration token (m.login.registration_token)\n"
+              << "  --interactive Prompt for missing username/password (password hidden)\n"
               << "\n"
               << "General options:\n"
               << "  --help        Show this help\n"
