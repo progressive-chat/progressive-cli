@@ -29,6 +29,8 @@
 
 #include <iostream>
 #include <string>
+#include <fstream>
+#include <cstdio>
 #include <vector>
 #include <thread>
 #include <chrono>
@@ -508,6 +510,87 @@ static bool waitVState(TestUser& u, progressive::desktop::VerificationManager& m
         std::this_thread::sleep_for(std::chrono::milliseconds(400));
     }
     return false;
+}
+
+// --- Reset-drift regression ---
+// The receiver must not be stranded when the sender resets their identity:
+// dave stores the megolm session under carol's CURRENT curve25519 key; carol
+// then calls resetIdentity() (new identity keys, so the next outbound
+// session has a NEW sender key + session id). Carol's next message must
+// still decrypt for dave — this is the "sender_key drift" bug: the store
+// was keyed by the event's sender_key, and the strict (room, sender_key,
+// session_id) lookup missed after the reset (fallback by (room, session_id)
+// + outbound discard/rotation keep the receiver working).
+static bool test_reset_drift(const std::string& hs) {
+    std::string pass = "synapse_test_pass_42";
+    TestUser carol, dave;
+    if (!registerUser(carol, hs, "drift_carol" + g_runSuffix, pass)) return false;
+    if (!registerUser(dave, hs, "drift_dave" + g_runSuffix, pass)) return false;
+    if (!setupE2EE(carol, hs) || !setupE2EE(dave, hs)) return false;
+
+    auto roomRes = carol.client.createRoom("drift-room", "", false, {dave.userId}, true);
+    if (!roomRes.ok) { std::cerr << "[drift] createRoom failed: " << roomRes.error.message << "\n"; return false; }
+    std::string roomId = roomRes.data;
+    if (!dave.client.joinRoom(roomId).ok) { std::cerr << "[drift] dave join failed\n"; return false; }
+
+    auto sync0 = dave.client.syncFast("", 5000, false);
+    std::string since = sync0.ok ? std::string(sync0.data.nextBatch) : "";
+
+    // Baseline: dave decrypts a message under carol's current identity.
+    std::string m0 = "drift-before-reset-" + std::to_string(std::time(nullptr));
+    CHECK(!sendEncrypted(carol, hs, roomId, m0, "drift0").empty(), "drift: carol sent m0");
+    if (!waitForDecrypt(dave, roomId, m0, since)) {
+        std::cerr << "[drift] FAIL: dave could not decrypt m0 (baseline)\n";
+        return false;
+    }
+
+    // Carol resets her identity (new curve25519 key) and re-uploads keys.
+    CHECK(carol.decryptor.resetIdentity(), "drift: carol resetIdentity");
+    std::string dkBody = carol.decryptor.buildKeysUploadBody(
+        carol.userId, carol.deviceId, 30, true);
+    auto dkUp = carol.client.uploadKeys(dkBody);
+    CHECK(dkUp.ok, "drift: carol re-uploaded device keys after reset");
+
+    // Post-reset message: the core must rotate the stale outbound session
+    // and share the new one — dave must still decrypt.
+    std::string m1 = "drift-after-reset-" + std::to_string(std::time(nullptr));
+    CHECK(!sendEncrypted(carol, hs, roomId, m1, "drift1").empty(), "drift: carol sent m1");
+    if (!waitForDecrypt(dave, roomId, m1, since)) {
+        std::cerr << "[drift] FAIL: dave could not decrypt m1 after carol's reset "
+                     "(sender_key drift regression)\n";
+        return false;
+    }
+    std::cout << "drift: dave decrypted pre- and post-reset messages\n";
+    return true;
+}
+
+// --- Media upload/download roundtrip ---
+// Exercises the real /_matrix/media/v3 endpoints (upload returns mxc://,
+// download must return the exact bytes — includes the fresh-upload path
+// that must not be poisoned by the negative cache on 404s).
+static bool test_media_roundtrip(const std::string& hs, TestUser& u) {
+    std::string payload = "progressive-core media roundtrip " + std::to_string(std::time(nullptr));
+    std::vector<uint8_t> bytes(payload.begin(), payload.end());
+    auto up = u.client.uploadMedia(bytes, "pcore-media-" + g_runSuffix + ".txt", "text/plain");
+    if (!up.ok || up.data.rfind("mxc://", 0) != 0) {
+        std::cerr << "[media] upload failed: " << up.error.message << " (" << up.data << ")\n";
+        return false;
+    }
+    std::string mxc = up.data;
+
+    std::string rest = mxc.substr(6);
+    auto sep = rest.find('/');
+    std::string srv = rest.substr(0, sep);
+    std::string mid = rest.substr(sep + 1);
+    auto dl = httpGet(hs + "/_matrix/media/v3/download/" + srv + "/" + mid,
+                      {{"Authorization", "Bearer " + u.token}}, 30000);
+    if (!dl.success || dl.body.find(payload) == std::string::npos) {
+        std::cerr << "[media] download mismatch: http=" << dl.statusCode
+                  << " len=" << dl.body.size() << "\n";
+        return false;
+    }
+    std::cout << "media: " << mxc << " -> download roundtrip ok\n";
+    return true;
 }
 
 static bool test_sas_verified_policy(const std::string& hs, TestUser& alice, TestUser& bob) {
@@ -1297,6 +1380,17 @@ int main() {
     std::cout << "\n--- multiaccount multidevice test ---\n";
     if (!test_multiaccount_multidevice(hs, alice, bob)) failures++;
     std::cout << "--- multiaccount multidevice done ---\n";
+
+    // Reset-drift regression: sender resets identity mid-room; receiver must
+    // still decrypt. Independent users (carol/dave) — safe anywhere.
+    std::cout << "\n--- reset-drift test ---\n";
+    if (!test_reset_drift(hs)) failures++;
+    std::cout << "--- reset-drift done ---\n";
+
+    // Media upload/download roundtrip via the real media API.
+    std::cout << "\n--- media roundtrip test ---\n";
+    if (!test_media_roundtrip(hs, bob)) failures++;
+    std::cout << "--- media roundtrip done ---\n";
 
     // Live SAS self-verification (A1 <-> A3 over the server) + verified-only policy.
     std::cout << "\n--- sas verified-policy test ---\n";
