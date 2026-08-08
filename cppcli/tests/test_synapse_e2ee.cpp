@@ -552,6 +552,10 @@ static bool test_reset_drift(const std::string& hs) {
     // (advances the OTK counter) and re-upload, up to 3 attempts.
     bool keysUp = false;
     for (int attempt = 0; attempt < 3 && !keysUp; ++attempt) {
+        // Same as SyncEngine::uploadDeviceKeys: discard the previous
+        // unpublished OTKs so libolm's id counter advances past the
+        // server-held pre-reset ids.
+        carol.decryptor.markOneTimeKeysPublished();
         std::string dkBody = carol.decryptor.buildKeysUploadBody(
             carol.userId, carol.deviceId, 30, true);
         auto dkUp = carol.client.uploadKeys(dkBody);
