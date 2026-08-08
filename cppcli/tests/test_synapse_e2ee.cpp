@@ -546,14 +546,23 @@ static bool test_reset_drift(const std::string& hs) {
 
     // Carol resets her identity (new curve25519 key) and re-uploads keys.
     CHECK(carol.decryptor.resetIdentity(), "drift: carol resetIdentity");
-    std::string dkBody = carol.decryptor.buildKeysUploadBody(
-        carol.userId, carol.deviceId, 30, true);
-    auto dkUp = carol.client.uploadKeys(dkBody);
-    if (!dkUp.ok) {
-        std::cerr << "[drift] key re-upload failed: http=" << dkUp.httpStatus
-                  << " err=" << dkUp.error.message << " data=" << dkUp.data << "\n";
+    // The fresh post-reset account regenerates OTKs from index 0, so the
+    // server still holds the pre-reset ones under the same ids -> 400
+    // "already exists". Mirror the client's uploadDeviceKeys retry: rebuild
+    // (advances the OTK counter) and re-upload, up to 3 attempts.
+    bool keysUp = false;
+    for (int attempt = 0; attempt < 3 && !keysUp; ++attempt) {
+        std::string dkBody = carol.decryptor.buildKeysUploadBody(
+            carol.userId, carol.deviceId, 30, true);
+        auto dkUp = carol.client.uploadKeys(dkBody);
+        if (dkUp.ok) {
+            keysUp = true;
+        } else if (attempt == 2) {
+            std::cerr << "[drift] key re-upload failed: http=" << dkUp.httpStatus
+                      << " err=" << dkUp.error.message << "\n";
+        }
     }
-    CHECK(dkUp.ok, "drift: carol re-uploaded device keys after reset");
+    CHECK(keysUp, "drift: carol re-uploaded device keys after reset");
 
     // Post-reset message: the core must rotate the stale outbound session
     // and share the new one — dave must still decrypt.
