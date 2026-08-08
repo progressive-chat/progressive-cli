@@ -6,6 +6,7 @@
 //   matrixcli typing <room>           — who is typing (one-shot sync)
 #include "commands.hpp"
 #include "pcore.hpp"
+#include "globals.hpp"
 #include "../lib/database/db.hpp"
 #include "core/http_client.hpp"
 #include <progressive/llm.hpp>
@@ -382,7 +383,8 @@ int cmdTyping(const cli::Args& args) {
         done->store(true);
     });
     auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
-    while (!done->load() && std::chrono::steady_clock::now() < deadline)
+    while (!done->load() && matrixcli::g_interrupted.load()
+           && std::chrono::steady_clock::now() < deadline)
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     pcore::stopSync();
 

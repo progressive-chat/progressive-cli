@@ -2,6 +2,7 @@
 // core (lib/ecore). Moved out of main.cpp during the command refactor.
 #include "commands.hpp"
 #include "pcore.hpp"
+#include "globals.hpp"
 #include "core/crypto/verify_controller.hpp"
 #include "core/crypto/sas_emojis.hpp"
 #include <nlohmann/json.hpp>
@@ -261,7 +262,7 @@ int cmdVerify(const cli::Args& args) {
     bool confirmed = false;
     int rc = 1;
 
-    while (std::chrono::steady_clock::now() < deadline) {
+    while (matrixcli::g_interrupted.load() && std::chrono::steady_clock::now() < deadline) {
         auto* t = vm.findTransaction(txnId);
         if (!t) { std::cerr << "Verify failed: transaction gone" << std::endl; break; }
 
@@ -317,8 +318,13 @@ int cmdVerify(const cli::Args& args) {
     }
 
     if (rc != 0 && !confirmed) {
-        std::cerr << "Verification timed out after " << timeoutSec << "s" << std::endl;
-        controller.cancelVerification(txnId, "m.timeout");
+        if (!matrixcli::g_interrupted.load()) {
+            std::cerr << "Verification interrupted (Ctrl+C)" << std::endl;
+            controller.cancelVerification(txnId, "m.user");
+        } else {
+            std::cerr << "Verification timed out after " << timeoutSec << "s" << std::endl;
+            controller.cancelVerification(txnId, "m.timeout");
+        }
     }
     pcore::stopSync();
     return rc;

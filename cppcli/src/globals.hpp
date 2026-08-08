@@ -9,6 +9,7 @@
 #include <vector>
 #include <map>
 #include <mutex>
+#include <atomic>
 
 namespace matrixcli {
 
@@ -20,5 +21,9 @@ extern std::map<std::string, std::vector<std::pair<std::string, int>>> g_msgQueu
 extern std::mutex g_queueMutex;
 extern util::TypingMonitor g_typing;
 extern std::vector<std::string> g_notifyKeywords;
+
+// Set false by the SIGINT/SIGTERM handler; long-running commands (verify,
+// serve loops) must poll it and bail out promptly so Ctrl+C always works.
+extern std::atomic<bool> g_interrupted;
 
 } // namespace matrixcli

@@ -43,6 +43,7 @@ std::atomic<bool> g_running{true};
 
 // Global bridge instances (defined here, declared in globals.hpp)
 namespace matrixcli {
+    std::atomic<bool> g_interrupted{true};
     tdlib::TdBridge g_tdlib;
     lemmy::LemmyClient g_lemmy;
     deltachat::DcBridge g_dc;
@@ -54,6 +55,7 @@ namespace matrixcli {
 
 void signalHandler(int) {
     g_running = false;
+    matrixcli::g_interrupted = false;
 }
 
 int cmdServe(const matrixcli::cli::Args& args) {

@@ -4,6 +4,7 @@
 #include "commands.hpp"
 #include "pcore.hpp"
 #include "config.hpp"
+#include "globals.hpp"
 #include "../lib/database/db.hpp"
 #include "../lib/util/string_utils.hpp"
 #include <progressive/markdown.hpp>
@@ -53,12 +54,16 @@ int cmdSync(const cli::Args& args) {
     });
 
     auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(120);
-    while (!done->load() && std::chrono::steady_clock::now() < deadline)
+    while (!done->load() && matrixcli::g_interrupted.load()
+           && std::chrono::steady_clock::now() < deadline)
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     pcore::stopSync();
 
     if (!done->load()) {
-        std::cerr << "sync: no response within 120s" << std::endl;
+        if (!matrixcli::g_interrupted.load())
+            std::cerr << "sync: no response within 120s" << std::endl;
+        else
+            std::cerr << "sync: interrupted (Ctrl+C)" << std::endl;
         return 1;
     }
     if (json_out) {
