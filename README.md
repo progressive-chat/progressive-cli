@@ -38,7 +38,9 @@ matrixclient/
 ├── cppcli/          # C++20 CLI rewrite (in progress)
 │   ├── lib/http/    #   POSIX + OpenSSL HTTP client, SOCKS5/HTTP proxy
 │   ├── lib/matrix/  #   Matrix protocol (login, sync, send, events)
-│   ├── lib/e2ee/    #   libolm C++ wrappers (OlmAccount, Megolm, CryptoManager)
+│   ├── lib/         #   E2EE/sync core: fetched from progressive-chat/
+│   │                #   progressive-core (FetchContent, matrixcli_ecore alias;
+│   │                #   prebuilt artifact download with source fallback)
 │   ├── lib/api/     #   HTTP server, content negotiation, routing
 │   ├── lib/formats/ #   Format renderers (JSON, text, MD, gemtext, HTML)
 │   └── lib/tui/     #   ncurses terminal UI
