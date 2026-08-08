@@ -225,6 +225,15 @@ int cmdVerify(const cli::Args& args) {
         return 1;
     }
 
+    // E2EE init (olm account + device keys + crypto context) — sendOlmToDevice
+    // needs ctxHomeserver_/ctxToken_ set by initializeE2EE; without it every
+    // verification reply falls back to PLAIN to-device, which Element rejects.
+    std::string e2ee_note = pcore::bootstrap();
+    if (!e2ee_note.empty()) {
+        std::cerr << "Warning: " << e2ee_note << std::endl;
+        return 1;
+    }
+
     progressive::desktop::VerificationController controller;
     controller.setClient(core.client);
     controller.setVerificationManager(&core.sync->verificationManager());
@@ -300,6 +309,38 @@ int cmdVerify(const cli::Args& args) {
                 }
             }
         }
+        // The other side may confirm FIRST (--confirm / fast client) — its MAC
+        // arrives before our own confirmation, skipping KeyReceived. Treat
+        // MacReceived the same: show emojis, confirm, send OUR MAC, then the
+        // peer's Done (or ours) completes the flow.
+        if (t->state == progressive::desktop::VerificationState::MacReceived && !confirmed) {
+            auto emojis = vm.computeEmojis(*t);
+            if (!emojis.empty()) {
+                std::cout << "\nCompare these emojis on both devices (peer already confirmed):\n";
+                for (auto& e : emojis) {
+                    std::cout << "  " << e.emoji << "  " << e.description << "\n";
+                }
+                std::cout << std::endl;
+            }
+            if (autoConfirm) {
+                confirmed = true;
+                controller.confirmMatch(txnId);
+                std::cout << "Emojis confirmed (--confirm) — sending MAC..." << std::endl;
+            } else {
+                std::cout << "Do the emojis match? [y/N]: " << std::flush;
+                std::string answer;
+                std::getline(std::cin, answer);
+                if (answer == "y" || answer == "Y" || answer == "yes" || answer == "YES") {
+                    confirmed = true;
+                    controller.confirmMatch(txnId);
+                    std::cout << "Emojis match confirmed — sending MAC..." << std::endl;
+                } else {
+                    controller.cancelVerification(txnId, "m.user");
+                    std::cerr << "Verification cancelled (emojis don't match)" << std::endl;
+                    break;
+                }
+            }
+        }
         if (t->state == progressive::desktop::VerificationState::Done) {
             core.store->saveVerifiedDevice(targetUser, targetDevice);
             if (json_out) {
@@ -330,6 +371,175 @@ int cmdVerify(const cli::Args& args) {
     return rc;
 }
 
+// verify-wait: LISTEN for an incoming SAS verification request (initiated by
+// another client, e.g. Element's "Verify session") and drive it to completion
+// — auto-accept, show the SAS emojis, prompt for confirmation. This is the
+// missing inbound half of `verify` (which only initiates).
+int cmdVerifyWait(const cli::Args& args) {
+    if (!pcore::requireSession()) return 1;
+    bool autoConfirm = args.options.count("confirm");
+    bool json_out = args.options.count("json");
+    int timeoutSec = 120;
+    if (args.options.count("timeout")) {
+        try { timeoutSec = std::stoi(args.options.at("timeout")); } catch (...) {}
+    }
+
+    auto& core = pcore::core();
+    auto acct = core.client->account();
+
+    // E2EE init — the crypto context (homeserver/token) is required for
+    // Olm-wrapped verification replies (same reason as cmdVerify).
+    std::string e2ee_note = pcore::bootstrap();
+    if (!e2ee_note.empty()) {
+        std::cerr << "Warning: " << e2ee_note << std::endl;
+        return 1;
+    }
+
+    progressive::desktop::VerificationController controller;
+    controller.setClient(core.client);
+    controller.setVerificationManager(&core.sync->verificationManager());
+    controller.setSyncEngine(core.sync.get());
+
+    pcore::startSync(nullptr);
+    auto& vm = core.sync->verificationManager();
+
+    std::cout << "Listening for incoming verification requests"
+              << " (Ctrl+C to cancel, " << timeoutSec << "s timeout)..." << std::endl;
+
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeoutSec);
+    bool confirmed = false;
+    int rc = 1;
+    std::string txnId;
+
+    while (matrixcli::g_interrupted.load() && std::chrono::steady_clock::now() < deadline) {
+        // Once a transaction is captured, follow it by id (Done must NOT be
+        // filtered out — the completion branch below needs to see it).
+        progressive::desktop::VerificationTransaction* incoming = nullptr;
+        if (!txnId.empty()) {
+            incoming = vm.findTransaction(txnId);
+        } else {
+            // Find the first incoming transaction still in flight.
+            for (auto* t : vm.activeTransactions()) {
+                if (t->isIncoming && t->state != progressive::desktop::VerificationState::Done
+                    && t->state != progressive::desktop::VerificationState::Cancelled) {
+                    incoming = t;
+                    break;
+                }
+            }
+        }
+        if (!incoming) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            continue;
+        }
+        if (txnId.empty()) {
+            txnId = incoming->transactionId;
+            std::cout << "Incoming verification request from "
+                      << incoming->otherUserId << "/" << incoming->otherDeviceId
+                      << " (txn " << txnId.substr(0, 8) << "...) — accepting..." << std::endl;
+            controller.acceptIncoming(txnId);
+        }
+
+        auto* t = vm.findTransaction(txnId);
+        if (!t) { std::cerr << "Verify-wait failed: transaction gone" << std::endl; break; }
+
+        if (t->state == progressive::desktop::VerificationState::Cancelled) {
+            std::cerr << "Verification cancelled by the other side ("
+                      << progressive::desktop::cancelCodeToString(
+                             t->cancelCode.value_or(progressive::desktop::CancelCode::Other)) << ")"
+                      << std::endl;
+            break;
+        }
+        if (t->state == progressive::desktop::VerificationState::KeyReceived && !confirmed) {
+            auto emojis = vm.computeEmojis(*t);
+            if (!emojis.empty()) {
+                std::cout << "\nCompare these emojis on both devices:\n";
+                for (auto& e : emojis) {
+                    std::cout << "  " << e.emoji << "  " << e.description << "\n";
+                }
+                std::cout << std::endl;
+            }
+            if (autoConfirm) {
+                confirmed = true;
+                controller.confirmMatch(txnId);
+                std::cout << "Emojis confirmed (--confirm) — sending MAC..." << std::endl;
+            } else {
+                std::cout << "Do the emojis match? [y/N]: " << std::flush;
+                std::string answer;
+                std::getline(std::cin, answer);
+                if (answer == "y" || answer == "Y" || answer == "yes" || answer == "YES") {
+                    confirmed = true;
+                    controller.confirmMatch(txnId);
+                    std::cout << "Emojis match confirmed — sending MAC..." << std::endl;
+                } else {
+                    controller.cancelVerification(txnId, "m.user");
+                    std::cerr << "Verification cancelled (emojis don't match)" << std::endl;
+                    break;
+                }
+            }
+        }
+        // The other side may confirm FIRST (--confirm / fast client) — its MAC
+        // arrives before our own confirmation, skipping KeyReceived. Treat
+        // MacReceived the same: show emojis, confirm, send OUR MAC, then the
+        // peer's Done (or ours) completes the flow.
+        if (t->state == progressive::desktop::VerificationState::MacReceived && !confirmed) {
+            auto emojis = vm.computeEmojis(*t);
+            if (!emojis.empty()) {
+                std::cout << "\nCompare these emojis on both devices (peer already confirmed):\n";
+                for (auto& e : emojis) {
+                    std::cout << "  " << e.emoji << "  " << e.description << "\n";
+                }
+                std::cout << std::endl;
+            }
+            if (autoConfirm) {
+                confirmed = true;
+                controller.confirmMatch(txnId);
+                std::cout << "Emojis confirmed (--confirm) — sending MAC..." << std::endl;
+            } else {
+                std::cout << "Do the emojis match? [y/N]: " << std::flush;
+                std::string answer;
+                std::getline(std::cin, answer);
+                if (answer == "y" || answer == "Y" || answer == "yes" || answer == "YES") {
+                    confirmed = true;
+                    controller.confirmMatch(txnId);
+                    std::cout << "Emojis match confirmed — sending MAC..." << std::endl;
+                } else {
+                    controller.cancelVerification(txnId, "m.user");
+                    std::cerr << "Verification cancelled (emojis don't match)" << std::endl;
+                    break;
+                }
+            }
+        }
+        if (t->state == progressive::desktop::VerificationState::Done) {
+            core.store->saveVerifiedDevice(t->otherUserId, t->otherDeviceId);
+            if (json_out) {
+                nlohmann::json j;
+                j["ok"] = true;
+                j["user_id"] = t->otherUserId;
+                j["device_id"] = t->otherDeviceId;
+                std::cout << j.dump() << std::endl;
+            } else {
+                std::cout << ANSI_GREEN "\n  ✓ Device verified: " << t->otherUserId
+                          << "/" << t->otherDeviceId << ANSI_RESET << std::endl;
+            }
+            rc = 0;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    if (rc != 0 && !confirmed) {
+        if (!matrixcli::g_interrupted.load()) {
+            std::cerr << "Verify-wait interrupted (Ctrl+C)" << std::endl;
+            if (!txnId.empty()) controller.cancelVerification(txnId, "m.user");
+        } else {
+            std::cerr << "Verify-wait timed out after " << timeoutSec << "s" << std::endl;
+            if (!txnId.empty()) controller.cancelVerification(txnId, "m.timeout");
+        }
+    }
+    pcore::stopSync();
+    return rc;
+}
+
 void registerE2eeCommands() {
     auto& reg = CommandRegistry::instance();
     reg.registerCli("e2ee", cmdE2ee, "E2EE status and key management (status/upload/fallback)");
@@ -337,4 +547,6 @@ void registerE2eeCommands() {
     reg.registerCli("crosssign", cmdCrossSign, "Cross-signing: setup/reset (--password for UIA)");
     reg.registerCli("ssss", cmdSsss, "Secret storage: upload/retrieve (--recovery-key)");
     reg.registerCli("verify", cmdVerify, "SAS-verify a device: verify <user> --device <id> [--confirm]");
+    reg.registerCli("verify-wait", cmdVerifyWait,
+        "Accept an incoming SAS request: verify-wait [--confirm] [--timeout s]");
 }

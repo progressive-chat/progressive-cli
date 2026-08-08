@@ -62,6 +62,7 @@ void printUsage() {
               << "  crosssign     Cross-signing: setup/reset (--password for UIA)\n"
               << "  ssss          Secret storage: upload/retrieve (--recovery-key)\n"
               << "  verify        SAS-verify a device: verify <user> --device <id> [--confirm]\n"
+              << "  verify-wait   Accept an incoming SAS request: verify-wait [--confirm] [--timeout s]\n"
               << "  sync          One-shot sync into the offline cache\n"
               << "  proxy         Tor/I2P proxy: on|off|status (--host --port [--type socks5h|socks5|http])\n"
               << "  devices       Delete a device: devices delete <id> --password <pw>\n"
