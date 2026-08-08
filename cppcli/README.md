@@ -28,6 +28,11 @@ make -j$(nproc)
 # Register with a registration token (m.login.registration_token)
 ./matrixcli login --register --homeserver https://matrix.org --username newuser --password xxxxx --reg-token s3cret
 
+# Route ALL traffic through Tor (SOCKS5, DNS resolved by the proxy — no leaks)
+./matrixcli proxy on --host 127.0.0.1 --port 9050 --type socks5h
+./matrixcli proxy status
+./matrixcli proxy off
+
 # Check status
 ./matrixcli status
 ```

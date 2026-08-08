@@ -8,6 +8,7 @@ set(SOURCES
     room_commands.cpp
     matrix_commands.cpp
     agent_commands.cpp
+    proxy_commands.cpp
     cli/args.cpp
     server/server.cpp
     server/web_proxy.cpp

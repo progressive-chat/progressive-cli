@@ -19,6 +19,7 @@ void registerE2eeCommands();
 void registerRoomCommands();
 void registerMatrixCommands();
 void registerAgentCommands();
+void registerProxyCommands();
 
 static irc::IrcClient g_ircClient;
 static bool g_ircSetup = false;
@@ -31,6 +32,7 @@ void registerBuiltinCommands() {
     registerRoomCommands();
     registerMatrixCommands();
     registerAgentCommands();
+    registerProxyCommands();
 
     // ── IRC CLI commands ──
     reg.registerCli("irc", [](const cli::Args& args) -> int {

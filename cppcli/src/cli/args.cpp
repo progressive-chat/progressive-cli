@@ -63,6 +63,7 @@ void printUsage() {
               << "  ssss          Secret storage: upload/retrieve (--recovery-key)\n"
               << "  verify        SAS-verify a device: verify <user> --device <id> [--confirm]\n"
               << "  sync          One-shot sync into the offline cache\n"
+              << "  proxy         Tor/I2P proxy: on|off|status (--host --port [--type socks5h|socks5|http])\n"
               << "  devices       Delete a device: devices delete <id> --password <pw>\n"
               << "  kick/ban/unban  Moderator actions: kick <room> <@user> [--reason r]\n"
               << "  profile       User profile: profile <@user>\n"

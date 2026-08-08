@@ -249,21 +249,24 @@ static bool socks5Handshake(int sock, const std::string& host, int port,
     conn_req.push_back(0x01);
     conn_req.push_back(0x00);
 
-    struct addrinfo hints = {}, *ai = nullptr;
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    int gai_err = getaddrinfo(host.c_str(), nullptr, &hints, &ai);
-    if (gai_err == 0 && ai && ai->ai_family == AF_INET) {
+    // socks5h semantics: hand the HOSTNAME to the proxy (ATYP=0x03) so the
+    // proxy resolves DNS — the client never performs a local lookup for the
+    // target (no DNS leak). Only literal IPv4/IPv6 addresses are sent as-is.
+    struct in_addr ip4;
+    struct in6_addr ip6;
+    if (inet_pton(AF_INET, host.c_str(), &ip4) == 1) {
         conn_req.push_back(0x01);
-        struct sockaddr_in* sin = reinterpret_cast<struct sockaddr_in*>(ai->ai_addr);
-        uint8_t* ip = reinterpret_cast<uint8_t*>(&sin->sin_addr.s_addr);
-        conn_req.insert(conn_req.end(), ip, ip + 4);
+        conn_req.insert(conn_req.end(), reinterpret_cast<uint8_t*>(&ip4),
+                        reinterpret_cast<uint8_t*>(&ip4) + 4);
+    } else if (inet_pton(AF_INET6, host.c_str(), &ip6) == 1) {
+        conn_req.push_back(0x04);
+        conn_req.insert(conn_req.end(), reinterpret_cast<uint8_t*>(&ip6),
+                        reinterpret_cast<uint8_t*>(&ip6) + 16);
     } else {
         conn_req.push_back(0x03);
         conn_req.push_back(static_cast<uint8_t>(host.size()));
         conn_req.insert(conn_req.end(), host.begin(), host.end());
     }
-    if (ai) freeaddrinfo(ai);
 
     conn_req.push_back(static_cast<uint8_t>((port >> 8) & 0xFF));
     conn_req.push_back(static_cast<uint8_t>(port & 0xFF));

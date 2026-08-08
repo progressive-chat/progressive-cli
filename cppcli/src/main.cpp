@@ -306,6 +306,18 @@ int cmdLogin(const matrixcli::cli::Args& args) {
     // Token login: legacy path on the old client (transitional).
     matrix::Client client;
     client.setHomeserverURL(homeserver);
+    // Route the legacy client through the same proxy as the core (if set).
+    if (Config::instance().get("proxy_enabled") == "true") {
+        http::ProxyConfig legacyProxy;
+        legacyProxy.host = Config::instance().get("proxy_host");
+        legacyProxy.port = std::stoi(Config::instance().get("proxy_port").empty()
+                                         ? "0" : Config::instance().get("proxy_port"));
+        std::string ptype = Config::instance().get("proxy_type");
+        legacyProxy.type = (ptype == "http") ? http::ProxyType::HTTP : http::ProxyType::SOCKS5;
+        legacyProxy.username = Config::instance().get("proxy_user");
+        legacyProxy.password = Config::instance().get("proxy_pass");
+        client.setProxy(legacyProxy);
+    }
 
     try {
         auto creds = client.loginToken(token_it->second);
@@ -2059,6 +2071,11 @@ int main(int argc, char* argv[]) {
     registerBuiltinCommands();
 
     auto args = matrixcli::cli::parseArgs(argc, argv);
+
+    // Apply the persisted proxy (config.json "proxy_*") to the core's global
+    // proxy BEFORE any command runs — every request then goes through it.
+    extern void applyProxyFromConfig();
+    applyProxyFromConfig();
 
     if (args.options.contains("version")) {
         matrixcli::cli::printVersion();
