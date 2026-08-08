@@ -97,7 +97,7 @@ jobs:
         exit 1
 
     - name: Configure
-      run: cmake -B build -S cppcli -DCMAKE_BUILD_TYPE=Release \
+      run: cmake -B build -S cppcli -DCMAKE_BUILD_TYPE=Release -DCMAKE_WARN_DEPRECATED=OFF \
         -DUSE_SYSTEM_OLM=OFF -DBUILD_TESTS=ON -DBUILD_TUI=OFF
 
     - name: Build

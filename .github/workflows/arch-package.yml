@@ -45,7 +45,7 @@ jobs:
           sudo -u builder bash -c '
             cd "$1"/cppcli
             cmake -B build -S . \
-              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_BUILD_TYPE=Release -DCMAKE_WARN_DEPRECATED=OFF \
               -DUSE_SYSTEM_OLM=ON \
               -DBUILD_TESTS=OFF \
               -DBUILD_TUI=ON
