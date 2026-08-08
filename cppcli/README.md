@@ -19,8 +19,11 @@ make -j$(nproc)
 # Start API server
 ./matrixcli serve --port 8080
 
-# Login
-./matrixcli login --homeserver https://matrix.org --username @user:matrix.org --password xxxxx
+# Login (username accepts localpart "me" or full @me:matrix.org; --mxid alias)
+./matrixcli login --homeserver https://matrix.org --username me --password xxxxx
+./matrixcli login --homeserver https://matrix.org --mxid @me:matrix.org --password xxxxx
+# ...or interactively (password hidden):
+./matrixcli login --homeserver https://matrix.org --interactive
 
 # Register a new account (m.login.dummy)
 ./matrixcli login --register --homeserver https://matrix.org --username newuser --password xxxxx

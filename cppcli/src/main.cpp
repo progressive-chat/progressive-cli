@@ -134,9 +134,14 @@ int cmdLogin(const matrixcli::cli::Args& args) {
     auto reg_it = args.options.find("register");
     if (token_it == args.options.end() && reg_it == args.options.end()) {
         std::string username;
+        // --username accepts BOTH the localpart ("me") and a full MXID
+        // ("@me:server"); --mxid is an alias that expects a full Matrix ID.
         auto user_it = args.options.find("username");
+        auto mxid_it = args.options.find("mxid");
         if (user_it != args.options.end()) {
             username = user_it->second;
+        } else if (mxid_it != args.options.end()) {
+            username = mxid_it->second;
         } else if (args.positional.size() >= 1) {
             username = args.positional[0];
         }
@@ -152,7 +157,7 @@ int cmdLogin(const matrixcli::cli::Args& args) {
         // --interactive: prompt for whatever is missing (password hidden).
         if (args.options.count("interactive")) {
             if (username.empty()) {
-                std::cout << "Matrix ID (e.g. @user:matrix.org): " << std::flush;
+                std::cout << "Username (localpart, e.g. me): " << std::flush;
                 std::getline(std::cin, username);
             }
             if (password.empty()) {
@@ -165,6 +170,15 @@ int cmdLogin(const matrixcli::cli::Args& args) {
                 tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
                 std::cout << std::endl;
             }
+        }
+
+        // Login takes the LOCALPART: strip @ and :server if the user passed
+        // a full Matrix ID (via --username, --mxid, or the prompt) — some
+        // homeservers (matrix.org) reject m.id.user with a full MXID.
+        if (!username.empty() && username[0] == '@') {
+            auto colon = username.find(':');
+            if (colon != std::string::npos) username = username.substr(1, colon - 1);
+            else username = username.substr(1);
         }
 
         // Report ALL missing credentials at once (both when neither given),
