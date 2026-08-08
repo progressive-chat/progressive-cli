@@ -581,6 +581,62 @@ static bool test_reset_drift(const std::string& hs) {
     return true;
 }
 
+// --- Password change ---
+// changePassword must (a) reject a wrong current password truthfully,
+// (b) succeed with the right one, (c) invalidate the OLD password for
+// future logins while the current session token keeps working.
+static bool test_password_change(const std::string& hs) {
+    std::string pass = "pw_old_pass_42";
+    TestUser u;
+    if (!registerUser(u, hs, "pw_alice" + g_runSuffix, pass)) return false;
+    std::string uname = u.userId.substr(1, u.userId.find(':') - 1);
+
+    // Baseline: the registered password works for a second login.
+    TestUser u2;
+    if (!loginUser(u2, hs, uname, pass)) {
+        std::cerr << "[pw] FAIL: baseline login with the original password\n";
+        return false;
+    }
+
+    // Wrong current password -> truthful 403 failure.
+    auto bad = u.client.changePassword("definitely_wrong", "pw_new_pass_99");
+    if (bad.ok || bad.httpStatus != 403) {
+        std::cerr << "[pw] FAIL: wrong current password was not rejected "
+                  << "(ok=" << bad.ok << " http=" << bad.httpStatus << ")\n";
+        return false;
+    }
+
+    // Correct change.
+    auto ok = u.client.changePassword(pass, "pw_new_pass_99");
+    if (!ok.ok) {
+        std::cerr << "[pw] FAIL: changePassword failed (HTTP " << ok.httpStatus
+                  << "): " << ok.error.message << "\n";
+        return false;
+    }
+
+    // Old password must now be rejected…
+    TestUser u3;
+    if (loginUser(u3, hs, uname, pass)) {
+        std::cerr << "[pw] FAIL: login with the OLD password still works\n";
+        return false;
+    }
+    // …and the new one accepted.
+    TestUser u4;
+    if (!loginUser(u4, hs, uname, "pw_new_pass_99")) {
+        std::cerr << "[pw] FAIL: login with the NEW password failed\n";
+        return false;
+    }
+    // The current session token keeps working (a light authenticated
+    // /keys/query call proves the token survived the password change).
+    auto q = u.client.queryKeys("{\"device_keys\":{}}");
+    if (!q.ok) {
+        std::cerr << "[pw] FAIL: current token stopped working after the change\n";
+        return false;
+    }
+    std::cout << "pw: change password verified (old rejected, new works, token alive)\n";
+    return true;
+}
+
 // --- Media upload/download roundtrip ---
 // Exercises the real /_matrix/media/v3 endpoints (upload returns mxc://,
 // download must return the exact bytes — includes the fresh-upload path
@@ -1416,6 +1472,12 @@ int main() {
     std::cout << "\n--- media roundtrip test ---\n";
     if (!test_media_roundtrip(hs, bob)) failures++;
     std::cout << "--- media roundtrip done ---\n";
+
+    // Password change: wrong-current rejected, old password invalidated,
+    // current token survives.
+    std::cout << "\n--- password change test ---\n";
+    if (!test_password_change(hs)) failures++;
+    std::cout << "--- password change done ---\n";
 
     // Live SAS self-verification (A1 <-> A3 over the server) + verified-only policy.
     std::cout << "\n--- sas verified-policy test ---\n";

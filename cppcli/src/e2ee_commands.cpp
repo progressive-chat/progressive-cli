@@ -6,6 +6,7 @@
 #include "core/crypto/verify_controller.hpp"
 #include "core/crypto/sas_emojis.hpp"
 #include <nlohmann/json.hpp>
+#include <simdjson.h>
 #include <chrono>
 #include <iostream>
 #include <string>
@@ -540,6 +541,73 @@ int cmdVerifyWait(const cli::Args& args) {
     return rc;
 }
 
+// matrixcli passwd --current <pw> --new <pw>   (change the account password)
+// matrixcli sessions [--logout <device_id> ...] --password <pw>
+int cmdPasswd(const cli::Args& args) {
+    if (!pcore::requireSession()) return 1;
+    auto& core = pcore::core();
+    auto cur = args.options.count("current") ? args.options.at("current") : "";
+    auto next = args.options.count("new") ? args.options.at("new") : "";
+    if (cur.empty() || next.empty()) {
+        std::cerr << "Usage: passwd --current <pw> --new <pw>" << std::endl;
+        return 1;
+    }
+    auto r = core.client->changePassword(cur, next);
+    if (r.ok) {
+        std::cout << "Password changed. All other devices were logged out by the server." << std::endl;
+        return 0;
+    }
+    std::cerr << "Change password failed (HTTP " << r.httpStatus << "): " << r.error.message
+              << std::endl;
+    return 1;
+}
+
+int cmdSessions(const cli::Args& args) {
+    if (!pcore::requireSession()) return 1;
+    auto& core = pcore::core();
+    auto resp = core.client->listDevices();
+    if (!resp.ok) {
+        std::cerr << "Could not fetch sessions (HTTP " << resp.httpStatus << ")" << std::endl;
+        return 1;
+    }
+    std::string ourDeviceId = core.client->account().deviceId;
+    std::vector<std::string> ids;
+    {
+        simdjson::dom::parser p;
+        auto doc = p.parse(resp.data);
+        if (doc.error() == simdjson::SUCCESS) {
+            auto devs = doc.value()["devices"];
+            for (auto dev : devs.get_array().value()) {
+                std::string id, dn;
+                auto idv = dev["device_id"].get_string();
+                if (idv.error() == simdjson::SUCCESS) id = std::string(idv.value());
+                auto dnv = dev["display_name"].get_string();
+                if (dnv.error() == simdjson::SUCCESS) dn = std::string(dnv.value());
+                if (dn.empty()) dn = id;
+                std::cout << (id == ourDeviceId ? "[current] " : "          ")
+                          << id << "  " << dn << std::endl;
+                if (id != ourDeviceId) ids.push_back(id);
+            }
+        }
+    }
+    if (args.options.count("logout")) {
+        auto pw = args.options.count("password") ? args.options.at("password") : "";
+        if (pw.empty()) { std::cerr << "Session logout needs --password <pw>" << std::endl; return 1; }
+        std::string to = args.options.at("logout");
+        if (to == "others") {
+            for (const auto& id : ids) {
+                auto r = core.client->deleteDevice(id, pw);
+                std::cout << "logout " << id << ": " << (r.ok ? "ok" : "FAILED") << std::endl;
+            }
+        } else {
+            auto r = core.client->deleteDevice(to, pw);
+            std::cout << "logout " << to << ": " << (r.ok ? "ok" : "FAILED (HTTP " +
+                std::to_string(r.httpStatus) + ")") << std::endl;
+        }
+    }
+    return 0;
+}
+
 void registerE2eeCommands() {
     auto& reg = CommandRegistry::instance();
     reg.registerCli("e2ee", cmdE2ee, "E2EE status and key management (status/upload/fallback)");
@@ -549,4 +617,6 @@ void registerE2eeCommands() {
     reg.registerCli("verify", cmdVerify, "SAS-verify a device: verify <user> --device <id> [--confirm]");
     reg.registerCli("verify-wait", cmdVerifyWait,
         "Accept an incoming SAS request: verify-wait [--confirm] [--timeout s]");
+    reg.registerCli("passwd", cmdPasswd, "Change the account password: passwd --current <pw> --new <pw>");
+    reg.registerCli("sessions", cmdSessions, "List sessions: sessions [--logout <id|others> --password <pw>]");
 }
