@@ -1490,6 +1490,12 @@ int cmdAsciiUi(const cli::Args& args) {
     try { st.leftPanelW = std::stoi(dbi.getSetting("panel_left", "-1")); } catch (...) {}
     try { st.rightPanelW = std::stoi(dbi.getSetting("panel_right", "-1")); } catch (...) {}
     st.mobile = dbi.getSetting("mobile") == "1";
+    // Auto: a narrow terminal (< 60 columns) cannot fit the three
+    // columns, so the smartphone layout kicks in by itself.
+    if (terminalWidth() < 60) {
+        st.mobile = true;
+        st.statusNote = "narrow terminal · smartphone layout auto-enabled";
+    }
     st.showNames = dbi.getSetting("names") != "0";
     st.showReceipts = dbi.getSetting("receipts") != "0";
     st.showJoins = dbi.getSetting("joins") != "0";
