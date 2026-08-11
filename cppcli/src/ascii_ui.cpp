@@ -382,7 +382,8 @@ struct UiState {
     std::string proxyLabel;              // "on (socks5h ...)" or "off"
     std::string roomFilter;              // find/space filter for the left panel
     std::string statusNote;              // last action's summary (dump etc.)
-    bool staticFrame = false;            // --static: show the full room list
+    bool staticFrame = false;            // --static: one-shot frame
+    int limitRows = 0;                   // settings "rows <n>": 0 = fit terminal
     std::map<std::string, std::string> presence; // member -> О/А/Ф letters
     // Right panel mode: 0 = members, 1 = room thread list, 2 = one thread,
     // 3 = threads across all rooms (Element-style thread panel).
@@ -558,6 +559,8 @@ std::string drawFrame(const UiState& st) {
          + repeat('-', rightW) + X + "\n";
 
     // Body rows: fill the terminal height or default to 24 rows.
+    // The "rows <n>" setting (0 = auto) overrides the height; the room
+    // list then scrolls inside the window (up/down/top/bottom/scroll n).
     int rows = 24;
 #ifdef TIOCGWINSZ
     struct winsize ws;
@@ -565,12 +568,7 @@ std::string drawFrame(const UiState& st) {
         rows = static_cast<int>(ws.ws_row) - 5;
     }
 #endif
-
-    // --static: list the full room list (no clipping), so a one-shot frame
-    // shows every room even in a short terminal.
-    if (st.staticFrame) {
-        rows = std::max(rows, static_cast<int>(st.rooms.size()));
-    }
+    if (st.limitRows > 0) rows = st.limitRows;
 
     // Room filter (find <q> / space <q>): the left panel shows only the
     // matching rooms; the center/members keep their own (unfiltered) view.
@@ -1176,6 +1174,14 @@ int cmdAsciiUi(const cli::Args& args) {
         args.options.count("print")) {
         st.staticFrame = true;
     }
+    // Settings for the one-shot frame: --rows N (frame height) and
+    // --scroll N (viewport offset) — the room list scrolls within it.
+    if (args.options.count("rows")) {
+        try { st.limitRows = std::stoi(args.options.at("rows")); } catch (...) {}
+    }
+    if (args.options.count("scroll")) {
+        try { st.scroll = std::stoi(args.options.at("scroll")); } catch (...) {}
+    }
     std::cout << drawFrame(st) << std::flush;
 
     // Pure CLI / non-interactive mode: draw the frame once and exit
@@ -1362,6 +1368,17 @@ int cmdAsciiUi(const cli::Args& args) {
             else if (a.command == "top") st.scroll = 0;
             else if (a.command == "bottom") st.scroll = contentRows(st);
             else st.scroll += step;  // "scroll <n>" = down by n
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        if (a.command == "rows") {
+            try {
+                st.limitRows = std::stoi(a.positional.empty() ? "0" : a.positional[0]);
+            } catch (...) { st.limitRows = 0; }
+            st.scroll = 0;
+            st.statusNote = st.limitRows > 0
+                ? "frame height: " + std::to_string(st.limitRows) + " rows"
+                : "frame height: auto (terminal)";
             std::cout << drawFrame(st) << std::flush;
             continue;
         }

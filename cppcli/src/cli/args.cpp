@@ -138,6 +138,8 @@ void printUsage() {
               << "  --right members|threads|list|thread  right panel mode\n"
               << "  --thread-root <id>  the thread to show (with --right thread)\n"
               << "  --static      draw the frame once and exit (pipe-friendly)\n"
+              << "  --rows N      frame height in rows (0/omit = fit terminal)\n"
+              << "  --scroll N    viewport offset in the room list (with --rows)\n"
               << "  --media       with --static: also render the room's image previews\n"
               << "\n"
               << "Options for login:\n"
