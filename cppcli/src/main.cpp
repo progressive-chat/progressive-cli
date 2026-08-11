@@ -2369,6 +2369,102 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
         ts -= 60;
     }
 
+    // Fresh activity: each room gets a recent message so the room list
+    // shows times (HH:MM) and sorts by recency (a few rooms keep their
+    // older last messages for the mixed date/time look).
+    {
+        struct { const char* room; const char* sender; const char* body; } fresh[] = {
+            {"!podcasts:demo.local", "@bob", "Morning, everyone!"},
+            {"!general:demo.local", "@dave", "Coffee is ready, join in."},
+            {"!dm_bob:demo.local", "@grace", "Interesting thread in #general."},
+            {"!techno:demo.local", "@charlie", "Testing something new today."},
+            {"!history:demo.local", "@erin", "Morning, everyone!"},
+            {"!hiking:demo.local", "@alice", "Coffee is ready, join in."},
+            {"!chess:demo.local", "@carol", "Interesting thread in #general."},
+            {"!dm_dave:demo.local", "@frank", "Testing something new today."},
+            {"!movies:demo.local", "@bob", "Morning, everyone!"},
+            {"!distro-talk:demo.local", "@dave", "Coffee is ready, join in."},
+            {"!hardware:demo.local", "@grace", "Interesting thread in #general."},
+            {"!ml:demo.local", "@charlie", "Testing something new today."},
+            {"!security:demo.local", "@erin", "Morning, everyone!"},
+            {"!selfhosting:demo.local", "@alice", "Coffee is ready, join in."},
+            {"!cycling:demo.local", "@carol", "Interesting thread in #general."},
+            {"!homelab:demo.local", "@frank", "Testing something new today."},
+            {"!sports:demo.local", "@bob", "Morning, everyone!"},
+            {"!biology:demo.local", "@dave", "Coffee is ready, join in."},
+            {"!linux:demo.local", "@grace", "Interesting thread in #general."},
+            {"!travel:demo.local", "@charlie", "Testing something new today."},
+            {"!dotfiles:demo.local", "@erin", "Morning, everyone!"},
+            {"!camping:demo.local", "@alice", "Coffee is ready, join in."},
+            {"!privacy:demo.local", "@carol", "Interesting thread in #general."},
+            {"!languages:demo.local", "@frank", "Testing something new today."},
+            {"!dev:demo.local", "@bob", "Morning, everyone!"},
+            {"!ai-art:demo.local", "@dave", "Coffee is ready, join in."},
+            {"!chemistry:demo.local", "@grace", "Interesting thread in #general."},
+            {"!retro-gaming:demo.local", "@charlie", "Testing something new today."},
+            {"!programming:demo.local", "@erin", "Morning, everyone!"},
+            {"!math:demo.local", "@alice", "Coffee is ready, join in."},
+            {"!networking:demo.local", "@carol", "Interesting thread in #general."},
+            {"!memes:demo.local", "@frank", "Testing something new today."},
+            {"!dm_alice:demo.local", "@bob", "Morning, everyone!"},
+            {"!beer:demo.local", "@dave", "Coffee is ready, join in."},
+            {"!dm_carol:demo.local", "@grace", "Interesting thread in #general."},
+            {"!synth:demo.local", "@charlie", "Testing something new today."},
+            {"!databases:demo.local", "@erin", "Morning, everyone!"},
+            {"!finance:demo.local", "@alice", "Coffee is ready, join in."},
+            {"!running:demo.local", "@carol", "Interesting thread in #general."},
+            {"!rust:demo.local", "@frank", "Testing something new today."},
+            {"!announcements:demo.local", "@bob", "Morning, everyone!"},
+            {"!dnb:demo.local", "@dave", "Coffee is ready, join in."},
+            {"!random:demo.local", "@grace", "Interesting thread in #general."},
+            {"!climbing:demo.local", "@charlie", "Testing something new today."},
+            {"!writing:demo.local", "@erin", "Morning, everyone!"},
+            {"!shell:demo.local", "@alice", "Coffee is ready, join in."},
+            {"!poetry:demo.local", "@carol", "Interesting thread in #general."},
+            {"!jazz:demo.local", "@frank", "Testing something new today."},
+            {"!classical:demo.local", "@bob", "Morning, everyone!"},
+            {"!backend:demo.local", "@dave", "Coffee is ready, join in."},
+            {"!pixelart:demo.local", "@grace", "Interesting thread in #general."},
+            {"!astronomy:demo.local", "@charlie", "Testing something new today."},
+            {"!food:demo.local", "@erin", "Morning, everyone!"},
+            {"!diy:demo.local", "@alice", "Coffee is ready, join in."},
+            {"!frontend:demo.local", "@carol", "Interesting thread in #general."},
+            {"!music-production:demo.local", "@frank", "Testing something new today."},
+            {"!design:demo.local", "@alice", "Morning, everyone!"},
+            {"!coffee:demo.local", "@dave", "Coffee is ready, join in."},
+            {"!webdev:demo.local", "@grace", "Interesting thread in #general."},
+            {"!games:demo.local", "@charlie", "Testing something new today."},
+            {"!fitness:demo.local", "@erin", "Morning, everyone!"},
+            {"!baking:demo.local", "@alice", "Coffee is ready, join in."},
+            {"!editors:demo.local", "@carol", "Interesting thread in #general."},
+            {"!metal:demo.local", "@frank", "Testing something new today."},
+            {"!crypto:demo.local", "@alice", "Morning, everyone!"},
+            {"!music:demo.local", "@dave", "Coffee is ready, join in."},
+            {"!git:demo.local", "@grace", "Interesting thread in #general."},
+            {"!vegan:demo.local", "@charlie", "Testing something new today."},
+            {"!offtopic:demo.local", "@erin", "Morning, everyone!"},
+            {"!philosophy:demo.local", "@alice", "Coffee is ready, join in."},
+            {"!photography:demo.local", "@carol", "Interesting thread in #general."},
+            {"!boardgames:demo.local", "@frank", "Testing something new today."},
+            {"!help:demo.local", "@bob", "Morning, everyone!"},
+            {"!science:demo.local", "@dave", "Coffee is ready, join in."},
+            {"!art:demo.local", "@grace", "Interesting thread in #general."},
+            {"!matrix:demo.local", "@charlie", "Testing something new today."},
+            {"!physics:demo.local", "@erin", "Morning, everyone!"},
+        };
+        int64_t t0 = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        for (int fi = 0; fi < int(sizeof(fresh) / sizeof(fresh[0])); ++fi) {
+            matrix::Event ev;
+            ev.event_id = "$demo_" + std::to_string(t0 - int64_t(fi) * 7);
+            ev.room_id = fresh[fi].room; ev.sender = fresh[fi].sender;
+            ev.type = "m.room.message";
+            ev.content = {{"msgtype", "m.text"}, {"body", fresh[fi].body}};
+            ev.origin_server_ts = t0 - int64_t(fi) * 137000 - int64_t(fi % 5) * 23000;
+            dbi.insertEvent(ev);
+        }
+    }
+
     std::cout << "Populated DB: " << (sizeof(rooms)/sizeof(rooms[0])) << " rooms, "
               << (sizeof(msgs)/sizeof(msgs[0])) + 2 + 4 << " messages (incl. a thread)." << std::endl;
     std::cout << "Try:  matrixcli rooms | matrixcli view #general | matrixcli view #dev" << std::endl;
@@ -3703,3 +3799,4 @@ int main(int argc, char* argv[]) {
               << "Run 'matrixcli --help' for usage." << std::endl;
     return 1;
 }
+

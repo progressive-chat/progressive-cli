@@ -338,6 +338,15 @@ std::string roomLastTime(db::Database* db, const std::string& roomId, bool secon
     return buf;
 }
 
+// The timestamp of a room's last event (for activity sorting; 0 = none).
+int64_t roomLastTs(db::Database* db, const std::string& roomId) {
+    if (!db) return 0;
+    auto evs = db->getEvents(roomId, 1);
+    if (evs.empty()) return 0;
+    return evs.front().origin_server_ts;
+}
+
+
 
 // Render links in a body: matrix.to permalinks become Element-style pills
 // ("📎 roomname · user: preview"), every other http(s) URL is shown in blue.
@@ -462,6 +471,18 @@ struct UiState {
     std::string threadRootId;   // for the single-thread view
     std::vector<matrix::Event> threadReplies;  // replies of threadRootId
 };
+
+// Element-style room list: most recently active rooms first.
+void sortRoomsByActivity(UiState& st) {
+    std::stable_sort(st.rooms.begin(), st.rooms.end(),
+        [&st](const nlohmann::json& a, const nlohmann::json& b) {
+            int64_t ta = roomLastTs(st.db, a.value("room_id", ""));
+            int64_t tb = roomLastTs(st.db, b.value("room_id", ""));
+            if (ta != tb) return ta > tb;
+            return a.value("room_id", "") < b.value("room_id", "");
+        });
+}
+
 
 // Human-readable proxy state from the core's global config.
 std::string proxyLabelText() {
@@ -1295,6 +1316,7 @@ int cmdAsciiUi(const cli::Args& args) {
     UiState st;
     st.db = &dbi;
     st.rooms = dbi.listRooms();
+    sortRoomsByActivity(st);
     if (st.rooms.empty()) {
         std::cerr << "No rooms cached. Run 'matrixcli demo populate' or sync first."
                   << std::endl;
@@ -1629,6 +1651,7 @@ int cmdAsciiUi(const cli::Args& args) {
             st.scroll = 0;
             if (st.mobile) st.mobileTab = 0;
             st.rooms = dbi.listRooms();
+            sortRoomsByActivity(st);
             loadRoomIntoState(st, st.currentRoomId);
             std::cout << drawFrame(st) << std::flush;
             continue;
@@ -1637,6 +1660,7 @@ int cmdAsciiUi(const cli::Args& args) {
             st.mobileTab = 0;
             st.scroll = 0;
             st.rooms = dbi.listRooms();
+            sortRoomsByActivity(st);
             loadRoomIntoState(st, st.currentRoomId);
             std::cout << drawFrame(st) << std::flush;
             continue;
