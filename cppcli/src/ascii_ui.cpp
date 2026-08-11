@@ -73,8 +73,19 @@ int cpWidth(uint32_t cp) {
 int displayWidth(const std::string& s) {
     int w = 0;
     for (size_t i = 0; i < s.size();) {
-        uint32_t cp = 0;
         unsigned char c = static_cast<unsigned char>(s[i]);
+        if (c == 0x1b) {
+            // ANSI escape sequence — zero width. Skip to the final byte
+            // ('m' for SGR, otherwise the CSI terminator).
+            i++;
+            while (i < s.size()) {
+                unsigned char e = static_cast<unsigned char>(s[i]);
+                i++;
+                if ((e >= 0x40 && e <= 0x7E) || e == 0x1b) break;
+            }
+            continue;
+        }
+        uint32_t cp = 0;
         if (c < 0x80) { cp = c; i += 1; }
         else if ((c & 0xE0) == 0xC0) { cp = c & 0x1F; i += 1;
             if (i < s.size()) { cp = (cp << 6) | (s[i] & 0x3F); i += 1; } }
@@ -126,6 +137,26 @@ std::string pad(const std::string& s, int width) {
 
 std::string repeat(char c, size_t n) {
     return std::string(n, c);
+}
+
+// Highlight @mentions in a body: the @token (up to the next space) gets a
+// cyan background-ish colour so pings stand out.
+std::string highlightMentions(const std::string& body) {
+    std::string out;
+    size_t i = 0;
+    while (i < body.size()) {
+        if (body[i] == '@' && (i == 0 || body[i - 1] == ' ')) {
+            size_t j = i + 1;
+            while (j < body.size() && body[j] != ' ' && body[j] != '\n' &&
+                   body[j] != ':' && body[j] != ',') j++;
+            out += "\x1b[36m" + body.substr(i, j - i) + "\x1b[0m";
+            i = j;
+        } else {
+            out += body[i];
+            i++;
+        }
+    }
+    return out;
 }
 
 // The matrix::Event's plain text body (newlines COLLAPSED to spaces).
@@ -288,7 +319,7 @@ std::string renderPermalinks(const std::string& body,
                 break;
             }
         }
-        std::string pill = "\xf0\x9f\x93\x8e " + clip(roomName, 20);  // 📎
+        std::string pill = "\x1b[34m\xf0\x9f\x93\x8e " + clip(roomName, 20);  // blue 📎
         if (!evPart.empty() && db) {
             matrix::Event ev;
             if (db->getEventById(evPart, ev)) {
@@ -298,7 +329,7 @@ std::string renderPermalinks(const std::string& body,
                 pill += " \u00b7 (event)";
             }
         }
-        out += pill;
+        out += pill + "\x1b[0m";
         pos = spanEnd;
         if (pos > body.size()) break;
     }
@@ -326,10 +357,12 @@ struct UiState {
     bool showIds = false;       // show event ids next to the messages
     bool showSeconds = false;   // HH:MM:SS instead of HH:MM
     bool showImages = false;    // full image cards (default: compact marker)
+    bool showEmoji = true;      // emoji glyphs; off = ASCII fallbacks
     int leftPanelW = -1;        // -1 = default width, 0 = hidden
     int rightPanelW = -1;       // -1 = default width, 0 = hidden
     std::map<std::string, int> powerLevels;  // member -> power level
     std::unordered_set<std::string> redactedIds;  // events that were redacted
+    std::map<std::string, std::string> receipts;  // eventId -> "a b" readers
     int rightPanel = 0;
     std::string threadRoomId;   // for the room thread list
     std::string threadRootId;   // for the single-thread view
@@ -353,6 +386,37 @@ int contentRows(const UiState& st) {
     n = std::max(n, static_cast<int>(st.members.size()));
     return n;
 }
+
+// Shortest unique prefixes of the given names (e.g. ["alice","bob","charlie"]
+// -> ["a","b","ch"]). Falls back to the full name when everything collides.
+std::map<std::string, std::string> minimalUniqueNames(
+    const std::vector<std::string>& members) {
+    std::map<std::string, std::string> out;
+    for (const auto& m : members) {
+        std::string name = senderShort(m);
+        if (name.empty()) continue;
+        // The shortest prefix not shared with any other member.
+        std::string prefix;
+        for (size_t len = 1; len <= name.size(); ++len) {
+            prefix = name.substr(0, len);
+            bool unique = true;
+            for (const auto& o : members) {
+                if (o == m) continue;
+                if (senderShort(o).compare(0, prefix.size(), prefix) == 0) {
+                    unique = false;
+                    break;
+                }
+            }
+            if (unique) break;
+        }
+        out[m] = prefix;
+    }
+    return out;
+}
+
+
+std::map<std::string, std::string> minimalUniqueNames(
+    const std::vector<std::string>& members);
 
 void loadRoomIntoState(UiState& st, const std::string& query) {
     st.currentRoomId.clear();
@@ -395,6 +459,24 @@ void loadRoomIntoState(UiState& st, const std::string& query) {
         }
         if (!ev.redacts.empty()) st.redactedIds.insert(ev.redacts);
     }
+    // Read receipts (approximation): a message is read by the members whose
+    // own message comes AFTER it in the timeline.
+    st.receipts.clear();
+    auto abbrev = minimalUniqueNames(st.members);
+    for (const auto& ev : st.messages) {
+        std::string readers;
+        for (const auto& ev2 : st.messages) {
+            if (ev2.origin_server_ts > ev.origin_server_ts &&
+                ev2.sender != ev.sender) {
+                auto it = abbrev.find(ev2.sender);
+                if (it != abbrev.end()) {
+                    if (!readers.empty()) readers += " ";
+                    readers += it->second;
+                }
+            }
+        }
+        st.receipts[ev.event_id] = readers;
+    }
 }
 
 std::string drawFrame(const UiState& st) {
@@ -435,10 +517,13 @@ std::string drawFrame(const UiState& st) {
     std::string leftHeader = st.accountLabel + " — Rooms";
     std::string headRoom = " " + roomName;
     if (static_cast<int>(headRoom.size()) > centerW - 1) headRoom = headRoom.substr(0, centerW - 1);
-    out += pad(leftHeader, static_cast<size_t>(leftW)) + "|"
-         + pad(headRoom, static_cast<size_t>(centerW)) + "|"
+    const char* PIPE = "\x1b[90m";  // dim grey for the panel pipes
+    const char* X = "\x1b[0m";
+    out += pad(leftHeader, static_cast<size_t>(leftW)) + PIPE + "|" + X
+         + pad(headRoom, static_cast<size_t>(centerW)) + PIPE + "|" + X
          + " Members" + std::string(std::max(0, rightW - 8), ' ') + "\n";
-    out += repeat('-', leftW) + "+" + repeat('-', centerW) + "+" + repeat('-', rightW) + "\n";
+    out += PIPE + repeat('-', leftW) + "+" + repeat('-', centerW) + "+"
+         + repeat('-', rightW) + X + "\n";
 
     // Body rows: fill the terminal height or default to 24 rows.
     int rows = 24;
@@ -498,17 +583,25 @@ std::string drawFrame(const UiState& st) {
                         auto t = q->find("text");
                         if (t != q->end() && t->is_string()) qtext = t->get<std::string>();
                     }
-                    center = "[" + senderShort(ev.sender) + "] \u2b55 poll: "
+                    center = "[" + senderShort(ev.sender) + "] "
+                           + (st.showEmoji ? "\u2b55 poll: " : "[poll] ")
                            + (qtext.empty() ? "?" : qtext);
                 } else if (mt == "m.sticker") {
-                    center = "[" + senderShort(ev.sender) + "] \u2b1c sticker: "
-                           + (body.empty() ? "?" : body);
+                    center = "[" + senderShort(ev.sender) + "] "
+                           + (st.showEmoji ? "\u2b1c sticker: " : "[sticker] ")
+                           + (body.empty() ? "?" : "\x1b[36m" + body + "\x1b[0m");
                 } else if (mt == "m.audio") {
-                    center = "[" + senderShort(ev.sender) + "] \u266a audio: "
-                           + (body.empty() ? "?" : body);
+                    center = "[" + senderShort(ev.sender) + "] "
+                           + (st.showEmoji ? "\u266a audio: " : "[audio] ")
+                           + (body.empty() ? "?" : "\x1b[36m" + body + "\x1b[0m");
+                } else if (mt == "m.file") {
+                    center = "[" + senderShort(ev.sender) + "] "
+                           + (st.showEmoji ? "\xf0\x9f\x93\x84 " : "[file] ")
+                           + (body.empty() ? "?" : "\x1b[36m" + body + "\x1b[0m");
                 } else if (mt == "m.video") {
-                    center = "[" + senderShort(ev.sender) + "] \u25b6 video: "
-                           + (body.empty() ? "?" : body);
+                    center = "[" + senderShort(ev.sender) + "] "
+                           + (st.showEmoji ? "\u25b6 video: " : "[video] ")
+                           + (body.empty() ? "?" : "\x1b[36m" + body + "\x1b[0m");
                 } else if (mt == "m.image") {
                     std::string dims;
                     auto info = ev.content.find("info");
@@ -523,9 +616,11 @@ std::string drawFrame(const UiState& st) {
                     }
                     // Images are compact by default; 'images on' shows the
                     // full card (dims).
-                    center = "[" + senderShort(ev.sender) + "] "
-                           + (st.showImages ? "\u2b1c image: " + body + dims
-                                            : "\xf0\x9f\x96\xbc " + body);  // 🖼
+                    std::string imgPrefix = st.showImages
+                        ? (st.showEmoji ? "\u2b1c image: " : "[img] ")
+                        : (st.showEmoji ? "\xf0\x9f\x96\xbc " : "[img] ");
+                    center = "[" + senderShort(ev.sender) + "] " + imgPrefix
+                           + "\x1b[36m" + body + "\x1b[0m" + dims;
                 }
             }
             std::string thr = eventThreadRoot(ev);
@@ -546,7 +641,7 @@ std::string drawFrame(const UiState& st) {
                     std::string preview = eventBody(prev);
                     if (preview.empty()) break;
                     chain += std::string(lvl, ' ') + "> [" + senderShort(prev.sender)
-                           + "] " + clip(preview, 44) + "\n";
+                           + "] " + clip(preview, std::max(20, centerW - 26)) + "\n";
                     auto rel = prev.content.find("m.relates_to");
                     if (rel == prev.content.end() || !rel->is_object()) break;
                     auto ir = rel->find("m.in_reply_to");
@@ -559,7 +654,7 @@ std::string drawFrame(const UiState& st) {
                        + (chain.empty() ? "" : "\n" + chain);
             } else if (center.empty()) {
                 center = "[" + senderShort(ev.sender) + "] "
-                       + renderPermalinks(body, st.rooms, st.db);
+                       + renderPermalinks(highlightMentions(body), st.rooms, st.db);
                 int rc = 0;
                 for (const auto& ev2 : st.messages) {
                     if (eventThreadRoot(ev2) == ev.event_id) rc++;
@@ -627,7 +722,7 @@ std::string drawFrame(const UiState& st) {
                 }
             }
             for (const auto& [k, n] : reacts) {
-                center += "  " + k + " " + std::to_string(n);
+                center += "  \x1b[32m" + k + " " + std::to_string(n) + "\x1b[0m";
             }
             if (edited) center += "  (edited)";
             return center;
@@ -643,21 +738,30 @@ std::string drawFrame(const UiState& st) {
                 std::time_t nowT = std::time(nullptr);
                 std::tm nowTm{};
                 localtime_r(&nowT, &nowTm);
+                char dateBuf[16];
+                std::snprintf(dateBuf, sizeof(dateBuf), "%04d-%02d-%02d",
+                              tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+                std::string dateStr(dateBuf);
                 if (tm.tm_year == nowTm.tm_year && tm.tm_yday == nowTm.tm_yday) {
-                    label = "Today";
+                    label = "Today (" + dateStr + ")";
                 } else if (tm.tm_year == nowTm.tm_year && tm.tm_yday == nowTm.tm_yday - 1) {
-                    label = "Yesterday";
+                    label = "Yesterday (" + dateStr + ")";
                 } else {
-                    char buf[16];
-                    std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d",
-                                  tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
-                    label = buf;
+                    label = dateStr;
                 }
-                centerRows.push_back("── " + label + " ──");
+                std::string sep = "── " + label + " ──";
+                if (static_cast<int>(sep.size()) < centerW) {
+                    sep = std::string((centerW - static_cast<int>(sep.size())) / 2, ' ') + sep;
+                }
+                centerRows.push_back(sep);
                 prevDay = day;
             }
             std::string row = renderRow(ev);
             if (!row.empty()) {
+                auto rIt = st.receipts.find(ev.event_id);
+                if (rIt != st.receipts.end() && !rIt->second.empty()) {
+                    row += "  \x1b[90m\u2713 " + rIt->second + "\x1b[0m";  // ✓ readers
+                }
                 std::time_t t = static_cast<std::time_t>(ev.origin_server_ts / 1000);
                 std::tm tm{};
                 localtime_r(&t, &tm);
@@ -699,8 +803,14 @@ std::string drawFrame(const UiState& st) {
         for (const auto& mem : st.members) {
             std::string m = senderShort(mem);
             auto pit = st.presence.find(mem);
-            if (pit != st.presence.end() && !pit->second.empty())
-                m = "[" + pit->second + "] " + m;
+            if (pit != st.presence.end() && !pit->second.empty()) {
+                // O online = green, A away = yellow, F offline = red.
+                const char* pc = "\x1b[32m";
+                if (pit->second == "A") pc = "\x1b[33m";
+                else if (pit->second == "F") pc = "\x1b[31m";
+                m = std::string(pc) + "[" + pit->second + "]"
+                  + "\x1b[0m " + m;
+            }
             // Power-level badges: 👑 admin (100+), 🛡 mod (50+).
             auto pl = st.powerLevels.find(mem);
             if (pl != st.powerLevels.end()) {
@@ -777,10 +887,14 @@ std::string drawFrame(const UiState& st) {
             std::string rid = r.value("room_id", "");
             std::string mark = rid == st.currentRoomId ? "*" : " ";
             std::string name = roomDisplayName(r);
-            if (r.value("is_direct", false)) name = "💬 " + name;
+            if (r.value("is_direct", false))
+                name = (st.showEmoji ? "💬 " : "[DM] ") + name;
             left = mark + name + " (" + std::to_string(roomMessageCount(st.db, rid)) + ")";
             int thr = roomThreadCount(st.db, rid);
-            if (thr > 0) left += " 🧵" + std::to_string(thr);
+            if (thr > 0) {
+                left += (st.showEmoji ? " 🧵" : " (threads ") + std::to_string(thr)
+                      + (st.showEmoji ? "" : ")");
+            }
         }
         if (src < static_cast<int>(centerRows.size())) {
             center = centerRows[static_cast<size_t>(src)];
@@ -788,8 +902,8 @@ std::string drawFrame(const UiState& st) {
         if (src < static_cast<int>(rightRows.size())) {
             right = rightRows[static_cast<size_t>(src)];
         }
-        out += pad(left, static_cast<size_t>(leftW)) + "|"
-             + pad(center, static_cast<size_t>(centerW)) + "|"
+        out += pad(left, static_cast<size_t>(leftW)) + PIPE + "|" + X
+             + pad(center, static_cast<size_t>(centerW)) + PIPE + "|" + X
              + pad(right, static_cast<size_t>(rightW)) + "\n";
     }
 
@@ -834,6 +948,7 @@ void printAbout(const std::string& proxyLabel, const std::string& accountLabel) 
     std::cout << "https://github.com/progressive-chat/progressive-cli\n";
     (void)proxyLabel; (void)accountLabel;
 }
+
 
 
 // ---- Mini line editor with the command history ----
@@ -965,10 +1080,21 @@ int cmdAsciiUi(const cli::Args& args) {
         loadRoomIntoState(st, st.rooms.front().value("room_id", ""));
     }
 
+    // --static thread <room> / --static threads: the right panel becomes
+    // the thread list instead of a room being opened.
+    if (initial == "thread" && args.positional.size() >= 2) {
+        loadRoomIntoState(st, args.positional[1]);
+        st.rightPanel = 1;
+        st.threadRoomId = st.currentRoomId;
+    } else if (initial == "threads") {
+        st.rightPanel = 3;
+        if (args.positional.size() >= 2) loadRoomIntoState(st, args.positional[1]);
+    }
     // Non-interactive flags (also usable in the REPL): --ids, --time-full,
     // --right members|threads, --limit N.
     if (args.options.count("ids")) st.showIds = true;
     if (args.options.count("time-full") || args.options.count("sec")) st.showSeconds = true;
+    if (args.options.count("no-emoji")) st.showEmoji = false;
     if (args.options.count("limit")) {
         try { st.limit = std::stoi(args.options.at("limit")); } catch (...) {}
         loadRoomIntoState(st, st.currentRoomId);
@@ -998,8 +1124,8 @@ int cmdAsciiUi(const cli::Args& args) {
     // (pipe-friendly: matrixcli ui --static [room] | less).
     if (args.options.count("static") || args.options.count("once") ||
         args.options.count("print")) {
-        // Static mode: also show the media previews of the open room, so
-        // 'demo --ui --static' displays the demo image right away.
+        // Static mode: media previews only with --media (opt-in).
+        if (args.options.count("media")) {
         for (const auto& ev : st.messages) {
             if (ev.type != "m.room.message" && ev.type != "m.sticker") continue;
             if (!ev.content.is_object()) continue;
@@ -1034,6 +1160,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 if (!cmd.empty()) std::system(cmd.c_str());
                 std::remove(tmpImg.c_str());
             }
+        }
         }
         return 0;
     }
@@ -1884,6 +2011,14 @@ int cmdAsciiUi(const cli::Args& args) {
                 continue;
             }
             st.statusNote = std::string("panel ") + which + " = " + v;
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- emoji on|off: emoji glyphs or ASCII fallbacks ----
+        if (a.command == "emoji") {
+            if (a.positional.empty() || a.positional[0] == "on") st.showEmoji = true;
+            else st.showEmoji = false;
+            st.statusNote = std::string("emoji ") + (st.showEmoji ? "on" : "off (ASCII)");
             std::cout << drawFrame(st) << std::flush;
             continue;
         }

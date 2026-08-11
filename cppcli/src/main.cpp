@@ -1616,8 +1616,17 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
         {"!general:demo.local","#general","General discussion",42},
         {"!dev:demo.local","#dev","Development chat",15},
         {"!random:demo.local","#random","Random stuff",28},
+        {"!design:demo.local","#design","UI & design talk",9},
+        {"!music:demo.local","#music","Music sharing",23},
+        {"!games:demo.local","#games","Games & esports",37},
+        {"!science:demo.local","#science","Science news",18},
+        {"!offtopic:demo.local","#offtopic","Off-topic banter",54},
+        {"!announce:demo.local","#announcements","Official announcements",120},
+        {"!help:demo.local","#help","Support chat",31},
         {"!dm_alice:demo.local","Alice","",2},
         {"!dm_bob:demo.local","Bob","",2},
+        {"!dm_carol:demo.local","Carol","",2},
+        {"!dm_dave:demo.local","Dave","",2},
     };
     for (auto& r : rooms) {
         nlohmann::json j;
@@ -1658,6 +1667,71 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
         if (day % 2 == 1) ts -= dayMs;
         ts -= 3600000;  // an hour between messages
         day++;
+    }
+
+    // Content for the extra rooms: mentions, urls, files, audio.
+    {
+        struct { const char* room; const char* sender; const char* body; } extra[] = {
+            {"!design:demo.local", "@carol", "The ascii ui looks great, @you — nice work on the pipes."},
+            {"!design:demo.local", "@dave", "Agreed! And the thread panel is super useful."},
+            {"!design:demo.local", "@you", "Thanks! Check the design spec: https://matrix.org/docs/"},
+            {"!design:demo.local", "@carol", "Also sent the mockups as files, see above."},
+            {"!music:demo.local", "@erin", "New album out today 🎵 https://soundcloud.com/example"},
+            {"!music:demo.local", "@you", "Listening now. The bass is great."},
+            {"!music:demo.local", "@erin", "I'll upload the studio recording as an audio file."},
+            {"!games:demo.local", "@frank", "Patch notes are live: https://matrix.org/blog/"},
+            {"!games:demo.local", "@you", "Nice, the new map is huge. @frank up for a game tonight?"},
+            {"!games:demo.local", "@frank", "Sure! I'll drop the invite file here."},
+            {"!science:demo.local", "@grace", "The paper is out — abstract: https://arxiv.org/"},
+            {"!science:demo.local", "@you", "Fascinating read, @grace. The figures are great."},
+            {"!help:demo.local", "@you", "How do I reset my keys? Anyone?"},
+            {"!help:demo.local", "@grace", "@you — Preferences → Reset device keys, then re-verify."},
+            {"!help:demo.local", "@you", "Thanks @grace! It worked."},
+            {"!offtopic:demo.local", "@erin", "Random question: how do you take your coffee?"},
+            {"!offtopic:demo.local", "@dave", "Black, always. @frank is a latte guy."},
+            {"!offtopic:demo.local", "@frank", "Latte supremacy!"},
+            {"!announce:demo.local", "@alice", "Welcome to the community! Rules: https://matrix.org/"},
+            {"!announce:demo.local", "@bob", "And the code of conduct is pinned in this room."},
+            {"!dm_carol:demo.local", "@carol", "Hey @you! Want to review my ui sketches?"},
+            {"!dm_carol:demo.local", "@you", "Sure! Send them over."},
+            {"!dm_carol:demo.local", "@carol", "Here you go: https://example.com/sketch.png"},
+            {"!dm_dave:demo.local", "@dave", "@you — the demo DMs are two-sided now!"},
+            {"!dm_dave:demo.local", "@you", "I noticed, nice."},
+            {"!dm_dave:demo.local", "@dave", "I'll send you an audio note to test playback."},
+        };
+        for (auto& m : extra) {
+            matrix::Event ev;
+            ev.event_id = "$demo_" + std::to_string(ts);
+            ev.room_id = m.room; ev.sender = m.sender;
+            ev.type = "m.room.message";
+            ev.content = {{"body", m.body}, {"msgtype", "m.text"}};
+            ev.origin_server_ts = ts;
+            dbi.insertEvent(ev);
+            if (day % 2 == 1) ts -= dayMs;
+            ts -= 3600000;
+            day++;
+        }
+        // A file + an audio in the design room.
+        matrix::Event f;
+        f.event_id = "$demo_" + std::to_string(ts);
+        f.room_id = "!design:demo.local"; f.sender = "@carol";
+        f.type = "m.room.message";
+        f.content = {{"msgtype", "m.file"}, {"body", "mockups v2 final.zip"},
+                     {"filename", "mockups v2 final.zip"}, {"url", "mxc://demo.local/mockups"},
+                     {"info", {{"mimetype", "application/zip"}, {"size", 2048033}}}};
+        f.origin_server_ts = ts;
+        dbi.insertEvent(f);
+        ts -= 3600000;
+        matrix::Event a;
+        a.event_id = "$demo_" + std::to_string(ts);
+        a.room_id = "!music:demo.local"; a.sender = "@erin";
+        a.type = "m.room.message";
+        a.content = {{"msgtype", "m.audio"}, {"body", "studio-recording.ogg"},
+                     {"filename", "studio-recording.ogg"}, {"url", "mxc://demo.local/rec"},
+                     {"info", {{"mimetype", "audio/ogg"}, {"size", 240934}}}};
+        a.origin_server_ts = ts;
+        dbi.insertEvent(a);
+        ts -= 3600000;
     }
 
     // An image message + reactions (the ui renders the card and the
@@ -1771,6 +1845,26 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
         ts -= 3600000;
     }
 
+    // Power levels in the DMs: everybody is admin there (like Element).
+    {
+        matrix::Event pl;
+        pl.event_id = "$demo_" + std::to_string(ts);
+        pl.room_id = "!dm_alice:demo.local"; pl.sender = "@alice";
+        pl.type = "m.room.power_levels";
+        pl.content = {{"users", {{"@alice", 100}, {"@you", 100}}}};
+        pl.origin_server_ts = ts;
+        dbi.insertEvent(pl);
+        ts -= 3600000;
+        matrix::Event pl2;
+        pl2.event_id = "$demo_" + std::to_string(ts);
+        pl2.room_id = "!dm_bob:demo.local"; pl2.sender = "@bob";
+        pl2.type = "m.room.power_levels";
+        pl2.content = {{"users", {{"@bob", 100}, {"@you", 100}}}};
+        pl2.origin_server_ts = ts;
+        dbi.insertEvent(pl2);
+        ts -= 3600000;
+    }
+
     // Power levels: alice admin (100), bob mod (50), the rest members.
     {
         matrix::Event pl;
@@ -1814,6 +1908,15 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
             {"!general:demo.local", "@charlie", "join"},
             {"!random:demo.local", "@bob", "join"},
             {"!dev:demo.local", "@bob", "leave"},
+            {"!design:demo.local", "@carol", "join"},
+            {"!design:demo.local", "@dave", "join"},
+            {"!music:demo.local", "@erin", "join"},
+            {"!games:demo.local", "@frank", "join"},
+            {"!games:demo.local", "@you", "join"},
+            {"!science:demo.local", "@grace", "join"},
+            {"!help:demo.local", "@you", "join"},
+            {"!offtopic:demo.local", "@erin", "join"},
+            {"!announce:demo.local", "@you", "join"},
         };
         for (auto& m : mem) {
             matrix::Event ev;
