@@ -383,6 +383,8 @@ struct UiState {
     std::string roomFilter;              // find/space filter for the left panel
     std::string statusNote;              // last action's summary (dump etc.)
     bool staticFrame = false;            // --static: one-shot frame
+    bool mobile = false;                 // smartphone: stacked sections
+    int mobileTab = 0;                   // 0=Rooms 1=Chat 2=People (bottom nav)
     int limitRows = 0;                   // settings "rows <n>": 0 = fit terminal
     std::map<std::string, std::string> presence; // member -> О/А/Ф letters
     // Right panel mode: 0 = members, 1 = room thread list, 2 = one thread,
@@ -552,11 +554,13 @@ std::string drawFrame(const UiState& st) {
     if (static_cast<int>(headRoom.size()) > centerW - 1) headRoom = headRoom.substr(0, centerW - 1);
     const char* PIPE = "\x1b[90m";  // dim grey for the panel pipes
     const char* X = "\x1b[0m";
-    out += pad(leftHeader, static_cast<size_t>(leftW)) + PIPE + "|" + X
-         + pad(headRoom, static_cast<size_t>(centerW)) + PIPE + "|" + X
-         + " Members" + std::string(std::max(0, rightW - 8), ' ') + "\n";
-    out += PIPE + repeat('-', leftW) + "+" + repeat('-', centerW) + "+"
-         + repeat('-', rightW) + X + "\n";
+    if (!st.mobile) {
+        out += pad(leftHeader, static_cast<size_t>(leftW)) + PIPE + "|" + X
+             + pad(headRoom, static_cast<size_t>(centerW)) + PIPE + "|" + X
+             + " Members" + std::string(std::max(0, rightW - 8), ' ') + "\n";
+        out += PIPE + repeat('-', leftW) + "+" + repeat('-', centerW) + "+"
+             + repeat('-', rightW) + X + "\n";
+    }
 
     // Body rows: fill the terminal height or default to 24 rows.
     // The "rows <n>" setting (0 = auto) overrides the height; the room
@@ -922,6 +926,79 @@ std::string drawFrame(const UiState& st) {
         }
         if (rightRows.empty()) rightRows.push_back("(no threads anywhere)");
     }
+    // Smartphone mode: the rooms list, the chat and the members become one
+    // long stacked stream (section separators between them) — the phone
+    // scrolls it like a web page.
+    if (st.mobile) {
+        // Element Classic style: ONE pane at a time — Rooms / Chat / People —
+        // chosen by the bottom navigation bar. The pane scrolls on its own.
+        std::vector<std::string> stream;
+        std::string section;
+        if (st.mobileTab == 0) {
+            for (const auto* r : visible) {
+                std::string rid = r->value("room_id", "");
+                std::string mark = rid == st.currentRoomId ? "*" : " ";
+                std::string name = roomDisplayName(*r);
+                if (r->value("is_direct", false))
+                    name = (st.showEmoji ? "\xf0\x9f\x92\xac " : "[DM] ") + name;
+                std::string row = mark + name + " ("
+                                + std::to_string(roomMessageCount(st.db, rid)) + ")";
+                int thr = roomThreadCount(st.db, rid);
+                if (thr > 0) {
+                    row += (st.showEmoji ? " \xf0\x9f\xa7\xb5" : " (threads ")
+                         + std::to_string(thr) + (st.showEmoji ? "" : ")");
+                }
+                stream.push_back(row);
+            }
+            section = " Rooms ";
+        } else if (st.mobileTab == 1) {
+            stream.push_back(clip("── " + roomName + " ──", W));
+            stream.insert(stream.end(), centerRows.begin(), centerRows.end());
+            section = " Chat ";
+        } else {
+            stream.insert(stream.end(), rightRows.begin(), rightRows.end());
+            section = " People ";
+        }
+        int total = static_cast<int>(stream.size());
+        int maxScroll = std::max(0, total - rows);
+        int scroll = std::min(std::max(0, st.scroll), maxScroll);
+        if (scroll > 0) out += "  ^ more above (scroll up)\n";
+        if (scroll + rows < total) out += "  v more below (scroll down)\n";
+        for (int i = 0; i < rows; ++i) {
+            int src = scroll + i;
+            out += (src < total) ? clip(stream[static_cast<size_t>(src)], W) + "\n"
+                                 : "\n";
+        }
+        out += repeat('=', W) + "\n";
+        // Bottom navigation (Element Classic style): the active tab is
+        // bracketed, the others are bare.
+        std::string nav;
+        for (int t = 0; t < 3; ++t) {
+            const char* label = (t == 0) ? "Rooms" : (t == 1) ? "Chat" : "People";
+            int padn = (W - 18) / 2 - 2;  // ~centered
+            if (t == st.mobileTab) {
+                nav += "\x1b[7m" + std::string(label) + "\x1b[0m";
+            } else {
+                nav += std::string(label);
+            }
+            if (t < 2) nav += "  ";
+        }
+        std::string padnav = std::string(std::max(0, (W - 20) / 2), ' ') + nav;
+        out += clip(padnav, W) + "\n";
+        std::string pos;
+        if (total > rows) {
+            pos = " [rows " + std::to_string(scroll + 1) + "-"
+                + std::to_string(scroll + rows) + " of "
+                + std::to_string(total) + "]";
+        }
+        out += "proxy: " + st.proxyLabel + " | scroll: up/down/top/bottom" + pos;
+        if (!st.statusNote.empty()) out += " | " + st.statusNote;
+        out += "\n";
+        out += "rooms | chat | people | open <room> | send <room> <text> |"
+               " find <q> | search <q> | dump <room> | verify | help | quit\n";
+        return out;
+    }
+
     // Clamp the scroll into [0, contentRows - rows] (state stays const).
     int visCount = st.roomFilter.empty() ? contentRows(st)
                                          : static_cast<int>(visible.size());
@@ -1132,6 +1209,7 @@ int cmdAsciiUi(const cli::Args& args) {
         loadRoomIntoState(st, st.rooms.front().value("room_id", ""));
     }
 
+
     // --static thread <room> / --static threads: the right panel becomes
     // the thread list instead of a room being opened.
     if (initial == "thread" && args.positional.size() >= 2) {
@@ -1176,6 +1254,10 @@ int cmdAsciiUi(const cli::Args& args) {
     }
     // Settings for the one-shot frame: --rows N (frame height) and
     // --scroll N (viewport offset) — the room list scrolls within it.
+    if (args.options.count("mobile")) st.mobile = true;
+    // Element Classic: with a room on the command line, open it in the
+    // Chat tab right away; without one, land on the Rooms tab.
+    if (st.mobile && !initial.empty()) st.mobileTab = 1;
     if (args.options.count("rows")) {
         try { st.limitRows = std::stoi(args.options.at("rows")); } catch (...) {}
     }
@@ -1288,6 +1370,10 @@ int cmdAsciiUi(const cli::Args& args) {
         if (a.command == "open" || a.command == "view") {
             std::string q = a.positional.empty() ? st.currentRoomId : a.positional[0];
             loadRoomIntoState(st, q);
+            if (st.mobile) {
+                st.mobileTab = 1;  // Element Classic: opening jumps to Chat
+                st.scroll = 0;
+            }
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
@@ -1368,6 +1454,36 @@ int cmdAsciiUi(const cli::Args& args) {
             else if (a.command == "top") st.scroll = 0;
             else if (a.command == "bottom") st.scroll = contentRows(st);
             else st.scroll += step;  // "scroll <n>" = down by n
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        if (a.command == "rooms" && st.mobile) {
+            st.mobileTab = 0;
+            st.scroll = 0;
+            st.rooms = dbi.listRooms();
+            loadRoomIntoState(st, st.currentRoomId);
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        if (a.command == "chat" && st.mobile) {
+            st.mobileTab = 1;
+            st.scroll = 0;
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        if (a.command == "people" && st.mobile) {
+            st.mobileTab = 2;
+            st.scroll = 0;
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        if (a.command == "mobile") {
+            std::string v = a.positional.empty() ? "on" : a.positional[0];
+            st.mobile = (v == "on" || v == "1" || v == "true" || v == "yes");
+            st.scroll = 0;
+            st.statusNote = st.mobile
+                ? "smartphone layout: stacked sections"
+                : "desktop layout: three columns";
             std::cout << drawFrame(st) << std::flush;
             continue;
         }

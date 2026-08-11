@@ -2446,6 +2446,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
         if (args.options.count("limit")) uiArgs.options["limit"] = args.options.at("limit");
         if (args.options.count("rows")) uiArgs.options["rows"] = args.options.at("rows");
         if (args.options.count("scroll")) uiArgs.options["scroll"] = args.options.at("scroll");
+        if (args.options.count("mobile")) uiArgs.options["mobile"] = "true";
         return matrixcli::cmdAsciiUi(uiArgs);
     }
 
@@ -2472,7 +2473,8 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
                      "  3) ASCII client interface (rooms | chat | members)\n"
                      "     (non-interactive: matrixcli demo --ui --static)\n"
                      "  4) terminal UI (ncurses TUI)\n"
-                     "Choice [1/2/3/4]: " << std::flush;
+                     "  5) ASCII client for smartphones (stacked, portrait)\n"
+                     "Choice [1/2/3/4/5]: " << std::flush;
         std::string ans;
         std::getline(std::cin, ans);
         if (!matrixcli::g_interrupted.load()) {
@@ -2485,6 +2487,11 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
         }
         if (!ans.empty() && ans[0] == '3') {
             cli::Args uiArgs;
+            return matrixcli::cmdAsciiUi(uiArgs);
+        }
+        if (!ans.empty() && ans[0] == '5') {
+            cli::Args uiArgs;
+            uiArgs.options["mobile"] = "true";
             return matrixcli::cmdAsciiUi(uiArgs);
         }
         if (!ans.empty() && ans[0] == '4') {

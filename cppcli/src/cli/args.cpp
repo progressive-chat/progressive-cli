@@ -12,7 +12,7 @@ namespace matrixcli { namespace cli {
 static const std::unordered_set<std::string> kNoValueFlags = {
     "static", "once", "print", "json", "confirm", "debug", "ts", "ids",
     "expand", "verbose", "no-replies", "no-filter", "all", "interactive",
-    "help", "version", "cli", "ui", "ascii", "populate",
+    "help", "version", "cli", "ui", "ascii", "populate", "mobile",
 };
 
 Args parseArgs(int argc, char* argv[]) {
@@ -140,6 +140,7 @@ void printUsage() {
               << "  --static      draw the frame once and exit (pipe-friendly)\n"
               << "  --rows N      frame height in rows (0/omit = fit terminal)\n"
               << "  --scroll N    viewport offset in the room list (with --rows)\n"
+              << "  --mobile      smartphone layout: stacked sections (portrait)\n"
               << "  --media       with --static: also render the room's image previews\n"
               << "\n"
               << "Options for login:\n"
