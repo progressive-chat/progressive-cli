@@ -2095,18 +2095,30 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
     }
 
     // A message with a permalink (matrix.to) — the ui renders it as a pill.
+    // The target event is inserted for real and BOTH events get fresh
+    // timestamps, so the pill always sits at the top of #general with its
+    // preview ("📎 #general · alice: ...") instead of "(event)".
     {
-        std::string welcomeId = "$demo_" + std::to_string(ts + 8 * 60);
+        std::string welcomeId = "$demo_welcome_pill";
+        int64_t pillNow = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        matrix::Event target;
+        target.event_id = welcomeId;
+        target.room_id = "!general:demo.local"; target.sender = "@alice";
+        target.type = "m.room.message";
+        target.content = {{"msgtype", "m.text"},
+                          {"body", "Welcome to the demo — this is the linked message."}};
+        target.origin_server_ts = pillNow - 3600000;
+        dbi.insertEvent(target);
         matrix::Event pl;
-        pl.event_id = "$demo_" + std::to_string(ts);
+        pl.event_id = "$demo_" + std::to_string(pillNow);
         pl.room_id = "!general:demo.local"; pl.sender = "@bob";
         pl.type = "m.room.message";
         pl.content = {{"msgtype", "m.text"},
                       {"body", "Look at this: https://matrix.to/#/!general:demo.local/"
                                + welcomeId}};
-        pl.origin_server_ts = ts;
+        pl.origin_server_ts = pillNow - 3600000 - 60000;
         dbi.insertEvent(pl);
-        ts -= 60;
     }
 
     // Membership events: joined/left rows (the ui renders them as system lines).

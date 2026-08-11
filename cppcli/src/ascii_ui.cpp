@@ -2805,6 +2805,62 @@ int cmdAsciiUi(const cli::Args& args) {
             }
             continue;
         }
+        // ---- links: list the matrix.to permalinks of the current room ----
+        if (a.command == "links") {
+            const std::string marker = "matrix.to/#/";
+            int found = 0;
+            std::cout << "Permalinks in " << st.currentRoomId << ":" << std::endl;
+            for (const auto& ev : st.messages) {
+                std::string body = eventBodyRaw(ev);
+                size_t pos = 0;
+                while ((pos = body.find(marker, pos)) != std::string::npos) {
+                    size_t linkStart = pos;
+                    if (linkStart >= 8 && body.compare(linkStart - 8, 8, "https://") == 0) {
+                        linkStart -= 8;
+                    } else if (linkStart >= 7 && body.compare(linkStart - 7, 7, "http://") == 0) {
+                        linkStart -= 7;
+                    }
+                    size_t after = pos + marker.size();
+                    size_t slash = body.find('/', after);
+                    std::string roomPart = body.substr(after, slash == std::string::npos
+                                                               ? std::string::npos
+                                                               : slash - after);
+                    std::string evPart = slash == std::string::npos
+                                             ? "" : body.substr(slash + 1);
+                    size_t spanEnd = slash == std::string::npos
+                                         ? body.size() : slash + 1 + evPart.size();
+                    std::string url = body.substr(linkStart, spanEnd - linkStart);
+                    std::string roomName = roomPart;
+                    for (const auto& r : st.rooms) {
+                        if (r.value("room_id", "") == roomPart) {
+                            roomName = r.value("name", roomPart);
+                            break;
+                        }
+                    }
+                    std::cout << "  " << (st.showEmoji ? "\xf0\x9f\x93\x8e " : "[pill] ")
+                              << roomName;
+                    if (!evPart.empty()) {
+                        std::cout << " -> " << evPart;
+                        matrix::Event target;
+                        if (st.db->getEventById(evPart, target)) {
+                            std::cout << "  [" << senderShort(target.sender) << ": "
+                                      << clip(eventBody(target), 40) << "]";
+                        } else {
+                            std::cout << "  (event not in the cache)";
+                        }
+                    }
+                    std::cout << "\n      url: " << url
+                              << "\n      read: raw " << roomPart << " " << evPart
+                              << "\n";
+                    found++;
+                    pos = spanEnd;
+                }
+            }
+            if (found == 0) {
+                std::cout << "No permalinks in this room." << std::endl;
+            }
+            continue;
+        }
         // ---- voice: record (arecord/parec) + send as m.audio ----
         if (a.command == "voice") {
             if (a.positional.empty()) {
