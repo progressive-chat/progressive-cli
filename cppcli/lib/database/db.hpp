@@ -52,6 +52,10 @@ public:
     // Fetch a single event by id (for reply-chain rendering). Returns false if absent.
     bool getEventById(const std::string& event_id, matrix::Event& ev);
     int getEventCount(const std::string& room_id);
+    // Rooms where the user has an open invite (an m.room.member
+    // "invite" event for them, with no later join). Matches the sender
+    // by localpart so both "@user" and "@user:server" forms count.
+    int inviteCount(const std::string& userId);
 
     // Full-text search
     std::vector<json> search(const std::string& query, int limit = 20);

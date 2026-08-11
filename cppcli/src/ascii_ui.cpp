@@ -294,22 +294,22 @@ std::string roomLastMsg(db::Database* db, const std::string& roomId) {
     if (ev.type == "m.room.message" || ev.type == "m.sticker") {
         preview = eventBody(ev);
         std::string mt = ev.content.value("msgtype", "");
-        if (mt == "m.file") preview = "ð " + preview;
-        else if (mt == "m.audio") preview = "ðµ " + preview;
-        else if (mt == "m.image") preview = "ð¼ " + preview;
+        if (mt == "m.file") preview = "📄 " + preview;
+        else if (mt == "m.audio") preview = "🎵 " + preview;
+        else if (mt == "m.image") preview = "🖼 " + preview;
         else if (mt == "m.poll.start") {
             auto q = ev.content.find("question");
             if (q != ev.content.end() && q->is_object()) {
                 auto t = q->find("text");
                 if (t != q->end() && t->is_string()) preview = t->get<std::string>();
             }
-            preview = "â­ poll: " + preview;
+            preview = "⭕ poll: " + preview;
         }
-        else if (ev.type == "m.sticker") preview = "ð» " + preview;
+        else if (ev.type == "m.sticker") preview = "👻 " + preview;
     } else if (ev.type == "m.room.member") {
         std::string m = ev.content.value("membership", "");
-        preview = (m == "leave" || m == "ban") ? "â left"
-                                               : "â joined";
+        preview = (m == "leave" || m == "ban") ? "❌ left"
+                                               : "✓ joined";
     }
     if (preview.empty()) return "";
     return senderShort(ev.sender) + ": " + preview;
@@ -418,6 +418,7 @@ struct UiState {
     std::string statusNote;              // last action's summary (dump etc.)
     bool staticFrame = false;            // --static: one-shot frame
     bool mobile = false;                 // smartphone: stacked sections
+    int invites = 0;                     // open invites for the logged-in user
     int mobileTab = 0;                   // 0=Rooms 1=Chat 2=People (bottom nav)
     int limitRows = 0;                   // settings "rows <n>": 0 = fit terminal
     std::map<std::string, std::string> presence; // member -> О/А/Ф letters
@@ -582,6 +583,16 @@ std::string drawFrame(const UiState& st) {
     }
     if (!topic.empty()) {
         out += "  " + clip(topic, W - 2) + "\n";
+    }
+    // Smartphone top bar: the logged-in account, the open-invite count and
+    // where we are (the space name, or "all rooms" when everything shows).
+    if (st.mobile) {
+        std::string top = st.accountLabel;
+        if (st.invites > 0) {
+            top += " \xf0\x9f\x93\xa5 " + std::to_string(st.invites) + " invites";
+        }
+        top += " \xc2\xb7 all rooms";
+        out += "\x1b[90m  " + clip(top, W - 2) + "\x1b[0m\n";
     }
     std::string leftHeader = st.accountLabel + " — Rooms";
     std::string headRoom = " " + roomName;
@@ -982,14 +993,13 @@ std::string drawFrame(const UiState& st) {
                     row += (st.showEmoji ? " \xf0\x9f\xa7\xb5" : " (threads ")
                          + std::to_string(thr) + (st.showEmoji ? "" : ")");
                 }
+                stream.push_back(row);
+                // Element Classic: the room name on its own row, the last
+                // message preview (dim grey, indented) right below it.
                 std::string last = roomLastMsg(st.db, rid);
                 if (!last.empty()) {
-                    int avail = W - displayWidth(row) - 1;
-                    if (avail >= 6) {
-                        row += "[90m" + clip(" Â· " + last, avail) + "[0m";
-                    }
+                    stream.push_back("[90m  " + clip(last, W - 2) + "[0m");
                 }
-                stream.push_back(row);
             }
             section = " Rooms ";
         } else if (st.mobileTab == 1) {
@@ -1070,7 +1080,7 @@ std::string drawFrame(const UiState& st) {
             if (!last.empty()) {
                 int avail = leftW - displayWidth(left) - 1;
                 if (avail >= 6) {
-                    left += "[90m" + clip(" Â· " + last, avail) + "[0m";
+                    left += "[90m" + clip(" · " + last, avail) + "[0m";
                 }
             }
         }
@@ -1238,6 +1248,10 @@ int cmdAsciiUi(const cli::Args& args) {
     }
     if (st.accountLabel.empty()) st.accountLabel = "demo (offline)";
     st.proxyLabel = proxyLabelText();
+    // Invites count for the header: the demo user is "@you", sessions use
+    // the saved mxid ("@" stripped in accountLabel).
+    st.invites = dbi.inviteCount(st.accountLabel == "demo (offline)"
+                                     ? "@you" : "@" + st.accountLabel);
     // Demo/offline: static presence so the right panel shows the letters.
     // The demo events carry short senders ("@alice") — key both forms.
     if (st.accountLabel == "demo (offline)") {

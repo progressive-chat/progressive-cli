@@ -2125,6 +2125,10 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
             {"!matrix:demo.local", "@alice", "join"},
             {"!matrix:demo.local", "@you", "join"},
             {"!meta:demo.local", "@you", "join"},
+            // Open invites for @you — the header shows the invite count.
+            {"!design:demo.local", "@you", "invite"},
+            {"!crypto:demo.local", "@you", "invite"},
+            {"!books:demo.local", "@you", "invite"},
                {"!sports:demo.local", "@you", "join"},
             {"!sports:demo.local", "@bob", "join"},
             {"!sports:demo.local", "@erin", "join"},
