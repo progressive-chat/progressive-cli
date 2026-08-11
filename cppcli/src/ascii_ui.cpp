@@ -63,6 +63,8 @@ int cpWidth(uint32_t cp) {
     if (cp >= 0xFE30 && cp <= 0xFE4F) return 2;
     if (cp >= 0xFF00 && cp <= 0xFF60) return 2;
     if (cp >= 0xFFE0 && cp <= 0xFFE6) return 2;
+    if (cp >= 0x2190 && cp <= 0x21FF) return 1;      // text arrows ←↑→ are 1
+    if (cp >= 0x2713 && cp <= 0x2717) return 1;      // ✓ ✗ text marks are 1
     if (cp >= 0x2600 && cp <= 0x27BF) return 2;      // ⤷❤📌 etc.
     if (cp >= 0x2B00 && cp <= 0x2BFF) return 2;
     if (cp >= 0x1F000 && cp <= 0x1FAFF) return 2;    // emoji blocks
@@ -760,7 +762,21 @@ std::string drawFrame(const UiState& st) {
             if (!row.empty()) {
                 auto rIt = st.receipts.find(ev.event_id);
                 if (rIt != st.receipts.end() && !rIt->second.empty()) {
-                    row += "  \x1b[90m\u2713 " + rIt->second + "\x1b[0m";  // ✓ readers
+                    std::string rd = rIt->second;
+                    // Cap the reader list: 'a b c +5' instead of the full set.
+                    std::string shown;
+                    int count = 0;
+                    std::istringstream rss(rd);
+                    std::string tok;
+                    while (rss >> tok && count < 3) {
+                        if (!shown.empty()) shown += " ";
+                        shown += tok;
+                        count++;
+                    }
+                    int total = 1;
+                    for (char ch : rd) if (ch == ' ') total++;
+                    if (count < total) shown += " +" + std::to_string(total - count);
+                    row += "  \x1b[90m\u2713 " + shown + "\x1b[0m";  // ✓ readers
                 }
                 std::time_t t = static_cast<std::time_t>(ev.origin_server_ts / 1000);
                 std::tm tm{};
