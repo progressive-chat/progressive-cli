@@ -109,9 +109,23 @@ std::string clip(const std::string& s, int width) {
     std::string out;
     int w = 0;
     for (size_t i = 0; i < s.size();) {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        if (c == 0x1b) {
+            // ANSI escape sequence — zero width, copied verbatim (so the
+            // color codes survive the clipping and never count as cells).
+            size_t j = i + 1;
+            if (j < s.size() && s[j] == '[') j++;
+            while (j < s.size()) {
+                unsigned char e = static_cast<unsigned char>(s[j]);
+                j++;
+                if (e >= 0x40 && e <= 0x7E) break;
+            }
+            out.append(s, i, j - i);
+            i = j;
+            continue;
+        }
         uint32_t cp = 0;
         size_t len = 0;
-        unsigned char c = static_cast<unsigned char>(s[i]);
         if (c < 0x80) { cp = c; len = 1; }
         else if ((c & 0xE0) == 0xC0) { cp = c & 0x1F; len = 1;
             if (i + 1 < s.size()) { cp = (cp << 6) | (s[i + 1] & 0x3F); len = 2; } }
@@ -1060,7 +1074,7 @@ std::string drawFrame(const UiState& st) {
                 std::string name = roomDisplayName(*r);
                 if (r->value("is_direct", false))
                     name = (st.showEmoji ? "\xf0\x9f\x92\xac " : "[DM] ") + name;
-                std::string row = mark + name + " ("
+                std::string row = mark + "[1m" + name + "[0m ("
                                 + std::to_string(roomMessageCount(st.db, rid)) + ")";
                 // The last-message time, right-aligned (Element Classic).
                 std::string ltime = roomLastTime(st.db, rid, st.showSeconds);
@@ -1081,7 +1095,14 @@ std::string drawFrame(const UiState& st) {
                 // message preview (dim grey, indented) right below it.
                 std::string last = roomLastMsg(st.db, rid);
                 if (!last.empty()) {
-                    stream.push_back("[90m  " + clip(last, W - 2) + "[0m");
+                    auto colon = last.find(':');
+                    std::string who = colon == std::string::npos
+                                          ? last : last.substr(0, colon + 1);
+                    std::string what = colon == std::string::npos
+                                           ? "" : last.substr(colon + 1);
+                    stream.push_back("  " + who + "[90m"
+                                   + clip(what, std::max(2, W - 3 - displayWidth(who)))
+                                   + "[0m");
                 }
             }
             section = " Rooms ";
@@ -1152,7 +1173,8 @@ std::string drawFrame(const UiState& st) {
             std::string name = roomDisplayName(r);
             if (r.value("is_direct", false))
                 name = (st.showEmoji ? "💬 " : "[DM] ") + name;
-            left = mark + name + " (" + std::to_string(roomMessageCount(st.db, rid)) + ")";
+            left = mark + "[1m" + name + "[0m ("
+                 + std::to_string(roomMessageCount(st.db, rid)) + ")";
             int thr = roomThreadCount(st.db, rid);
             if (thr > 0) {
                 left += (st.showEmoji ? " 🧵" : " (threads ") + std::to_string(thr)
@@ -1163,7 +1185,16 @@ std::string drawFrame(const UiState& st) {
             if (!last.empty()) {
                 int avail = leftW - displayWidth(left) - 1;
                 if (avail >= 6) {
-                    left += "[90m" + clip(" · " + last, avail) + "[0m";
+                    // Nickname in the normal color, the message dimmed.
+                    auto colon = last.find(':');
+                    std::string who = colon == std::string::npos
+                                          ? last : last.substr(0, colon + 1);
+                    std::string what = colon == std::string::npos
+                                           ? "" : last.substr(colon + 1);
+                    int used = displayWidth(who) + 2;  // the " · " separator
+                    left += " [90m· [0m" + who
+                          + "[90m" + clip(what, std::max(2, avail - used))
+                          + "[0m";
                 }
             }
         }
