@@ -1,0 +1,292 @@
+div.render-error-body {
+	font-style: italic;
+	color: var(--semisecondary-text-color);
+}
+
+div.decryption-error-body {
+	display: flex;
+	align-items: center;
+
+	> svg {
+		height: 20px;
+		color: var(--error-color);
+	}
+}
+
+div.redacted-body, div.decryption-pending-body {
+	display: flex;
+	align-items: center;
+	color: var(--secondary-text-color);
+
+	> svg {
+		height: 20px;
+	}
+}
+
+div.member-body {
+	span.name, span.reason {
+		unicode-bidi: isolate;
+	}
+
+	img {
+		/* Hacky vertical align with text. Can't use flex because it breaks line wrapping */
+		margin-bottom: -.125rem;
+	}
+}
+
+div.room-avatar-body {
+	display: flex;
+	align-items: center;
+	gap: .25rem;
+}
+
+div.message-text {
+	&.plaintext-body {
+		white-space: pre-wrap;
+	}
+
+	&.big-emoji-body {
+		font-size: 3rem;
+	}
+
+	&.notice-message {
+		opacity: .6;
+	}
+
+	&.emote-message::before {
+		content: "* " attr(data-event-sender) " ";
+	}
+}
+
+div.html-body {
+	overflow: hidden;
+
+	a.hicli-matrix-uri-user:not(.hicli-matrix-uri-plaintext),
+	a.hicli-matrix-uri-room-alias:not(.hicli-matrix-uri-plaintext) {
+		background-color: var(--pill-background-color);
+		border-radius: 1rem;
+		padding: 0 .25rem;
+		color: inherit;
+		text-decoration: none !important;
+		text-wrap: nowrap;
+		cursor: var(--clickable-cursor);
+
+		overflow: hidden;
+		max-width: 15rem;
+		text-overflow: ellipsis;
+		/* Required to allow setting max width and hiding overflow */
+		display: inline-block;
+		/* Required to not mess up the rest of the text's vertical alignment when using inline-block */
+		vertical-align: bottom;
+	}
+
+	img.hicli-custom-emoji {
+		/* This has to be the same alignment as matrix URIs above to look good
+		   Middle may be nicer for emojis, but that doesn't work nicely with pills. */
+		vertical-align: bottom;
+		height: 2rem; /* text height is 1.5rem, so this will make lines a bit taller */
+		width: auto;
+		max-width: 5rem;
+	}
+
+	img.hicli-sizeless-inline-img {
+		height: 1.5rem;
+		width: auto;
+		max-width: 5rem;
+	}
+
+	span.spoiler-reason {
+		font-size: .8em;
+		color: var(--secondary-text-color);
+
+		&::before {
+			content: "(";
+		}
+		&::after {
+			content: ") ";
+		}
+	}
+
+	span.hicli-spoiler {
+		filter: blur(4px);
+		transition: filter .5s;
+		cursor: var(--clickable-cursor);
+
+		&.spoiler-revealed {
+			filter: none;
+			cursor: initial;
+		}
+
+		&:not(.spoiler-revealed) a {
+			pointer-events: none;
+		}
+	}
+
+	table {
+		/* Message content has overflow wrap anywhere, but for tables that's not very nice */
+		overflow-wrap: initial;
+	}
+
+	blockquote {
+		border-left: 2px solid var(--blockquote-border-color);
+		padding-left: .5rem;
+	}
+
+	pre {
+		width: 100%;
+		max-height: max(50vh, 400px);
+		overflow: auto;
+		/* Ensure floating scroll bars have their own space */
+		padding-bottom: .5rem;
+		tab-size: 4;
+
+		&.chroma {
+			span.line > span.ln {
+				-webkit-user-select: initial;
+				user-select: initial;
+
+				&::before {
+					content: attr(data-linenum);
+				}
+			}
+		}
+	}
+
+	code.hicli-inline-code {
+		background-color: var(--code-background-color);
+		border-radius: .25rem;
+		padding: .125rem .25rem;
+	}
+
+	h1, h2, h3, h4, h5, h6 {
+		margin: 0 0 .5rem;
+	}
+
+	h1, h2 {
+		font-size: 1.5rem;
+	}
+
+	h3 {
+		font-size: 1.25rem;
+	}
+
+	ul, ol, dl, table, pre, blockquote {
+		&:not(:last-child) {
+			margin: 0 0 .25rem;
+		}
+		&:last-child {
+			margin: 0;
+		}
+	}
+
+	p {
+		&:not(:last-child) {
+			margin: 0 0 1rem;
+		}
+		&:last-child {
+			margin: 0;
+		}
+	}
+}
+
+div.media-container {
+	/* TODO can this be done in the container size calculation to avoid leaving blank space at the bottom? */
+	max-width: 100%;
+
+	> div.placeholder {
+		position: relative;
+		width: 100%;
+		height: 100%;
+
+		> div.empty-placeholder {
+			background-color: var(--media-placeholder-default-background);
+			width: 100%;
+			height: 100%;
+		}
+
+		> div.placeholder-reason, > div.placeholder-spinner {
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+
+			text-align: center;
+			max-width: 90%;
+			min-width: min(90%, 5rem);
+		}
+
+		> div.placeholder-reason {
+			background-color: var(--media-placeholder-button-background);
+			padding: 0.5rem;
+			cursor: var(--clickable-cursor);
+			user-select: none;
+			border-radius: .25rem;
+		}
+
+		&:has(> div.empty-placeholder) + img {
+			filter: blur(16px);
+		}
+
+		& + img {
+			/* In order loading=lazy to work, the image has to be visible,
+			   so put it behind the placeholder instead of below */
+			position: absolute;
+			top: 0;
+			z-index: -1;
+		}
+	}
+
+	> a {
+		display: flex;
+		align-items: center;
+		text-decoration: none;
+		color: inherit;
+	}
+
+	> img, > video {
+		max-width: 100%;
+		max-height: 100%;
+
+		&.errored::before {
+			display: none;
+		}
+
+		&.errored::after {
+			display: flex;
+			justify-content: center;
+			align-items: center;
+			text-align: center;
+			height: 100%;
+			color: var(--error-color);
+			content: "Failed to load image";
+			background-color: var(--media-placeholder-default-background);
+		}
+	}
+
+	> video {
+		width: 100%;
+	}
+}
+
+iframe.location-container.google {
+	height: 25rem;
+	width: 100%;
+	max-width: 50rem;
+	border: none;
+}
+
+div.location-container.leaflet {
+	height: 25rem;
+	max-width: 50rem;
+
+	> div {
+		height: 25rem;
+		width: 100%;
+	}
+}
+
+div.location-importer {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+}
