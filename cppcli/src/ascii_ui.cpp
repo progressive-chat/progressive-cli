@@ -466,6 +466,7 @@ struct UiState {
     bool mobile = false;                 // smartphone: stacked sections
     int invites = 0;                     // open invites for the logged-in user
     std::string activeSpace;             // "" = all rooms; else a space id
+    std::unordered_set<std::string> invited;  // rooms with an open invite
     int mobileTab = 0;                   // 0=Rooms 1=Chat 2=People (bottom nav)
     int limitRows = 0;                   // settings "rows <n>": 0 = fit terminal
     std::map<std::string, std::string> presence; // member -> О/А/Ф letters
@@ -1068,31 +1069,35 @@ std::string drawFrame(const UiState& st) {
         std::vector<std::string> stream;
         std::string section;
         if (st.mobileTab == 0) {
+            // Invited rooms get their own section at the top, like Element.
+            std::vector<std::string> invRows;
+            std::vector<std::string> allRows;
             for (const auto* r : visible) {
                 std::string rid = r->value("room_id", "");
                 std::string mark = rid == st.currentRoomId ? "*" : " ";
                 std::string name = roomDisplayName(*r);
                 if (r->value("is_direct", false))
-                    name = (st.showEmoji ? "\xf0\x9f\x92\xac " : "[DM] ") + name;
+                    name = (st.showEmoji ? "💬 " : "[DM] ") + name;
+                if (st.invited.count(rid)) {
+                    mark += (st.showEmoji ? "📨 " : "[INV] ");
+                }
+                std::vector<std::string>& dst = st.invited.count(rid) ? invRows : allRows;
                 std::string row = mark + "[1m" + name + "[0m ("
                                 + std::to_string(roomMessageCount(st.db, rid)) + ")";
-                // The last-message time, right-aligned (Element Classic).
                 std::string ltime = roomLastTime(st.db, rid, st.showSeconds);
                 if (!ltime.empty()) {
                     int tl = displayWidth(ltime);
                     int baseW = W - tl - 1;
                     row = clip(row, baseW);
                     row += std::string(std::max(1, W - baseW - tl), ' ')
-                         + "\x1b[90m" + ltime + "\x1b[0m";
+                         + "[90m" + ltime + "[0m";
                 }
                 int thr = roomThreadCount(st.db, rid);
                 if (thr > 0) {
-                    row += (st.showEmoji ? " \xf0\x9f\xa7\xb5" : " (threads ")
+                    row += (st.showEmoji ? " 🧵" : " (threads ")
                          + std::to_string(thr) + (st.showEmoji ? "" : ")");
                 }
-                stream.push_back(row);
-                // Element Classic: the room name on its own row, the last
-                // message preview (dim grey, indented) right below it.
+                dst.push_back(row);
                 std::string last = roomLastMsg(st.db, rid);
                 if (!last.empty()) {
                     auto colon = last.find(':');
@@ -1100,12 +1105,18 @@ std::string drawFrame(const UiState& st) {
                                           ? last : last.substr(0, colon + 1);
                     std::string what = colon == std::string::npos
                                            ? "" : last.substr(colon + 1);
-                    stream.push_back("  " + who + "[90m"
-                                   + clip(highlightMentions(what),
-                                          std::max(2, W - 3 - displayWidth(who)))
-                                   + "[0m");
+                    dst.push_back("  " + who + "[90m"
+                                + clip(highlightMentions(what),
+                                       std::max(2, W - 3 - displayWidth(who)))
+                                + "[0m");
                 }
             }
+            if (!invRows.empty()) {
+                stream.push_back("📨 Invites");
+                stream.insert(stream.end(), invRows.begin(), invRows.end());
+                stream.push_back("-- Rooms --");
+            }
+            stream.insert(stream.end(), allRows.begin(), allRows.end());
             section = " Rooms ";
         } else if (st.mobileTab == 1) {
             stream.push_back(clip("── " + roomName + " ──", W));
@@ -1369,6 +1380,10 @@ int cmdAsciiUi(const cli::Args& args) {
     // the saved mxid ("@" stripped in accountLabel).
     st.invites = dbi.inviteCount(st.accountLabel == "demo (offline)"
                                      ? "@you" : "@" + st.accountLabel);
+    for (const auto& id : dbi.invitedRoomIds(st.accountLabel == "demo (offline)"
+                                                 ? "@you" : "@" + st.accountLabel)) {
+        st.invited.insert(id);
+    }
     // Demo/offline: static presence so the right panel shows the letters.
     // The demo events carry short senders ("@alice") — key both forms.
     if (st.accountLabel == "demo (offline)") {

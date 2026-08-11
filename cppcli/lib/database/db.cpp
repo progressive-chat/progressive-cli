@@ -378,6 +378,35 @@ int Database::getEventCount(const std::string& room_id) {
     return count;
 }
 
+std::vector<std::string> Database::invitedRoomIds(const std::string& userId) {
+    std::string localpart = userId;
+    if (!localpart.empty() && localpart[0] == '@') {
+        auto colon = localpart.find(':');
+        if (colon != std::string::npos) localpart = localpart.substr(1, colon - 1);
+        else localpart = localpart.substr(1);
+    }
+    std::string like = "%" + localpart + "%";
+    std::vector<std::string> result;
+    sqlite3_stmt* stmt = nullptr;
+    sqlite3_prepare_v2(_db,
+        "SELECT r.room_id FROM rooms r WHERE EXISTS ("
+        "  SELECT 1 FROM events e WHERE e.room_id = r.room_id "
+        "  AND e.type = 'm.room.member' AND e.sender LIKE ?1 "
+        "  AND json_extract(e.content, '$.membership') = 'invite' "
+        "  AND (SELECT MAX(origin_server_ts) FROM events e2 "
+        "       WHERE e2.room_id = e.room_id AND e2.type = 'm.room.member' "
+        "       AND e2.sender LIKE ?1) = e.origin_server_ts"
+        ")",
+        -1, &stmt, nullptr);
+    sqlite3_bind_text(stmt, 1, like.c_str(), like.size(), SQLITE_TRANSIENT);
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char* rid = (const char*)sqlite3_column_text(stmt, 0);
+        if (rid) result.emplace_back(rid);
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
 int Database::inviteCount(const std::string& userId) {
     // Localpart of the user ("you" from "@you:demo.local" or "@you").
     std::string localpart = userId;

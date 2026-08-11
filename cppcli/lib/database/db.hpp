@@ -56,6 +56,8 @@ public:
     // "invite" event for them, with no later join). Matches the sender
     // by localpart so both "@user" and "@user:server" forms count.
     int inviteCount(const std::string& userId);
+    // The ids of the rooms where the user has an open invite.
+    std::vector<std::string> invitedRoomIds(const std::string& userId);
     // Spaces: tag a room with its parent space id; rooms carry
     // "is_space"/"space" keys in listRooms().
     bool tagRoom(const std::string& room_id, const std::string& space);
