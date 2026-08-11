@@ -382,6 +382,7 @@ struct UiState {
     std::string proxyLabel;              // "on (socks5h ...)" or "off"
     std::string roomFilter;              // find/space filter for the left panel
     std::string statusNote;              // last action's summary (dump etc.)
+    bool staticFrame = false;            // --static: show the full room list
     std::map<std::string, std::string> presence; // member -> О/А/Ф letters
     // Right panel mode: 0 = members, 1 = room thread list, 2 = one thread,
     // 3 = threads across all rooms (Element-style thread panel).
@@ -564,6 +565,13 @@ std::string drawFrame(const UiState& st) {
         rows = static_cast<int>(ws.ws_row) - 5;
     }
 #endif
+
+    // --static: list the full room list (no clipping), so a one-shot frame
+    // shows every room even in a short terminal.
+    if (st.staticFrame) {
+        rows = std::max(rows, static_cast<int>(st.rooms.size()));
+    }
+
     // Room filter (find <q> / space <q>): the left panel shows only the
     // matching rooms; the center/members keep their own (unfiltered) view.
     std::vector<const nlohmann::json*> visible;
@@ -1164,6 +1172,10 @@ int cmdAsciiUi(const cli::Args& args) {
         }
     }
 
+    if (args.options.count("static") || args.options.count("once") ||
+        args.options.count("print")) {
+        st.staticFrame = true;
+    }
     std::cout << drawFrame(st) << std::flush;
 
     // Pure CLI / non-interactive mode: draw the frame once and exit
