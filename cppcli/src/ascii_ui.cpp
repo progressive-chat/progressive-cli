@@ -282,6 +282,40 @@ std::string senderShort(const std::string& sender) {
     return s;
 }
 
+// The last message of a room as a preview row ("alice: Welcome!") like
+// Element's room list. Message events only; joins/lefts show a short
+// summary; rooms with nothing at all get an empty string.
+std::string roomLastMsg(db::Database* db, const std::string& roomId) {
+    if (!db) return "";
+    auto evs = db->getEvents(roomId, 1);
+    if (evs.empty()) return "";
+    const matrix::Event& ev = evs.front();
+    std::string preview;
+    if (ev.type == "m.room.message" || ev.type == "m.sticker") {
+        preview = eventBody(ev);
+        std::string mt = ev.content.value("msgtype", "");
+        if (mt == "m.file") preview = "ð " + preview;
+        else if (mt == "m.audio") preview = "ðµ " + preview;
+        else if (mt == "m.image") preview = "ð¼ " + preview;
+        else if (mt == "m.poll.start") {
+            auto q = ev.content.find("question");
+            if (q != ev.content.end() && q->is_object()) {
+                auto t = q->find("text");
+                if (t != q->end() && t->is_string()) preview = t->get<std::string>();
+            }
+            preview = "â­ poll: " + preview;
+        }
+        else if (ev.type == "m.sticker") preview = "ð» " + preview;
+    } else if (ev.type == "m.room.member") {
+        std::string m = ev.content.value("membership", "");
+        preview = (m == "leave" || m == "ban") ? "â left"
+                                               : "â joined";
+    }
+    if (preview.empty()) return "";
+    return senderShort(ev.sender) + ": " + preview;
+}
+
+
 // Render links in a body: matrix.to permalinks become Element-style pills
 // ("📎 roomname · user: preview"), every other http(s) URL is shown in blue.
 std::string renderPermalinks(const std::string& body,
@@ -948,6 +982,13 @@ std::string drawFrame(const UiState& st) {
                     row += (st.showEmoji ? " \xf0\x9f\xa7\xb5" : " (threads ")
                          + std::to_string(thr) + (st.showEmoji ? "" : ")");
                 }
+                std::string last = roomLastMsg(st.db, rid);
+                if (!last.empty()) {
+                    int avail = W - displayWidth(row) - 1;
+                    if (avail >= 6) {
+                        row += "[90m" + clip(" Â· " + last, avail) + "[0m";
+                    }
+                }
                 stream.push_back(row);
             }
             section = " Rooms ";
@@ -1023,6 +1064,14 @@ std::string drawFrame(const UiState& st) {
             if (thr > 0) {
                 left += (st.showEmoji ? " 🧵" : " (threads ") + std::to_string(thr)
                       + (st.showEmoji ? "" : ")");
+            }
+            // The last message preview, like Element's room list.
+            std::string last = roomLastMsg(st.db, rid);
+            if (!last.empty()) {
+                int avail = leftW - displayWidth(left) - 1;
+                if (avail >= 6) {
+                    left += "[90m" + clip(" Â· " + last, avail) + "[0m";
+                }
             }
         }
         if (src < static_cast<int>(centerRows.size())) {
