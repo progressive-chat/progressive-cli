@@ -2374,11 +2374,11 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
     // older last messages for the mixed date/time look).
     {
         struct { const char* room; const char* sender; const char* body; } fresh[] = {
-            {"!podcasts:demo.local", "@bob", "Morning, everyone!"},
+            {"!podcasts:demo.local", "@bob", "@you ping — sync call at 15:00, join us!"},
             {"!general:demo.local", "@dave", "Coffee is ready, join in."},
             {"!dm_bob:demo.local", "@grace", "Interesting thread in #general."},
             {"!techno:demo.local", "@charlie", "Testing something new today."},
-            {"!history:demo.local", "@erin", "Morning, everyone!"},
+            {"!history:demo.local", "@erin", "Please review my PR, @you"},
             {"!hiking:demo.local", "@alice", "Coffee is ready, join in."},
             {"!chess:demo.local", "@carol", "Interesting thread in #general."},
             {"!dm_dave:demo.local", "@frank", "Testing something new today."},
@@ -2445,8 +2445,8 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
             {"!offtopic:demo.local", "@erin", "Morning, everyone!"},
             {"!philosophy:demo.local", "@alice", "Coffee is ready, join in."},
             {"!photography:demo.local", "@carol", "Interesting thread in #general."},
-            {"!boardgames:demo.local", "@frank", "Testing something new today."},
-            {"!help:demo.local", "@bob", "Morning, everyone!"},
+            {"!boardgames:demo.local", "@frank", "Great idea, @you — let's do it!"},
+            {"!help:demo.local", "@bob", "@you your turn: pick the topic for Friday."},
             {"!science:demo.local", "@dave", "Coffee is ready, join in."},
             {"!art:demo.local", "@grace", "Interesting thread in #general."},
             {"!matrix:demo.local", "@charlie", "Testing something new today."},

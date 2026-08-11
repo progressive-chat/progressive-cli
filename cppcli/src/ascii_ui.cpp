@@ -1101,7 +1101,8 @@ std::string drawFrame(const UiState& st) {
                     std::string what = colon == std::string::npos
                                            ? "" : last.substr(colon + 1);
                     stream.push_back("  " + who + "[90m"
-                                   + clip(what, std::max(2, W - 3 - displayWidth(who)))
+                                   + clip(highlightMentions(what),
+                                          std::max(2, W - 3 - displayWidth(who)))
                                    + "[0m");
                 }
             }
@@ -1193,7 +1194,8 @@ std::string drawFrame(const UiState& st) {
                                            ? "" : last.substr(colon + 1);
                     int used = displayWidth(who) + 2;  // the " · " separator
                     left += " [90m· [0m" + who
-                          + "[90m" + clip(what, std::max(2, avail - used))
+                          + "[90m"
+                          + clip(highlightMentions(what), std::max(2, avail - used))
                           + "[0m";
                 }
             }
