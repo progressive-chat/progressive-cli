@@ -3402,6 +3402,25 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
+    // Just "--mobile" (no command): launch the smartphone ASCII UI right
+    // away — Element Classic style, Termux-friendly. Any extra flags are
+    // forwarded (--static/--rows/--scroll) and an optional room id opens
+    // the Chat tab.
+    if (args.command.empty() && args.options.contains("mobile")) {
+        matrixcli::cli::Args uiArgs;
+        if (!args.positional.empty()) {
+            uiArgs.positional.push_back(args.positional[0]);
+        }
+        uiArgs.options["mobile"] = "true";
+        if (args.options.contains("static") || args.options.contains("once") ||
+            args.options.contains("print")) {
+            uiArgs.options["static"] = "true";
+        }
+        if (args.options.contains("rows")) uiArgs.options["rows"] = args.options.at("rows");
+        if (args.options.contains("scroll")) uiArgs.options["scroll"] = args.options.at("scroll");
+        return matrixcli::cmdAsciiUi(uiArgs);
+    }
+
     if (args.command.empty() || args.command == "help" || args.options.contains("help")) {
         matrixcli::cli::printUsage();
         return 0;
