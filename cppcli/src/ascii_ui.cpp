@@ -1214,7 +1214,7 @@ std::string drawFrame(const UiState& st) {
         if (!st.statusNote.empty()) out += " | " + st.statusNote;
         out += "\n";
         out += "rooms | chat | people | open <room> | send <room> <text> |"
-               " find <q> | search <q> | dump <room> | verify | help | quit\n";
+               " find <q> | search <q> | settings | help | quit\n";
         return out;
     }
 
@@ -1289,7 +1289,7 @@ std::string drawFrame(const UiState& st) {
     }
     out += "\n";
     out += "open <room> | send <room> <text> | find <q> | search <q> | thread |"
-           " dump <room> | verify | presence | ban/kick | media | space | help | quit\n";
+           " dump <room> | settings | space | help | quit\n";
     return out;
 }
 
@@ -1436,6 +1436,15 @@ int cmdAsciiUi(const cli::Args& args) {
                                                  ? "@you" : "@" + st.accountLabel)) {
         st.invited.insert(id);
     }
+    // Persisted settings (the Settings screen): restore them on start.
+    st.showSeconds = dbi.getSetting("time_full") == "1";
+    st.showIds = dbi.getSetting("ids") == "1";
+    st.showImages = dbi.getSetting("images") == "1";
+    st.showEmoji = dbi.getSetting("emoji") != "0";
+    st.limitRows = std::max(0, std::atoi(dbi.getSetting("rows", "0").c_str()));
+    try { st.leftPanelW = std::stoi(dbi.getSetting("panel_left", "-1")); } catch (...) {}
+    try { st.rightPanelW = std::stoi(dbi.getSetting("panel_right", "-1")); } catch (...) {}
+    st.mobile = dbi.getSetting("mobile") == "1";
     // Demo/offline: static presence so the right panel shows the letters.
     // The demo events carry short senders ("@alice") — key both forms.
     if (st.accountLabel == "demo (offline)") {
@@ -1784,6 +1793,7 @@ int cmdAsciiUi(const cli::Args& args) {
             st.statusNote = st.mobile
                 ? "smartphone layout: stacked sections"
                 : "desktop layout: three columns";
+            dbi.setSetting("mobile", st.mobile ? "1" : "0");
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
@@ -1795,6 +1805,7 @@ int cmdAsciiUi(const cli::Args& args) {
             st.statusNote = st.limitRows > 0
                 ? "frame height: " + std::to_string(st.limitRows) + " rows"
                 : "frame height: auto (terminal)";
+            dbi.setSetting("rows", std::to_string(st.limitRows));
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
@@ -2502,6 +2513,8 @@ int cmdAsciiUi(const cli::Args& args) {
                 continue;
             }
             st.statusNote = std::string("panel ") + which + " = " + v;
+            dbi.setSetting(which == "left" ? "panel_left" : "panel_right",
+                           std::to_string(w));
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
@@ -2510,6 +2523,7 @@ int cmdAsciiUi(const cli::Args& args) {
             if (a.positional.empty() || a.positional[0] == "on") st.showEmoji = true;
             else st.showEmoji = false;
             st.statusNote = std::string("emoji ") + (st.showEmoji ? "on" : "off (ASCII)");
+            dbi.setSetting("emoji", st.showEmoji ? "1" : "0");
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
@@ -2518,6 +2532,7 @@ int cmdAsciiUi(const cli::Args& args) {
             if (a.positional.empty() || a.positional[0] == "on") st.showImages = true;
             else st.showImages = false;
             st.statusNote = std::string("images ") + (st.showImages ? "full cards" : "compact");
+            dbi.setSetting("images", st.showImages ? "1" : "0");
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
@@ -2563,6 +2578,7 @@ int cmdAsciiUi(const cli::Args& args) {
             else if (a.positional[0] == "off") st.showIds = false;
             else st.showIds = true;
             st.statusNote = std::string("event ids ") + (st.showIds ? "shown" : "hidden");
+            dbi.setSetting("ids", st.showIds ? "1" : "0");
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
@@ -2577,6 +2593,7 @@ int cmdAsciiUi(const cli::Args& args) {
             if (v == "off") st.showSeconds = false;
             else st.showSeconds = true;  // full / sec / anything = seconds on
             st.statusNote = std::string("time ") + (st.showSeconds ? "HH:MM:SS" : "HH:MM");
+            dbi.setSetting("time_full", st.showSeconds ? "1" : "0");
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
@@ -2855,6 +2872,37 @@ int cmdAsciiUi(const cli::Args& args) {
                 std::cout << "No matches for '" << a.positional[0] << "'"
                           << (senderF.empty() ? "" : " from " + senderF) << std::endl;
             }
+            continue;
+        }
+        // ---- settings: the current client settings ----
+        if (a.command == "settings") {
+            std::cout << "Settings (persisted across sessions):" << std::endl;
+            std::cout << "  time      " << (st.showSeconds ? "HH:MM:SS" : "HH:MM")
+                      << "       (time full / time off)" << std::endl;
+            std::cout << "  ids       " << (st.showIds ? "shown" : "hidden")
+                      << "       (ids on / ids off)" << std::endl;
+            std::cout << "  images    " << (st.showImages ? "full cards" : "compact")
+                      << "  (images on / images off)" << std::endl;
+            std::cout << "  emoji     " << (st.showEmoji ? "on" : "off (ASCII)")
+                      << "       (emoji on / emoji off)" << std::endl;
+            std::cout << "  rows      " << (st.limitRows > 0
+                        ? std::to_string(st.limitRows) : "auto (terminal)")
+                      << "  (rows <n> / rows 0)" << std::endl;
+            std::cout << "  panel L   " << (st.leftPanelW == 0 ? "off"
+                        : st.leftPanelW > 0 ? std::to_string(st.leftPanelW) : "default")
+                      << "  (panel left <off|on|width>)" << std::endl;
+            std::cout << "  panel R   " << (st.rightPanelW == 0 ? "off"
+                        : st.rightPanelW > 0 ? std::to_string(st.rightPanelW) : "default")
+                      << "  (panel right <off|on|width>)" << std::endl;
+            std::cout << "  layout    " << (st.mobile ? "smartphone (stacked)"
+                                                      : "desktop (three columns)")
+                      << "  (mobile on / mobile off)" << std::endl;
+            std::cout << "  account   " << st.accountLabel << std::endl;
+            std::cout << "  proxy     " << st.proxyLabel << std::endl;
+            std::cout << "  invites   " << st.invites << std::endl;
+            std::cout << "  space     "
+                      << (st.activeSpace.empty() ? "all rooms" : st.activeSpace)
+                      << "  (space <name> / space all)" << std::endl;
             continue;
         }
         // ---- goto: jump the chat viewport to an event ----

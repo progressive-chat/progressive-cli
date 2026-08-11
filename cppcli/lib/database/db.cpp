@@ -62,6 +62,8 @@ void Database::migrate() {
         exec("ALTER TABLE rooms ADD COLUMN is_space INTEGER DEFAULT 0");
         exec("ALTER TABLE rooms ADD COLUMN space TEXT DEFAULT ''");
     }
+    exec("CREATE TABLE IF NOT EXISTS settings ("
+         " key TEXT PRIMARY KEY, value TEXT )");
     exec(R"(
         CREATE TABLE IF NOT EXISTS account (
             key TEXT PRIMARY KEY,
@@ -368,6 +370,35 @@ bool Database::getEventById(const std::string& event_id, matrix::Event& ev) {
     }
     sqlite3_finalize(stmt);
     return found;
+}
+
+// ── UI settings (persisted key-value) ──
+
+bool Database::setSetting(const std::string& key, const std::string& value) {
+    sqlite3_stmt* stmt = nullptr;
+    sqlite3_prepare_v2(_db,
+        "INSERT OR REPLACE INTO settings(key, value) VALUES(?, ?)",
+        -1, &stmt, nullptr);
+    sqlite3_bind_text(stmt, 1, key.c_str(), key.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, value.c_str(), value.size(), SQLITE_TRANSIENT);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return true;
+}
+
+std::string Database::getSetting(const std::string& key,
+                                 const std::string& def) {
+    std::string value = def;
+    sqlite3_stmt* stmt = nullptr;
+    sqlite3_prepare_v2(_db, "SELECT value FROM settings WHERE key = ?",
+                       -1, &stmt, nullptr);
+    sqlite3_bind_text(stmt, 1, key.c_str(), key.size(), SQLITE_TRANSIENT);
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char* v = (const char*)sqlite3_column_text(stmt, 0);
+        if (v) value = v;
+    }
+    sqlite3_finalize(stmt);
+    return value;
 }
 
 int Database::getEventCount(const std::string& room_id) {

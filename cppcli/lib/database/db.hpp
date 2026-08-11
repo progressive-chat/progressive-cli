@@ -52,6 +52,10 @@ public:
     // Fetch a single event by id (for reply-chain rendering). Returns false if absent.
     bool getEventById(const std::string& event_id, matrix::Event& ev);
     int getEventCount(const std::string& room_id);
+    // Persisted UI settings (the ascii client's Settings screen).
+    bool setSetting(const std::string& key, const std::string& value);
+    std::string getSetting(const std::string& key,
+                           const std::string& def = "");
     // Rooms where the user has an open invite (an m.room.member
     // "invite" event for them, with no later join). Matches the sender
     // by localpart so both "@user" and "@user:server" forms count.
