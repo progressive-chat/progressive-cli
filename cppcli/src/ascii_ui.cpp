@@ -315,6 +315,29 @@ std::string roomLastMsg(db::Database* db, const std::string& roomId) {
     return senderShort(ev.sender) + ": " + preview;
 }
 
+// The time of the last event in a room, for the room-list rows: today's
+// events show HH:MM (HH:MM:SS with the "time full" setting), older ones
+// show the date as MM-DD (Element Classic style).
+std::string roomLastTime(db::Database* db, const std::string& roomId, bool seconds) {
+    if (!db) return "";
+    auto evs = db->getEvents(roomId, 1);
+    if (evs.empty()) return "";
+    std::time_t t = static_cast<std::time_t>(evs.front().origin_server_ts / 1000);
+    std::tm tm{};
+    localtime_r(&t, &tm);
+    std::time_t nowT = std::time(nullptr);
+    std::tm nowTm{};
+    localtime_r(&nowT, &nowTm);
+    char buf[16];
+    if (tm.tm_year == nowTm.tm_year && tm.tm_yday == nowTm.tm_yday) {
+        std::snprintf(buf, sizeof(buf), seconds ? "%02d:%02d:%02d" : "%02d:%02d",
+                      tm.tm_hour, tm.tm_min, tm.tm_sec);
+    } else {
+        std::snprintf(buf, sizeof(buf), "%02d-%02d", tm.tm_mon + 1, tm.tm_mday);
+    }
+    return buf;
+}
+
 
 // Render links in a body: matrix.to permalinks become Element-style pills
 // ("📎 roomname · user: preview"), every other http(s) URL is shown in blue.
@@ -988,6 +1011,15 @@ std::string drawFrame(const UiState& st) {
                     name = (st.showEmoji ? "\xf0\x9f\x92\xac " : "[DM] ") + name;
                 std::string row = mark + name + " ("
                                 + std::to_string(roomMessageCount(st.db, rid)) + ")";
+                // The last-message time, right-aligned (Element Classic).
+                std::string ltime = roomLastTime(st.db, rid, st.showSeconds);
+                if (!ltime.empty()) {
+                    int tl = displayWidth(ltime);
+                    int baseW = W - tl - 1;
+                    row = clip(row, baseW);
+                    row += std::string(std::max(1, W - baseW - tl), ' ')
+                         + "\x1b[90m" + ltime + "\x1b[0m";
+                }
                 int thr = roomThreadCount(st.db, rid);
                 if (thr > 0) {
                     row += (st.showEmoji ? " \xf0\x9f\xa7\xb5" : " (threads ")
