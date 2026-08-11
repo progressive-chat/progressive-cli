@@ -467,6 +467,7 @@ struct UiState {
     int invites = 0;                     // open invites for the logged-in user
     std::string activeSpace;             // "" = all rooms; else a space id
     std::unordered_set<std::string> invited;  // rooms with an open invite
+    std::string focusEvent;              // event the viewport jumped to (goto)
     int mobileTab = 0;                   // 0=Rooms 1=Chat 2=People (bottom nav)
     int limitRows = 0;                   // settings "rows <n>": 0 = fit terminal
     std::map<std::string, std::string> presence; // member -> О/А/Ф letters
@@ -486,6 +487,42 @@ struct UiState {
     std::string threadRootId;   // for the single-thread view
     std::vector<matrix::Event> threadReplies;  // replies of threadRootId
 };
+
+// The row index of an event inside the chat timeline (day separators
+// included) — mirrors the centerRows builder in drawFrame.
+int centerRowIndexOf(const UiState& st, const std::string& eventId) {
+    int row = 0;
+    int64_t prevDay = -1;
+    for (const auto& ev : st.messages) {
+        int64_t day = ev.origin_server_ts / 86400000;
+        if (day != prevDay) { row++; prevDay = day; }
+        if (ev.event_id == eventId) return row;
+        // Rows this message occupies: multiline bodies and the reply
+        // chain are split into one row per line.
+        int nl = 0;
+        std::string body = eventBodyRaw(ev);
+        for (char ch : body) if (ch == '\n') nl++;
+        std::string rep = eventReplyTo(ev);
+        if (!rep.empty()) {
+            std::string cur = rep;
+            for (int lvl = 0; lvl < 3; ++lvl) {
+                matrix::Event prev;
+                if (!st.db->getEventById(cur, prev)) break;
+                if (eventBody(prev).empty()) break;
+                nl++;
+                auto rel = prev.content.find("m.relates_to");
+                if (rel == prev.content.end() || !rel->is_object()) break;
+                auto ir = rel->find("m.in_reply_to");
+                if (ir == rel->end() || !ir->is_object()) break;
+                auto eid = ir->find("event_id");
+                if (eid == ir->end() || !eid->is_string()) break;
+                cur = eid->get<std::string>();
+            }
+        }
+        row += nl + 1;
+    }
+    return -1;
+}
 
 // Element-style room list: most recently active rooms first.
 void sortRoomsByActivity(UiState& st) {
@@ -932,6 +969,18 @@ std::string drawFrame(const UiState& st) {
                 centerRows.push_back(sep);
                 prevDay = day;
             }
+            // Element-style "viewing an earlier message" banner, right
+            // above the jumped-to event.
+            if (!st.focusEvent.empty() && ev.event_id == st.focusEvent) {
+                std::string bar = "[44m â viewing event \xe2\x80\xb9"
+                                + clip(st.focusEvent, 24) + "\xe2\x80\xba"
+                                + " · 'newest' to return [0m";
+                if (static_cast<int>(bar.size()) < centerW) {
+                    bar = std::string(std::max(0, (centerW - static_cast<int>(bar.size())) / 2), ' ')
+                        + bar;
+                }
+                centerRows.push_back(bar);
+            }
             std::string row = renderRow(ev);
             if (!row.empty()) {
                 auto rIt = st.receipts.find(ev.event_id);
@@ -964,6 +1013,9 @@ std::string drawFrame(const UiState& st) {
                                   tm.tm_hour, tm.tm_min);
                 }
                 std::string first = buf + std::string(" ") + row;
+                if (ev.event_id == st.focusEvent) {
+                    first = "[7m â [0m" + first;
+                }
                 if (st.showIds) {
                     std::string shortId = ev.event_id.substr(0, 10);
                     if (!shortId.empty()) {
@@ -2805,6 +2857,56 @@ int cmdAsciiUi(const cli::Args& args) {
             }
             continue;
         }
+        // ---- goto: jump the chat viewport to an event ----
+        if (a.command == "goto") {
+            if (a.positional.empty()) {
+                std::cout << "Usage: goto <event_id>  |  newest (back to the latest)"
+                          << std::endl;
+                continue;
+            }
+            std::string q = a.positional[0];
+            matrix::Event target;
+            if (!st.db->getEventById(q, target)) {
+                st.statusNote = "event not in the cache: " + q;
+                std::cout << drawFrame(st) << std::flush;
+                continue;
+            }
+            if (st.currentRoomId != target.room_id) {
+                loadRoomIntoState(st, target.room_id);
+            }
+            bool inWindow = std::find_if(
+                st.messages.begin(), st.messages.end(),
+                [&](const matrix::Event& ev) { return ev.event_id == q; }) !=
+                st.messages.end();
+            if (!inWindow) {
+                st.limit = 5000;  // the event is older than the window
+                loadRoomIntoState(st, target.room_id);
+                inWindow = std::find_if(
+                    st.messages.begin(), st.messages.end(),
+                    [&](const matrix::Event& ev) { return ev.event_id == q; }) !=
+                    st.messages.end();
+            }
+            if (!inWindow) {
+                st.statusNote = "event exists but is outside the loaded window";
+                std::cout << drawFrame(st) << std::flush;
+                continue;
+            }
+            st.focusEvent = q;
+            int rowIdx = centerRowIndexOf(st, q);
+            st.scroll = rowIdx >= 0 ? std::max(0, rowIdx - 12) : 0;
+            if (st.mobile) st.mobileTab = 1;
+            st.statusNote = "viewing event ‹" + q + "› · 'newest' to return";
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        if (a.command == "newest") {
+            st.focusEvent.clear();
+            st.scroll = 1 << 30;  // clamped to the bottom in drawFrame
+            st.statusNote = "back to the latest messages";
+            if (st.mobile) st.mobileTab = 1;
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
         // ---- links: list the matrix.to permalinks of the current room ----
         if (a.command == "links") {
             const std::string marker = "matrix.to/#/";
@@ -2851,6 +2953,7 @@ int cmdAsciiUi(const cli::Args& args) {
                     }
                     std::cout << "\n      url: " << url
                               << "\n      read: raw " << roomPart << " " << evPart
+                              << "\n      jump: goto " << evPart
                               << "\n";
                     found++;
                     pos = spanEnd;

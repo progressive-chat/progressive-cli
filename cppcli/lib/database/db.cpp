@@ -344,7 +344,7 @@ std::vector<matrix::Event> Database::getEvents(const std::string& room_id, int l
 bool Database::getEventById(const std::string& event_id, matrix::Event& ev) {
     sqlite3_stmt* stmt;
     sqlite3_prepare_v2(_db,
-        "SELECT event_id, sender, type, content, origin_server_ts, state_key, redacts, decrypted_content "
+        "SELECT event_id, sender, type, content, origin_server_ts, state_key, redacts, decrypted_content, room_id "
         "FROM events WHERE event_id = ? LIMIT 1", -1, &stmt, nullptr);
     sqlite3_bind_text(stmt, 1, event_id.c_str(), event_id.size(), SQLITE_TRANSIENT);
     bool found = false;
@@ -363,6 +363,8 @@ bool Database::getEventById(const std::string& event_id, matrix::Event& ev) {
         if (sk) ev.state_key = sk;
         auto rd = (const char*)sqlite3_column_text(stmt, 6);
         if (rd) ev.redacts = rd;
+        auto rid8 = (const char*)sqlite3_column_text(stmt, 8);
+        if (rid8) ev.room_id = rid8;
     }
     sqlite3_finalize(stmt);
     return found;
