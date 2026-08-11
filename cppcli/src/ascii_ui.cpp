@@ -332,7 +332,8 @@ std::string roomLastMsg(db::Database* db, const std::string& roomId) {
 // The time of the last event in a room, for the room-list rows: today's
 // events show HH:MM (HH:MM:SS with the "time full" setting), older ones
 // show the date as MM-DD (Element Classic style).
-std::string roomLastTime(db::Database* db, const std::string& roomId, bool seconds) {
+std::string roomLastTime(db::Database* db, const std::string& roomId,
+                          bool seconds, bool clock12h) {
     if (!db) return "";
     auto evs = db->getEvents(roomId, 1);
     if (evs.empty()) return "";
@@ -344,8 +345,20 @@ std::string roomLastTime(db::Database* db, const std::string& roomId, bool secon
     localtime_r(&nowT, &nowTm);
     char buf[16];
     if (tm.tm_year == nowTm.tm_year && tm.tm_yday == nowTm.tm_yday) {
-        std::snprintf(buf, sizeof(buf), seconds ? "%02d:%02d:%02d" : "%02d:%02d",
-                      tm.tm_hour, tm.tm_min, tm.tm_sec);
+        if (clock12h) {
+            int h12 = tm.tm_hour % 12;
+            if (h12 == 0) h12 = 12;
+            const char* ap = tm.tm_hour < 12 ? "AM" : "PM";
+            if (seconds) {
+                std::snprintf(buf, sizeof(buf), "%d:%02d:%02d %s",
+                              h12, tm.tm_min, tm.tm_sec, ap);
+            } else {
+                std::snprintf(buf, sizeof(buf), "%d:%02d %s", h12, tm.tm_min, ap);
+            }
+        } else {
+            std::snprintf(buf, sizeof(buf), seconds ? "%02d:%02d:%02d" : "%02d:%02d",
+                          tm.tm_hour, tm.tm_min, tm.tm_sec);
+        }
     } else {
         std::snprintf(buf, sizeof(buf), "%02d-%02d", tm.tm_mon + 1, tm.tm_mday);
     }
@@ -477,6 +490,11 @@ struct UiState {
     bool showSeconds = false;   // HH:MM:SS instead of HH:MM
     bool showImages = false;    // full image cards (default: compact marker)
     bool showEmoji = true;      // emoji glyphs; off = ASCII fallbacks
+    bool showNames = true;      // Element: show sender display names
+    bool showReceipts = true;   // Element: show read receipts
+    bool showJoins = true;      // Element: show join/leave messages
+    bool showLinks = true;      // Element: enable URL previews (the pills)
+    bool clock12h = false;      // Element: 12/24-hour clock
     int leftPanelW = -1;        // -1 = default width, 0 = hidden
     int rightPanelW = -1;       // -1 = default width, 0 = hidden
     std::map<std::string, int> powerLevels;  // member -> power level
@@ -866,8 +884,10 @@ std::string drawFrame(const UiState& st) {
                        + (chain.empty() ? "" : "\n" + chain);
             } else if (center.empty()) {
                 center = "[" + senderShort(ev.sender) + "] "
-                       + highlightUrls(renderPermalinks(highlightMentions(body),
-                                                        st.rooms, st.db));
+                       + (st.showLinks
+                              ? highlightUrls(renderPermalinks(
+                                    highlightMentions(body), st.rooms, st.db))
+                              : highlightMentions(body));
                 int rc = 0;
                 for (const auto& ev2 : st.messages) {
                     if (eventThreadRoot(ev2) == ev.event_id) rc++;
@@ -981,10 +1001,23 @@ std::string drawFrame(const UiState& st) {
                 }
                 centerRows.push_back(bar);
             }
+            // Element "show join/leave messages": member events are system
+            // rows — hidden when the setting is off.
+            if (!st.showJoins && ev.type == "m.room.member") continue;
             std::string row = renderRow(ev);
+            if (!st.showNames) {
+                // Element compact mode: hide the sender nicknames.
+                if (row.size() >= 2 && row[0] == '[') {
+                    auto close = row.find(']');
+                    if (close != std::string::npos && close + 2 <= row.size() &&
+                        row[close + 1] == ' ') {
+                        row = row.substr(close + 2);
+                    }
+                }
+            }
             if (!row.empty()) {
                 auto rIt = st.receipts.find(ev.event_id);
-                if (rIt != st.receipts.end() && !rIt->second.empty()) {
+                if (st.showReceipts && rIt != st.receipts.end() && !rIt->second.empty()) {
                     std::string rd = rIt->second;
                     // Cap the reader list: 'a b c +5' instead of the full set.
                     std::string shown;
@@ -1005,7 +1038,18 @@ std::string drawFrame(const UiState& st) {
                 std::tm tm{};
                 localtime_r(&t, &tm);
                 char buf[16];
-                if (st.showSeconds) {
+                int h12 = tm.tm_hour % 12;
+                if (h12 == 0) h12 = 12;
+                const char* ap = tm.tm_hour < 12 ? "AM" : "PM";
+                if (st.clock12h) {
+                    if (st.showSeconds) {
+                        std::snprintf(buf, sizeof(buf), "%d:%02d:%02d %s",
+                                      h12, tm.tm_min, tm.tm_sec, ap);
+                    } else {
+                        std::snprintf(buf, sizeof(buf), "%d:%02d %s",
+                                      h12, tm.tm_min, ap);
+                    }
+                } else if (st.showSeconds) {
                     std::snprintf(buf, sizeof(buf), "%02d:%02d:%02d",
                                   tm.tm_hour, tm.tm_min, tm.tm_sec);
                 } else {
@@ -1136,7 +1180,8 @@ std::string drawFrame(const UiState& st) {
                 std::vector<std::string>& dst = st.invited.count(rid) ? invRows : allRows;
                 std::string row = mark + "[1m" + name + "[0m ("
                                 + std::to_string(roomMessageCount(st.db, rid)) + ")";
-                std::string ltime = roomLastTime(st.db, rid, st.showSeconds);
+                std::string ltime = roomLastTime(st.db, rid, st.showSeconds,
+                                                   st.clock12h);
                 if (!ltime.empty()) {
                     int tl = displayWidth(ltime);
                     int baseW = W - tl - 1;
@@ -1445,6 +1490,11 @@ int cmdAsciiUi(const cli::Args& args) {
     try { st.leftPanelW = std::stoi(dbi.getSetting("panel_left", "-1")); } catch (...) {}
     try { st.rightPanelW = std::stoi(dbi.getSetting("panel_right", "-1")); } catch (...) {}
     st.mobile = dbi.getSetting("mobile") == "1";
+    st.showNames = dbi.getSetting("names") != "0";
+    st.showReceipts = dbi.getSetting("receipts") != "0";
+    st.showJoins = dbi.getSetting("joins") != "0";
+    st.showLinks = dbi.getSetting("links") != "0";
+    st.clock12h = dbi.getSetting("clock12h") == "1";
     // Demo/offline: static presence so the right panel shows the letters.
     // The demo events carry short senders ("@alice") — key both forms.
     if (st.accountLabel == "demo (offline)") {
@@ -2874,15 +2924,77 @@ int cmdAsciiUi(const cli::Args& args) {
             }
             continue;
         }
+        // ---- names on|off: Element "show sender display names" ----
+        if (a.command == "names") {
+            if (a.positional.empty() || a.positional[0] == "on") st.showNames = true;
+            else st.showNames = false;
+            dbi.setSetting("names", st.showNames ? "1" : "0");
+            st.statusNote = std::string("sender names ") + (st.showNames ? "shown" : "hidden");
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- receipts on|off: Element "show read receipts" ----
+        if (a.command == "receipts") {
+            if (a.positional.empty() || a.positional[0] == "on") st.showReceipts = true;
+            else st.showReceipts = false;
+            dbi.setSetting("receipts", st.showReceipts ? "1" : "0");
+            st.statusNote = std::string("read receipts ") + (st.showReceipts ? "shown" : "hidden");
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- joins on|off: Element "show join/leave messages" ----
+        if (a.command == "joins") {
+            if (a.positional.empty() || a.positional[0] == "on") st.showJoins = true;
+            else st.showJoins = false;
+            dbi.setSetting("joins", st.showJoins ? "1" : "0");
+            st.statusNote = std::string("join/leave rows ") + (st.showJoins ? "shown" : "hidden");
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- links on|off: Element "enable URL previews" ----
+        if (a.command == "links") {
+            if (a.positional.empty() || a.positional[0] == "on") st.showLinks = true;
+            else st.showLinks = false;
+            dbi.setSetting("links", st.showLinks ? "1" : "0");
+            st.statusNote = std::string("link pills ") + (st.showLinks ? "shown" : "raw URLs");
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- clock 12h|24h: Element "24-hour clock" ----
+        if (a.command == "clock") {
+            std::string v = a.positional.empty() ? "12h" : a.positional[0];
+            st.clock12h = (v == "12h" || v == "12" || v == "am");
+            dbi.setSetting("clock12h", st.clock12h ? "1" : "0");
+            st.statusNote = std::string("clock ") + (st.clock12h ? "12h (AM/PM)" : "24h");
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
         // ---- settings: the current client settings ----
         if (a.command == "settings") {
-            std::cout << "Settings (persisted across sessions):" << std::endl;
+            std::cout << "Settings — Element equivalents in parentheses:" << std::endl;
             std::cout << "  time      " << (st.showSeconds ? "HH:MM:SS" : "HH:MM")
                       << "       (time full / time off)" << std::endl;
+            std::cout << "  clock     " << (st.clock12h ? "12h (AM/PM)" : "24h")
+                      << "       (clock 12h / clock 24h)  [Element: 24-hour clock]"
+                      << std::endl;
+            std::cout << "  names     " << (st.showNames ? "shown" : "hidden")
+                      << "       (names on / names off)"
+                      << "  [Element: show sender display names]" << std::endl;
+            std::cout << "  receipts  " << (st.showReceipts ? "shown" : "hidden")
+                      << "  (receipts on / receipts off)"
+                      << "  [Element: show read receipts]" << std::endl;
+            std::cout << "  joins     " << (st.showJoins ? "shown" : "hidden")
+                      << "       (joins on / joins off)"
+                      << "  [Element: show join/leave messages]" << std::endl;
+            std::cout << "  links     " << (st.showLinks ? "pills" : "raw URLs")
+                      << "      (links on / links off)"
+                      << "  [Element: URL previews]" << std::endl;
             std::cout << "  ids       " << (st.showIds ? "shown" : "hidden")
-                      << "       (ids on / ids off)" << std::endl;
+                      << "       (ids on / ids off)"
+                      << "  [Element: developer mode]" << std::endl;
             std::cout << "  images    " << (st.showImages ? "full cards" : "compact")
-                      << "  (images on / images off)" << std::endl;
+                      << "  (images on / images off)"
+                      << "  [Element: show images & videos]" << std::endl;
             std::cout << "  emoji     " << (st.showEmoji ? "on" : "off (ASCII)")
                       << "       (emoji on / emoji off)" << std::endl;
             std::cout << "  rows      " << (st.limitRows > 0
