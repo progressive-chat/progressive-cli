@@ -282,8 +282,8 @@ std::string senderShort(const std::string& sender) {
     return s;
 }
 
-// Render matrix.to permalinks like Element's link pills: replace the
-// raw URL with a highlighted "📎 roomname — user: preview" span.
+// Render links in a body: matrix.to permalinks become Element-style pills
+// ("📎 roomname · user: preview"), every other http(s) URL is shown in blue.
 std::string renderPermalinks(const std::string& body,
                              const std::vector<nlohmann::json>& rooms,
                              db::Database* db) {
@@ -335,6 +335,34 @@ std::string renderPermalinks(const std::string& body,
         out += pill + "\x1b[0m";
         pos = spanEnd;
         if (pos > body.size()) break;
+    }
+    return out;
+}
+
+// Blue-highlight the plain http(s):// URLs in a text span (the matrix.to
+// ones are handled by renderPermalinks).
+std::string highlightUrls(const std::string& text) {
+    std::string out;
+    size_t pos = 0;
+    const char* schemes[] = {"http://", "https://"};
+    while (pos < text.size()) {
+        size_t best = std::string::npos;
+        for (auto* s : schemes) {
+            size_t hit = text.find(s, pos);
+            if (hit != std::string::npos && (best == std::string::npos || hit < best)) {
+                best = hit;
+            }
+        }
+        if (best == std::string::npos) {
+            out += text.substr(pos);
+            break;
+        }
+        out += text.substr(pos, best - pos);
+        size_t j = best;
+        while (j < text.size() && text[j] != ' ' && text[j] != '\n' &&
+               text[j] != ',' && text[j] != ')' && text[j] != ']') j++;
+        out += "\x1b[34m" + text.substr(best, j - best) + "\x1b[0m";
+        pos = j;
     }
     return out;
 }
@@ -657,7 +685,8 @@ std::string drawFrame(const UiState& st) {
                        + (chain.empty() ? "" : "\n" + chain);
             } else if (center.empty()) {
                 center = "[" + senderShort(ev.sender) + "] "
-                       + renderPermalinks(highlightMentions(body), st.rooms, st.db);
+                       + highlightUrls(renderPermalinks(highlightMentions(body),
+                                                        st.rooms, st.db));
                 int rc = 0;
                 for (const auto& ev2 : st.messages) {
                     if (eventThreadRoot(ev2) == ev.event_id) rc++;
