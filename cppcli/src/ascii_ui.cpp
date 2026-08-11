@@ -77,13 +77,14 @@ int displayWidth(const std::string& s) {
     for (size_t i = 0; i < s.size();) {
         unsigned char c = static_cast<unsigned char>(s[i]);
         if (c == 0x1b) {
-            // ANSI escape sequence — zero width. Skip to the final byte
-            // ('m' for SGR, otherwise the CSI terminator).
+            // ANSI escape sequence — zero width. Consume the CSI
+            // introducer '[' + the parameter bytes + the final byte.
             i++;
+            if (i < s.size() && s[i] == '[') i++;
             while (i < s.size()) {
                 unsigned char e = static_cast<unsigned char>(s[i]);
                 i++;
-                if ((e >= 0x40 && e <= 0x7E) || e == 0x1b) break;
+                if (e >= 0x40 && e <= 0x7E) break;  // the final byte
             }
             continue;
         }
