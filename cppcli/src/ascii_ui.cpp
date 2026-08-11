@@ -143,6 +143,72 @@ std::string clip(const std::string& s, int width) {
     return out;
 }
 
+// Word-wrap a string to a display width. ANSI escape sequences are
+// atomic and zero-width; long words are hard-split; explicit \n forces
+// a line break. Continuation lines are indented by the caller.
+std::vector<std::string> wrapText(const std::string& s, int width) {
+    std::vector<std::string> lines;
+    std::string cur;
+    std::string word;
+    auto flushWord = [&]() {
+        if (word.empty()) return;
+        int wd = displayWidth(word);
+        if (!cur.empty() && displayWidth(cur) + 1 + wd > width) {
+            lines.push_back(cur);
+            cur.clear();
+        }
+        if (!cur.empty()) cur += " ";
+        cur += word;
+        word.clear();
+    };
+    size_t i = 0;
+    while (i < s.size()) {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        if (c == 0x1b) {
+            size_t j = i + 1;
+            if (j < s.size() && s[j] == '[') j++;
+            while (j < s.size()) {
+                unsigned char e = static_cast<unsigned char>(s[j]);
+                j++;
+                if (e >= 0x40 && e <= 0x7E) break;
+            }
+            word += s.substr(i, j - i);
+            i = j;
+            continue;
+        }
+        if (c == ' ' || c == '\n') {
+            flushWord();
+            if (c == '\n') {
+                lines.push_back(cur);
+                cur.clear();
+            } else if (!cur.empty() && displayWidth(cur) + 1 > width) {
+                lines.push_back(cur);
+                cur.clear();
+            }
+            i++;
+            continue;
+        }
+        size_t len = 1;
+        if (c >= 0x80) {
+            if ((c & 0xE0) == 0xC0) len = 2;
+            else if ((c & 0xF0) == 0xE0) len = 3;
+            else if ((c & 0xF8) == 0xF0) len = 4;
+        }
+        word += s.substr(i, len);
+        if (displayWidth(word) >= width) {  // hard-split overlong words
+            flushWord();
+            if (!cur.empty()) {
+                lines.push_back(cur);
+                cur.clear();
+            }
+        }
+        i += len;
+    }
+    flushWord();
+    if (!cur.empty()) lines.push_back(cur);
+    return lines;
+}
+
 // Pad to a display width (cells, not bytes — keeps the | columns aligned
 // with emoji/CJK in the rows).
 std::string pad(const std::string& s, int width) {
@@ -1066,12 +1132,14 @@ std::string drawFrame(const UiState& st) {
                         first += "  \u2039" + shortId + "\u203a";
                     }
                 }
-                // Multiline bodies: split into one row per line, the
-                // continuation lines indented under the first.
-                std::vector<std::string> lines;
-                std::string cur;
-                std::istringstream iss(first);
-                while (std::getline(iss, cur, '\n')) lines.push_back(cur);
+                // Long messages wrap to the panel width (word-aware, ANSI
+                // safe); the continuation lines are indented under the
+                // first one.
+                // Wrap to the panel width minus the 8-cell continuation
+                // indent, so indented lines never overflow the panel and
+                // words are never cut at the edge.
+                int wrapW = (st.mobile ? W : centerW) - 8;
+                std::vector<std::string> lines = wrapText(first, wrapW);
                 for (size_t li = 0; li < lines.size(); ++li) {
                     if (li == 0) {
                         centerRows.push_back(lines[0]);
@@ -1539,7 +1607,7 @@ int cmdAsciiUi(const cli::Args& args) {
     if (args.options.count("no-emoji")) st.showEmoji = false;
     if (args.options.count("limit")) {
         try { st.limit = std::stoi(args.options.at("limit")); } catch (...) {}
-        loadRoomIntoState(st, st.currentRoomId);
+        loadRoomIntoState(st, std::string(st.currentRoomId));
     }
     if (args.options.count("right")) {
         std::string r = args.options.at("right");
@@ -1751,7 +1819,7 @@ int cmdAsciiUi(const cli::Args& args) {
         }
         if (a.command == "rooms") {
             st.rooms = dbi.listRooms();
-            loadRoomIntoState(st, st.currentRoomId);
+            loadRoomIntoState(st, std::string(st.currentRoomId));
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
@@ -1817,7 +1885,7 @@ int cmdAsciiUi(const cli::Args& args) {
             if (st.mobile) st.mobileTab = 0;
             st.rooms = dbi.listRooms();
             sortRoomsByActivity(st);
-            loadRoomIntoState(st, st.currentRoomId);
+            loadRoomIntoState(st, std::string(st.currentRoomId));
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
@@ -1826,7 +1894,7 @@ int cmdAsciiUi(const cli::Args& args) {
             st.scroll = 0;
             st.rooms = dbi.listRooms();
             sortRoomsByActivity(st);
-            loadRoomIntoState(st, st.currentRoomId);
+            loadRoomIntoState(st, std::string(st.currentRoomId));
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
@@ -1900,7 +1968,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 std::cout << "[offline] file recorded locally: " << path
                           << " -> " << roomId << std::endl;
             }
-            loadRoomIntoState(st, st.currentRoomId);
+            loadRoomIntoState(st, std::string(st.currentRoomId));
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
