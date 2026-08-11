@@ -1623,6 +1623,18 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
         {"!offtopic:demo.local","#offtopic","Off-topic banter",54},
         {"!announce:demo.local","#announcements","Official announcements",120},
         {"!help:demo.local","#help","Support chat",31},
+        {"!linux:demo.local","#linux","Linux & FOSS",66},
+        {"!crypto:demo.local","#crypto","Crypto & Web3",42},
+        {"!photography:demo.local","#photography","Camera talk",19},
+        {"!travel:demo.local","#travel","Travel stories",27},
+        {"!food:demo.local","#food","Cooking & recipes",35},
+        {"!books:demo.local","#books","Reading club",14},
+        {"!fitness:demo.local","#fitness","Workout logs",22},
+        {"!movies:demo.local","#movies","Film & TV",48},
+        {"!programming:demo.local","#programming","Code help",61},
+        {"!rust:demo.local","#rust","Rust lang",33},
+        {"!matrix:demo.local","#matrix","Matrix protocol",17},
+        {"!meta:demo.local","#meta","About this demo",8},
         {"!dm_alice:demo.local","Alice","",2},
         {"!dm_bob:demo.local","Bob","",2},
         {"!dm_carol:demo.local","Carol","",2},
@@ -1711,6 +1723,41 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
             ts -= 3600000;
             day++;
         }
+        struct { const char* room; const char* sender; const char* body; } extra2[] = {
+            {"!linux:demo.local", "@dave", "My kernel finally boots. https://kernel.org/"},
+            {"!linux:demo.local", "@you", "@dave nice! Which distro?"},
+            {"!crypto:demo.local", "@frank", "Don't trust, verify. https://bitcoin.org/"},
+            {"!photography:demo.local", "@carol", "Golden hour today, look at the light."},
+            {"!photography:demo.local", "@you", "Great shot! Settings?"},
+            {"!travel:demo.local", "@erin", "Just landed in Tokyo! https://japan.travel/"},
+            {"!travel:demo.local", "@you", "Envious @erin! Send photos."},
+            {"!food:demo.local", "@bob", "Tonight: ramen from scratch."},
+            {"!food:demo.local", "@you", "Recipe? I need that in my life."},
+            {"!books:demo.local", "@grace", "The manual is a masterpiece."},
+            {"!fitness:demo.local", "@you", "Morning run done. 5k."},
+            {"!movies:demo.local", "@alice", "Anyone seen the new sci-fi?"},
+            {"!movies:demo.local", "@you", "Yes! The plot twist though."},
+            {"!programming:demo.local", "@dave", "Segfault at line 42. Classic."},
+            {"!programming:demo.local", "@you", "@dave use-after-free probably."},
+            {"!rust:demo.local", "@frank", "Borrow checker saves the day again."},
+            {"!rust:demo.local", "@you", "It compiles first try. @frank today was a good day."},
+            {"!matrix:demo.local", "@alice", "The protocol spec is here: https://spec.matrix.org/"},
+            {"!matrix:demo.local", "@you", "Reading it now, @alice."},
+            {"!meta:demo.local", "@you", "This is the demo room, try everything here."},
+        };
+        for (auto& m : extra2) {
+            matrix::Event ev;
+            ev.event_id = "$demo_" + std::to_string(ts);
+            ev.room_id = m.room; ev.sender = m.sender;
+            ev.type = "m.room.message";
+            ev.content = {{"body", m.body}, {"msgtype", "m.text"}};
+            ev.origin_server_ts = ts;
+            dbi.insertEvent(ev);
+            if (day % 2 == 1) ts -= dayMs;
+            ts -= 3600000;
+            day++;
+        }
+
         // A file + an audio in the design room.
         matrix::Event f;
         f.event_id = "$demo_" + std::to_string(ts);
@@ -1917,6 +1964,23 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
             {"!help:demo.local", "@you", "join"},
             {"!offtopic:demo.local", "@erin", "join"},
             {"!announce:demo.local", "@you", "join"},
+            {"!linux:demo.local", "@dave", "join"},
+            {"!linux:demo.local", "@grace", "join"},
+            {"!linux:demo.local", "@you", "join"},
+            {"!crypto:demo.local", "@frank", "join"},
+            {"!photography:demo.local", "@carol", "join"},
+            {"!travel:demo.local", "@erin", "join"},
+            {"!travel:demo.local", "@you", "join"},
+            {"!food:demo.local", "@bob", "join"},
+            {"!books:demo.local", "@grace", "join"},
+            {"!fitness:demo.local", "@you", "join"},
+            {"!movies:demo.local", "@alice", "join"},
+            {"!programming:demo.local", "@dave", "join"},
+            {"!programming:demo.local", "@you", "join"},
+            {"!rust:demo.local", "@frank", "join"},
+            {"!matrix:demo.local", "@alice", "join"},
+            {"!matrix:demo.local", "@you", "join"},
+            {"!meta:demo.local", "@you", "join"},
         };
         for (auto& m : mem) {
             matrix::Event ev;
