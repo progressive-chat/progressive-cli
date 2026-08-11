@@ -1702,6 +1702,32 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
         dbi.upsertRoom(j, r.id);
     }
 
+    // Two demo spaces (Element-style): the rooms are tagged with their
+    // parent space, the space rooms themselves are marked is_space.
+    const char* techSpace = "!space_tech:demo.local";
+    const char* socialSpace = "!space_social:demo.local";
+    dbi.upsertRoom({{"name", "Tech Space"}, {"topic", "Dev, code & hardware"},
+                    {"member_count", 312}, {"is_space", 1}}, techSpace);
+    dbi.upsertRoom({{"name", "Social Space"}, {"topic", "Life, fun & creativity"},
+                    {"member_count", 198}, {"is_space", 1}}, socialSpace);
+    {
+        const char* tech[] = {"!dev","!programming","!rust","!linux","!databases",
+            "!webdev","!backend","!frontend","!ml","!ai-art","!crypto","!security",
+            "!privacy","!networking","!homelab","!selfhosting","!git","!editors",
+            "!shell","!distro-talk","!dotfiles","!hardware","!retro-gaming", nullptr};
+        const char* social[] = {"!general","!announcements","!help","!meta","!random",
+            "!offtopic","!sports","!chess","!games","!music","!music-production",
+            "!synth","!jazz","!metal","!classical","!techno","!dnb","!art","!pixelart",
+            "!photography","!travel","!food","!books","!fitness","!movies","!hiking",
+            "!camping","!cycling","!running","!climbing","!yoga","!vegan","!baking",
+            "!coffee","!tea","!beer","!wine","!boardgames","!podcasts","!memes",
+            "!diy","!finance","!science","!math","!physics","!chemistry","!biology",
+            "!astronomy","!history","!philosophy","!languages","!writing","!poetry",
+            "!design", nullptr};
+        for (const char** c = tech; *c; ++c) dbi.tagRoom(std::string(*c) + ":demo.local", techSpace);
+        for (const char** c = social; *c; ++c) dbi.tagRoom(std::string(*c) + ":demo.local", socialSpace);
+    }
+
     // Matrix origin_server_ts is milliseconds since epoch
     int64_t ts = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
@@ -2125,6 +2151,8 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
             {"!matrix:demo.local", "@alice", "join"},
             {"!matrix:demo.local", "@you", "join"},
             {"!meta:demo.local", "@you", "join"},
+            {"!space_tech:demo.local", "@you", "join"},
+            {"!space_social:demo.local", "@you", "join"},
             // Open invites for @you — the header shows the invite count.
             {"!design:demo.local", "@you", "invite"},
             {"!crypto:demo.local", "@you", "invite"},

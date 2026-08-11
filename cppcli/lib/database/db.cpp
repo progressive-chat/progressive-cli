@@ -44,7 +44,24 @@ bool Database::exec(const std::string& sql) {
     return true;
 }
 
+static bool tableHasColumn(sqlite3* db, const char* table, const char* col) {
+    sqlite3_stmt* stmt = nullptr;
+    std::string sql = std::string("PRAGMA table_info(") + table + ")";
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return false;
+    bool found = false;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char* name = (const char*)sqlite3_column_text(stmt, 1);
+        if (name && std::string(name) == col) { found = true; break; }
+    }
+    sqlite3_finalize(stmt);
+    return found;
+}
+
 void Database::migrate() {
+    if (!tableHasColumn(_db, "rooms", "is_space")) {
+        exec("ALTER TABLE rooms ADD COLUMN is_space INTEGER DEFAULT 0");
+        exec("ALTER TABLE rooms ADD COLUMN space TEXT DEFAULT ''");
+    }
     exec(R"(
         CREATE TABLE IF NOT EXISTS account (
             key TEXT PRIMARY KEY,
@@ -161,13 +178,15 @@ bool Database::upsertRoom(const std::string& room_id, const matrix::SyncRoom& ro
 bool Database::upsertRoom(const json& room_data, const std::string& room_id) {
     sqlite3_stmt* stmt;
     const char* sql = R"(
-        INSERT OR REPLACE INTO rooms(room_id, name, topic, avatar_url, member_count)
-        VALUES(?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO rooms(room_id, name, topic, avatar_url, member_count, is_space, space)
+        VALUES(?, ?, ?, ?, ?, ?, ?)
     )";
     std::string name = room_data.value("name", "");
     std::string topic = room_data.value("topic", "");
     std::string avatar = room_data.value("avatar_url", "");
     int count = room_data.value("member_count", 0);
+    int isSpace = room_data.value("is_space", 0) ? 1 : 0;
+    std::string space = room_data.value("space", "");
 
     sqlite3_prepare_v2(_db, sql, -1, &stmt, nullptr);
     sqlite3_bind_text(stmt, 1, room_id.c_str(), room_id.size(), SQLITE_TRANSIENT);
@@ -175,6 +194,20 @@ bool Database::upsertRoom(const json& room_data, const std::string& room_id) {
     sqlite3_bind_text(stmt, 3, topic.c_str(), topic.size(), SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 4, avatar.c_str(), avatar.size(), SQLITE_TRANSIENT);
     sqlite3_bind_int(stmt, 5, count);
+    sqlite3_bind_int(stmt, 6, isSpace);
+    sqlite3_bind_text(stmt, 7, space.c_str(), space.size(), SQLITE_TRANSIENT);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return true;
+}
+
+bool Database::tagRoom(const std::string& room_id, const std::string& space) {
+    if (!_db) return false;
+    sqlite3_stmt* stmt = nullptr;
+    sqlite3_prepare_v2(_db, "UPDATE rooms SET space = ? WHERE room_id = ?",
+                       -1, &stmt, nullptr);
+    sqlite3_bind_text(stmt, 1, space.c_str(), space.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, room_id.c_str(), room_id.size(), SQLITE_TRANSIENT);
     sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     return true;
@@ -202,7 +235,7 @@ bool Database::clearRoom(const std::string& room_id) {
 std::vector<json> Database::listRooms() {
     std::vector<json> result;
     sqlite3_stmt* stmt;
-    sqlite3_prepare_v2(_db, "SELECT room_id, name, topic, avatar_url, is_direct, is_encrypted, member_count FROM rooms ORDER BY name", -1, &stmt, nullptr);
+    sqlite3_prepare_v2(_db, "SELECT room_id, name, topic, avatar_url, is_direct, is_encrypted, member_count, is_space, space FROM rooms ORDER BY name", -1, &stmt, nullptr);
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         json r;
         auto rid = (const char*)sqlite3_column_text(stmt, 0);
@@ -216,6 +249,9 @@ std::vector<json> Database::listRooms() {
         r["is_direct"] = sqlite3_column_int(stmt, 4) != 0;
         r["is_encrypted"] = sqlite3_column_int(stmt, 5) != 0;
         r["member_count"] = sqlite3_column_int(stmt, 6);
+        r["is_space"] = sqlite3_column_int(stmt, 7) != 0;
+        auto sp = (const char*)sqlite3_column_text(stmt, 8);
+        if (sp) r["space"] = sp; else r["space"] = "";
         result.push_back(r);
     }
     sqlite3_finalize(stmt);

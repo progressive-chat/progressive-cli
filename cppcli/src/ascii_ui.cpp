@@ -442,6 +442,7 @@ struct UiState {
     bool staticFrame = false;            // --static: one-shot frame
     bool mobile = false;                 // smartphone: stacked sections
     int invites = 0;                     // open invites for the logged-in user
+    std::string activeSpace;             // "" = all rooms; else a space id
     int mobileTab = 0;                   // 0=Rooms 1=Chat 2=People (bottom nav)
     int limitRows = 0;                   // settings "rows <n>": 0 = fit terminal
     std::map<std::string, std::string> presence; // member -> О/А/Ф letters
@@ -610,12 +611,36 @@ std::string drawFrame(const UiState& st) {
     // Smartphone top bar: the logged-in account, the open-invite count and
     // where we are (the space name, or "all rooms" when everything shows).
     if (st.mobile) {
+        std::string where = "all rooms";
+        if (!st.activeSpace.empty()) {
+            for (const auto& r : st.rooms) {
+                if (r.value("room_id", "") == st.activeSpace) {
+                    where = r.value("name", "space");
+                    break;
+                }
+            }
+        }
         std::string top = st.accountLabel;
         if (st.invites > 0) {
             top += " \xf0\x9f\x93\xa5 " + std::to_string(st.invites) + " invites";
         }
-        top += " \xc2\xb7 all rooms";
+        top += " \xc2\xb7 " + where;
         out += "\x1b[90m  " + clip(top, W - 2) + "\x1b[0m\n";
+        // The space strip (Element Classic): one tap selects the space.
+        if (st.mobileTab == 0) {
+            std::string strip = " [all] ";
+            for (const auto& r : st.rooms) {
+                if (!r.value("is_space", false)) continue;
+                bool active = r.value("room_id", "") == st.activeSpace;
+                std::string label = clip(r.value("name", "?"), 12);
+                if (active) {
+                    strip += "\x1b[7m" + label + "\x1b[0m ";
+                } else {
+                    strip += label + " ";
+                }
+            }
+            out += "\x1b[36m" + clip(strip, W - 2) + "\x1b[0m\n";
+        }
     }
     std::string leftHeader = st.accountLabel + " — Rooms";
     std::string headRoom = " " + roomName;
@@ -644,8 +669,13 @@ std::string drawFrame(const UiState& st) {
 
     // Room filter (find <q> / space <q>): the left panel shows only the
     // matching rooms; the center/members keep their own (unfiltered) view.
+    // Space rooms are never listed as rooms; with a space selected only
+    // that space's children show.
     std::vector<const nlohmann::json*> visible;
     for (const auto& r : st.rooms) {
+        if (r.value("is_space", false)) continue;
+        if (!st.activeSpace.empty() &&
+            r.value("space", "") != st.activeSpace) continue;
         if (st.roomFilter.empty()) {
             visible.push_back(&r);
         } else {
@@ -1350,6 +1380,7 @@ int cmdAsciiUi(const cli::Args& args) {
     // Settings for the one-shot frame: --rows N (frame height) and
     // --scroll N (viewport offset) — the room list scrolls within it.
     if (args.options.count("mobile")) st.mobile = true;
+    if (args.options.count("space")) st.activeSpace = args.options.at("space");
     // Element Classic: with a room on the command line, open it in the
     // Chat tab right away; without one, land on the Rooms tab.
     if (st.mobile && !initial.empty()) st.mobileTab = 1;
@@ -1549,6 +1580,56 @@ int cmdAsciiUi(const cli::Args& args) {
             else if (a.command == "top") st.scroll = 0;
             else if (a.command == "bottom") st.scroll = contentRows(st);
             else st.scroll += step;  // "scroll <n>" = down by n
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        if (a.command == "spaces") {
+            st.mobileTab = 0;
+            st.scroll = 0;
+            std::string list = "spaces: all";
+            for (const auto& r : st.rooms) {
+                if (r.value("is_space", false)) list += ", " + r.value("name", "?");
+            }
+            st.statusNote = list;
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        if (a.command == "space") {
+            std::string q = a.positional.empty() ? "all" : a.positional[0];
+            st.activeSpace.clear();
+            if (q != "all" && q != "-") {
+                // Only spaces are matchable (so "tech" never hits "#techno").
+                for (const auto& r : st.rooms) {
+                    if (!r.value("is_space", false)) continue;
+                    std::string id = r.value("room_id", "");
+                    std::string name = r.value("name", "");
+                    if (id == q || name == q) {
+                        st.activeSpace = id;
+                        break;
+                    }
+                }
+                if (st.activeSpace.empty()) {
+                    std::string ql = q;
+                    for (auto& ch : ql) ch = static_cast<char>(std::tolower(ch));
+                    for (const auto& r : st.rooms) {
+                        if (!r.value("is_space", false)) continue;
+                        std::string name = r.value("name", "");
+                        std::string nl = name;
+                        for (auto& ch : nl) ch = static_cast<char>(std::tolower(ch));
+                        if (nl.find(ql) != std::string::npos) {
+                            st.activeSpace = r.value("room_id", "");
+                            break;
+                        }
+                    }
+                }
+                if (st.activeSpace.empty()) {
+                    st.statusNote = "no such space: " + q;
+                }
+            }
+            st.scroll = 0;
+            if (st.mobile) st.mobileTab = 0;
+            st.rooms = dbi.listRooms();
+            loadRoomIntoState(st, st.currentRoomId);
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
