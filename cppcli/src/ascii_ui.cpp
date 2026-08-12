@@ -719,12 +719,21 @@ std::map<std::string, std::string> minimalUniqueNames(
 
 void loadRoomIntoState(UiState& st, const std::string& query) {
     st.currentRoomId.clear();
+    // Accept the id ("!room:server"), the full alias ("#alias:server") or
+    // the short alias/name ("#alias", "alias").
+    std::string q = query;
+    if (q.size() > 1 && q[0] == '#') {
+        auto colon = q.find(':');
+        if (colon != std::string::npos) q = q.substr(0, colon);  // #alias:server -> #alias
+    }
     for (const auto& r : st.rooms) {
         std::string id = r.value("room_id", "");
         std::string name = r.value("name", "");
-        if (id == query || name == query ||
-            (!query.empty() && (name.find(query) == 0 ||
-                                 id.find(query) != std::string::npos))) {
+        bool byId = !q.empty() && q[0] == '!' && id == q;
+        bool byName = !q.empty() && (name == q ||
+                                     name.find(q) == 0 ||
+                                     name.find(q) != std::string::npos);
+        if (byId || byName) {
             st.currentRoomId = id;
             break;
         }
@@ -2292,11 +2301,28 @@ int cmdAsciiUi(const cli::Args& args) {
             st.activeSpace.clear();
             if (q != "all" && q != "-") {
                 // Only spaces are matchable (so "tech" never hits "#techno").
+                std::string qq = q;
+                if (qq.size() > 1 && qq[0] == '#') {
+                    auto colon = qq.find(':');
+                    if (colon != std::string::npos) qq = qq.substr(0, colon);
+                }
+                // "#space_tech" / "#space_tech:demo.local" also match the
+                // id's localpart ("!space_tech:demo.local").
+                std::string localpart;
+                if (!qq.empty() && qq[0] == '#') {
+                    localpart = qq.substr(1);
+                    auto colon = localpart.find(':');
+                    if (colon != std::string::npos) {
+                        localpart = localpart.substr(0, colon);
+                    }
+                }
                 for (const auto& r : st.rooms) {
                     if (!r.value("is_space", false)) continue;
                     std::string id = r.value("room_id", "");
                     std::string name = r.value("name", "");
-                    if (id == q || name == q) {
+                    if (id == qq || name == qq ||
+                        (!localpart.empty() &&
+                         id.find(localpart) != std::string::npos)) {
                         st.activeSpace = id;
                         break;
                     }
