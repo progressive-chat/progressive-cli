@@ -466,6 +466,37 @@ void ChatView::drawInput(Screen& screen, int x, int y, int w) {
 
 void ChatView::handleKey(Screen& screen, int key) {
 #ifdef HAS_NCURSES
+    if (key == KEY_MOUSE) {
+        // Mouse: click a room to open it, click anywhere else to focus
+        // the composer, wheel scrolls the messages.
+        MEVENT me;
+        if (getmouse(&me) != OK) return;
+        if (me.bstate & (BUTTON1_PRESSED | BUTTON1_RELEASED | BUTTON1_CLICKED)) {
+            int room_w = std::min(25, screen.width() / 4);
+            if (me.x >= 1 && me.x < room_w && me.y >= 2) {
+                std::lock_guard<std::mutex> lock(_mutex);
+                int idx = _roomScroll + (me.y - 2);
+                if (idx >= 0 && idx < static_cast<int>(_rooms.size())) {
+                    _activeRoom = _rooms[idx].id;
+                    _unreadCounts[_activeRoom] = 0;
+                    _msgScroll = 0;
+                    _needsRedraw = true;
+                    if (_roomSwitchCb) _roomSwitchCb(_activeRoom);
+                }
+            } else {
+                _focus = FOCUS_INPUT;
+                _needsRedraw = true;
+            }
+        } else if (me.bstate & BUTTON4_PRESSED) {
+            // Wheel up: older messages.
+            if (_msgScroll > 0) { _msgScroll--; _needsRedraw = true; }
+        } else if (me.bstate & BUTTON5_PRESSED) {
+            // Wheel down: newer messages.
+            _msgScroll++;
+            _needsRedraw = true;
+        }
+        return;
+    }
     if (_focus == FOCUS_INPUT) {
         switch (key) {
         case '\n': case '\r': case KEY_ENTER:

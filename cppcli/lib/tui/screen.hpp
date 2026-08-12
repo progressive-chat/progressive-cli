@@ -35,13 +35,21 @@ public:
     void drawTextCentered(int y, const std::string& text);
     void drawStatusBar(const std::string& text);
 
+    // Mouse support (ncurses): on = clicks/wheel handled, off = keys only.
+    void setMouseEnabled(bool on);
+    bool mouseEnabled() const { return _mouseEnabled; }
+
     int getKey();
+
+private:
+    void applyMouseMask();
 
 private:
 #ifdef HAS_NCURSES
     WINDOW* _win = nullptr;
 #endif
     bool _initialized = false;
+    bool _mouseEnabled = false;
 };
 
 }} // namespace matrixcli::tui

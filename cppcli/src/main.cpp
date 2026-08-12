@@ -2808,6 +2808,9 @@ int cmdTUI(const matrixcli::cli::Args& args) {
 
             // Load TUI config
             tui::TUIConfig tuiCfg = tui::TUIConfig::load("matrixcli.toml");
+            if (args.options.count("no-mouse")) tuiCfg.mouse_enabled = false;
+            if (args.options.count("mouse")) tuiCfg.mouse_enabled = true;
+            screen.setMouseEnabled(tuiCfg.mouse_enabled);
 
             // Command handler for slash commands
             chat.setCommandHandler([&](const std::string& cmd, const std::string& args) {
@@ -3357,6 +3360,31 @@ int cmdTUI(const matrixcli::cli::Args& args) {
                 roomInfos.push_back(ri);
             }
             chat.setRooms(roomInfos);
+
+            // Load the cached history from the local DB into the chat:
+            // the demo TUI works offline (the chat was stuck on
+            // "(no messages)" forever), and the real client shows its
+            // history instantly instead of waiting for the first sync.
+            for (auto& ri : roomInfos) {
+                auto evs = dbi.getEvents(ri.id, 100);
+                if (evs.empty()) continue;
+                std::vector<tui::MessageInfo> msgs;
+                for (auto& ev : evs) {
+                    if (ev.type != "m.room.message" && ev.type != "m.sticker") continue;
+                    tui::MessageInfo mi;
+                    std::string s = ev.sender;
+                    auto at = s.find(':');
+                    if (at != std::string::npos) s = s.substr(1, at - 1);
+                    else if (!s.empty() && s[0] == '@') s = s.substr(1);
+                    mi.sender = s;
+                    mi.body = ev.content.value("body", "(no body)");
+                    mi.event_id = ev.event_id;
+                    mi.is_notice = ev.content.value("msgtype", "") == "m.notice";
+                    mi.is_encrypted = ev.content.value("msgtype", "") == "m.encrypted";
+                    msgs.push_back(mi);
+                }
+                if (!msgs.empty()) chat.setMessages(ri.id, msgs);
+            }
 
             // Set up send callback with retry queue
             chat.setSendCallback([&](const std::string& body) {

@@ -30,6 +30,7 @@ void Screen::init() {
     }
     _win = stdscr;
     _initialized = true;
+    applyMouseMask();
 #else
     _initialized = true;
 #endif
@@ -96,6 +97,23 @@ void Screen::drawStatusBar(const std::string& text) {
     bar.resize(width() - 1, ' ');
     mvwaddstr(_win, h - 1, 0, bar.c_str());
     wattroff(_win, A_REVERSE);
+#endif
+}
+
+void Screen::setMouseEnabled(bool on) {
+    _mouseEnabled = on;
+    applyMouseMask();
+}
+
+void Screen::applyMouseMask() {
+#ifdef HAS_NCURSES
+    if (_initialized) {
+        mousemask(_mouseEnabled
+                      ? (BUTTON1_PRESSED | BUTTON1_RELEASED | BUTTON1_CLICKED |
+                         BUTTON4_PRESSED | BUTTON5_PRESSED)
+                      : 0,
+                  nullptr);
+    }
 #endif
 }
 
