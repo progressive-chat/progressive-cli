@@ -97,8 +97,8 @@ int displayWidth(const std::string& s) {
             for (int k = 0; k < 3 && i < s.size(); ++k) { cp = (cp << 6) | (s[i] & 0x3F); i += 1; } }
         else { i += 1; continue; }
         int cw = cpWidth(cp);
-        // U+FE0F (variation selector 16) turns the base into an emoji
-        // presentation — the pair renders 2 cells wide (e.g. ❤️).
+        // A base + U+FE0F (variation selector 16, UTF-8 EF B8 8F) is an
+        // emoji presentation — the pair renders 2 cells wide (e.g. ❤️).
         if (i + 2 < s.size() && (unsigned char)s[i] == 0xEF &&
             (unsigned char)s[i + 1] == 0xB8 && (unsigned char)s[i + 2] == 0x8F) {
             cw = 2;
@@ -142,8 +142,7 @@ std::string clip(const std::string& s, int width) {
             if (i + 3 < s.size()) { cp = (cp << 6) | (s[i + 1] & 0x3F); cp = (cp << 6) | (s[i + 2] & 0x3F); cp = (cp << 6) | (s[i + 3] & 0x3F); len = 4; } }
         else { i += 1; continue; }
         int cw = cpWidth(cp);
-        // The U+FE0F variation selector pairs with the base as an emoji
-        // presentation (2 cells) and is copied along.
+        // Copy the pair (base + U+FE0F) together as a 2-cell emoji.
         size_t vs = 0;
         if (i + len + 2 < s.size() &&
             (unsigned char)s[i + len] == 0xEF &&
