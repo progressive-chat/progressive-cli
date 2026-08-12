@@ -63,11 +63,9 @@ int cpWidth(uint32_t cp) {
     if (cp >= 0xFE30 && cp <= 0xFE4F) return 2;
     if (cp >= 0xFF00 && cp <= 0xFF60) return 2;
     if (cp >= 0xFFE0 && cp <= 0xFFE6) return 2;
-    if (cp >= 0x2190 && cp <= 0x21FF) return 1;      // text arrows ←↑→ are 1
-    if (cp >= 0x2713 && cp <= 0x2717) return 1;      // ✓ ✗ text marks are 1
-    if (cp >= 0x2600 && cp <= 0x27BF) return 2;      // ⤷❤📌 etc.
-    // 0x2B00-0x2BFF (⭕ ⭐ …) renders 1 cell in most terminals (glibc
-    // wcwidth agrees) — keep the pipes aligned there.
+    // Misc symbols and dingbats (❤ ♪ ★ ⤷ ⭕ …) render ONE cell in the
+    // phone terminal (glibc wcwidth agrees) — counting them 2 broke the
+    // pipes. Only the real emoji blocks and CJK are wide.
     if (cp >= 0x1F000 && cp <= 0x1FAFF) return 2;    // emoji blocks
     return 1;
 }
@@ -98,7 +96,15 @@ int displayWidth(const std::string& s) {
         else if ((c & 0xF8) == 0xF0) { cp = c & 0x07; i += 1;
             for (int k = 0; k < 3 && i < s.size(); ++k) { cp = (cp << 6) | (s[i] & 0x3F); i += 1; } }
         else { i += 1; continue; }
-        w += cpWidth(cp);
+        int cw = cpWidth(cp);
+        // U+FE0F (variation selector 16) turns the base into an emoji
+        // presentation — the pair renders 2 cells wide (e.g. ❤️).
+        if (i + 2 < s.size() && (unsigned char)s[i] == 0xEF &&
+            (unsigned char)s[i + 1] == 0xB8 && (unsigned char)s[i + 2] == 0x8F) {
+            cw = 2;
+            i += 3;
+        }
+        w += cw;
     }
     return w;
 }
@@ -136,10 +142,20 @@ std::string clip(const std::string& s, int width) {
             if (i + 3 < s.size()) { cp = (cp << 6) | (s[i + 1] & 0x3F); cp = (cp << 6) | (s[i + 2] & 0x3F); cp = (cp << 6) | (s[i + 3] & 0x3F); len = 4; } }
         else { i += 1; continue; }
         int cw = cpWidth(cp);
+        // The U+FE0F variation selector pairs with the base as an emoji
+        // presentation (2 cells) and is copied along.
+        size_t vs = 0;
+        if (i + len + 2 < s.size() &&
+            (unsigned char)s[i + len] == 0xEF &&
+            (unsigned char)s[i + len + 1] == 0xB8 &&
+            (unsigned char)s[i + len + 2] == 0x8F) {
+            vs = 3;
+            cw = 2;
+        }
         if (w + cw > width) break;
-        out.append(s, i, len);
+        out.append(s, i, len + vs);
         w += cw;
-        i += len;
+        i += len + vs;
     }
     return out;
 }
