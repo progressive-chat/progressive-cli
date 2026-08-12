@@ -555,7 +555,7 @@ struct UiState {
     std::string currentRoomId;
     std::vector<matrix::Event> messages; // getEvents(currentRoom)
     std::vector<std::string> members;    // unique senders in the room
-    int limit = 25;
+    int limit = 200;  // the chat window — deep enough for the threads
     int scroll = 0;                      // viewport offset (rows)
     int leftScroll = 0;                  // rooms-list-only offset (desktop)
     int threadsScroll = 0;               // threads-section offset (desktop right)
