@@ -215,6 +215,8 @@ std::string pad(const std::string& s, int width) {
     std::string out = clip(s, width);
     int w = displayWidth(out);
     if (w < width) out.append(static_cast<size_t>(width - w), ' ');
+    // Never leave a color open at the panel edge (clipped rows).
+    if (out.find('') != std::string::npos) out += "[0m";
     return out;
 }
 
@@ -321,13 +323,6 @@ int64_t parseDayMs(const std::string& s) {
 }
 
 // Short preview of another event's body (for reply/thread indentation).
-std::string eventPreview(db::Database* db, const std::string& roomId,
-                         const std::string& eventId) {
-    matrix::Event ev;
-    if (!db || eventId.empty() || !db->getEventById(eventId, ev)) return "";
-    std::string b = eventBody(ev);
-    return clip(b, 24);
-}
 
 // The raw body with newlines preserved (for multiline rendering).
 std::string eventBodyRaw(const matrix::Event& ev) {
@@ -362,38 +357,15 @@ std::string senderShort(const std::string& sender) {
     return s;
 }
 
-// The last message of a room as a preview row ("alice: Welcome!") like
-// Element's room list. Message events only; joins/lefts show a short
-// summary; rooms with nothing at all get an empty string.
-std::string roomLastMsg(db::Database* db, const std::string& roomId) {
-    if (!db) return "";
-    auto evs = db->getEvents(roomId, 1);
-    if (evs.empty()) return "";
-    const matrix::Event& ev = evs.front();
-    std::string preview;
-    if (ev.type == "m.room.message" || ev.type == "m.sticker") {
-        preview = eventBody(ev);
-        std::string mt = ev.content.value("msgtype", "");
-        if (mt == "m.file") preview = "📄 " + preview;
-        else if (mt == "m.audio") preview = "🎵 " + preview;
-        else if (mt == "m.image") preview = "🖼 " + preview;
-        else if (mt == "m.poll.start") {
-            auto q = ev.content.find("question");
-            if (q != ev.content.end() && q->is_object()) {
-                auto t = q->find("text");
-                if (t != q->end() && t->is_string()) preview = t->get<std::string>();
-            }
-            preview = "⭕ poll: " + preview;
-        }
-        else if (ev.type == "m.sticker") preview = "👻 " + preview;
-    } else if (ev.type == "m.room.member") {
-        std::string m = ev.content.value("membership", "");
-        preview = (m == "leave" || m == "ban") ? "❌ left"
-                                               : "✓ joined";
-    }
-    if (preview.empty()) return "";
-    return senderShort(ev.sender) + ": " + preview;
+std::string eventPreview(db::Database* db, const std::string& roomId,
+                         const std::string& eventId) {
+    matrix::Event ev;
+    if (!db || eventId.empty() || !db->getEventById(eventId, ev)) return "";
+    std::string b = eventBody(ev);
+    if (b.empty()) return "";
+    return senderShort(ev.sender) + ": " + clip(b, 24);
 }
+
 
 // The time of the last event in a room, for the room-list rows: today's
 // events show HH:MM (HH:MM:SS with the "time full" setting), older ones
@@ -498,6 +470,7 @@ std::string renderPermalinks(const std::string& body,
     return out;
 }
 
+
 // Blue-highlight the plain http(s):// URLs in a text span (the matrix.to
 // ones are handled by renderPermalinks).
 std::string highlightUrls(const std::string& text) {
@@ -526,6 +499,42 @@ std::string highlightUrls(const std::string& text) {
     return out;
 }
 
+// The last message of a room as a preview row ("alice: Welcome!") like
+// Element's room list. Message events only; joins/lefts show a short
+// summary; rooms with nothing at all get an empty string. Permalinks in
+// the body render as pills, so a linked message's sender is visible too.
+std::string roomLastMsg(db::Database* db, const std::string& roomId,
+                        const std::vector<nlohmann::json>& rooms) {
+    if (!db) return "";
+    auto evs = db->getEvents(roomId, 1);
+    if (evs.empty()) return "";
+    const matrix::Event& ev = evs.front();
+    std::string preview;
+    if (ev.type == "m.room.message" || ev.type == "m.sticker") {
+        std::string body = eventBody(ev);
+        std::string mt = ev.content.value("msgtype", "");
+        if (mt == "m.file") preview = "📄 " + body;
+        else if (mt == "m.audio") preview = "🎵 " + body;
+        else if (mt == "m.image") preview = "🖼 " + body;
+        else if (mt == "m.poll.start") {
+            auto q = ev.content.find("question");
+            if (q != ev.content.end() && q->is_object()) {
+                auto t = q->find("text");
+                if (t != q->end() && t->is_string()) preview = t->get<std::string>();
+            }
+            preview = "⭕ poll: " + preview;
+        }
+        else if (ev.type == "m.sticker") preview = "👻 " + body;
+        else preview = highlightUrls(renderPermalinks(body, rooms, db));
+    } else if (ev.type == "m.room.member") {
+        std::string m = ev.content.value("membership", "");
+        preview = (m == "leave" || m == "ban") ? "❌ left"
+                                               : "✓ joined";
+    }
+    if (preview.empty()) return "";
+    return senderShort(ev.sender) + ": " + preview;
+}
+
 
 // ---- the frame ----
 
@@ -545,6 +554,8 @@ struct UiState {
     bool mobile = false;                 // smartphone: stacked sections
     int invites = 0;                     // open invites for the logged-in user
     std::string activeSpace;             // "" = all rooms; else a space id
+    bool autoPanels = true;             // size the panels to the content
+    int membersMode = 0;                // 0 auto, 1 horizontal, 2 vertical list
     std::unordered_set<std::string> invited;  // rooms with an open invite
     std::string focusEvent;              // event the viewport jumped to (goto)
     int mobileTab = 0;                   // 0=Rooms 1=Chat 2=People (bottom nav)
@@ -780,12 +791,59 @@ void loadRoomIntoState(UiState& st, const std::string& query) {
     }
 }
 
+// One member row: presence letter (colored), power badge, name.
+std::string memberRowStr(const UiState& st, const std::string& mem) {
+    std::string m = senderShort(mem);
+    auto pit = st.presence.find(mem);
+    if (pit != st.presence.end() && !pit->second.empty()) {
+        const char* pc = "\x1b[32m";
+        if (pit->second == "A") pc = "\x1b[33m";
+        else if (pit->second == "F") pc = "\x1b[31m";
+        m = std::string(pc) + "[" + pit->second + "]" + "\x1b[0m " + m;
+    }
+    auto pl = st.powerLevels.find(mem);
+    if (pl != st.powerLevels.end()) {
+        if (pl->second >= 100) m = "\xf0\x9f\x91\x91 " + m;
+        else if (pl->second >= 50) m = "\xf0\x9f\x9b\xa1 " + m;
+    }
+    return m;
+}
+
 std::string drawFrame(const UiState& st) {
     int W = terminalWidth();
+    // Few members: the user list goes horizontal (one row across the top
+    // of the chat) and the right panel is freed - auto mode, or forced.
+    bool horizMembers = !st.mobile && st.rightPanel == 0 &&
+        (st.membersMode == 1 ||
+         (st.membersMode == 0 && st.members.size() <= 4));
     int leftW = st.leftPanelW >= 0 ? st.leftPanelW : std::max(22, W / 5);
     int rightW = st.rightPanelW >= 0 ? st.rightPanelW : std::max(16, W / 6);
     if (st.leftPanelW == 0) leftW = 0;
     if (st.rightPanelW == 0) rightW = 0;
+    if (st.autoPanels) {
+        // Size the panels to the content so the screen is filled: the
+        // room panel fits the longest room row plus a preview budget, the
+        // member panel fits the longest member name.
+        int longestRoom = 0;
+        for (const auto& r : st.rooms) {
+            if (r.value("is_space", false)) continue;
+            std::string nm = roomDisplayName(r);
+            if (r.value("is_direct", false)) nm = "  " + nm;
+            int w = displayWidth(nm) + 6;
+            if (w > longestRoom) longestRoom = w;
+        }
+        leftW = std::max(22, std::min(46, longestRoom + 28));
+        if (horizMembers) {
+            rightW = 0;
+        } else {
+            int longestMember = 0;
+            for (const auto& mem : st.members) {
+                int w = displayWidth(memberRowStr(st, mem));
+                if (w > longestMember) longestMember = w;
+            }
+            rightW = std::max(10, std::min(34, longestMember + 3));
+        }
+    }
     int centerW = std::max(20, W - leftW - rightW - 2);
 
     std::string roomName = "No room selected";
@@ -898,7 +956,17 @@ std::string drawFrame(const UiState& st) {
     // ("── Today ──") and the message time, so the viewport scrolls over
     // them like a real timeline.
     std::vector<std::string> centerRows;
-    {
+   
+        // Horizontal members: one dim row across the top of the chat.
+        if (horizMembers && !st.members.empty()) {
+            std::string mrow;
+            for (const auto& mem : st.members) {
+                if (!mrow.empty()) mrow += " · ";
+                mrow += memberRowStr(st, mem);
+            }
+            centerRows.push_back("[90m" + clip(mrow, centerW - 2) + "[0m");
+        }
+ {
         auto renderRow = [&](const matrix::Event& ev) -> std::string {
             std::string center;
             std::string body = eventBodyRaw(ev);
@@ -1222,23 +1290,7 @@ std::string drawFrame(const UiState& st) {
     std::vector<std::string> rightRows;
     if (st.rightPanel == 0) {
         for (const auto& mem : st.members) {
-            std::string m = senderShort(mem);
-            auto pit = st.presence.find(mem);
-            if (pit != st.presence.end() && !pit->second.empty()) {
-                // O online = green, A away = yellow, F offline = red.
-                const char* pc = "\x1b[32m";
-                if (pit->second == "A") pc = "\x1b[33m";
-                else if (pit->second == "F") pc = "\x1b[31m";
-                m = std::string(pc) + "[" + pit->second + "]"
-                  + "\x1b[0m " + m;
-            }
-            // Power-level badges: 👑 admin (100+), 🛡 mod (50+).
-            auto pl = st.powerLevels.find(mem);
-            if (pl != st.powerLevels.end()) {
-                if (pl->second >= 100) m = "\xf0\x9f\x91\x91 " + m;  // 👑
-                else if (pl->second >= 50) m = "\xf0\x9f\x9b\xa1 " + m;  // 🛡
-            }
-            rightRows.push_back(m);
+            rightRows.push_back(memberRowStr(st, mem));
         }
     } else if (st.rightPanel == 1) {
         // The room's threads: the roots with their reply counts.
@@ -1330,7 +1382,7 @@ std::string drawFrame(const UiState& st) {
                          + std::to_string(thr) + (st.showEmoji ? "" : ")");
                 }
                 dst.push_back(row);
-                std::string last = roomLastMsg(st.db, rid);
+                std::string last = roomLastMsg(st.db, rid, st.rooms);
                 if (!last.empty()) {
                     auto colon = last.find(':');
                     std::string who = colon == std::string::npos
@@ -1338,8 +1390,9 @@ std::string drawFrame(const UiState& st) {
                     std::string what = colon == std::string::npos
                                            ? "" : last.substr(colon + 1);
                     dst.push_back("  " + who + "[90m"
-                                + clip(highlightMentions(what),
-                                       std::max(2, W - 3 - displayWidth(who)))
+                                + highlightMentions(
+                                      clip(what,
+                                           std::max(2, W - 3 - displayWidth(who))))
                                 + "[0m");
                 }
             }
@@ -1425,7 +1478,7 @@ std::string drawFrame(const UiState& st) {
                       + (st.showEmoji ? "" : ")");
             }
             // The last message preview, like Element's room list.
-            std::string last = roomLastMsg(st.db, rid);
+            std::string last = roomLastMsg(st.db, rid, st.rooms);
             if (!last.empty()) {
                 int avail = leftW - displayWidth(left) - 1;
                 if (avail >= 6) {
@@ -1438,7 +1491,7 @@ std::string drawFrame(const UiState& st) {
                     int used = displayWidth(who) + 2;  // the " · " separator
                     left += " [90m· [0m" + who
                           + "[90m"
-                          + clip(highlightMentions(what), std::max(2, avail - used))
+                          + highlightMentions(clip(what, std::max(2, avail - used)))
                           + "[0m";
                 }
             }
@@ -1636,6 +1689,8 @@ int cmdAsciiUi(const cli::Args& args) {
     st.showJoins = dbi.getSetting("joins") != "0";
     st.showLinks = dbi.getSetting("links") != "0";
     st.clock12h = dbi.getSetting("clock12h") == "1";
+    st.autoPanels = dbi.getSetting("panel_auto") != "0";
+    try { st.membersMode = std::stoi(dbi.getSetting("members_mode", "0")); } catch (...) {}
     // Demo/offline: static presence so the right panel shows the letters.
     // The demo events carry short senders ("@alice") — key both forms.
     if (st.accountLabel == "demo (offline)") {
@@ -2658,6 +2713,22 @@ int cmdAsciiUi(const cli::Args& args) {
         }
         // ---- members: list the room's members with FULL ids ----
         if (a.command == "members") {
+            // The user-list layout setting (a room query would never match
+            // these words, so they are safe to intercept).
+            if (a.positional.size() >= 1 &&
+                (a.positional[0] == "horizontal" || a.positional[0] == "list" ||
+                 a.positional[0] == "vertical" || a.positional[0] == "auto")) {
+                std::string v = a.positional[0];
+                if (v == "horizontal") st.membersMode = 1;
+                else if (v == "list" || v == "vertical") st.membersMode = 2;
+                else st.membersMode = 0;
+                dbi.setSetting("members_mode", std::to_string(st.membersMode));
+                st.statusNote = std::string("members ") +
+                                (st.membersMode == 1 ? "horizontal" :
+                                 st.membersMode == 2 ? "vertical list" : "auto");
+                std::cout << drawFrame(st) << std::flush;
+                continue;
+            }
             std::string q = a.positional.empty() ? st.currentRoomId : a.positional[0];
             std::string roomId = q;
             for (const auto& r : st.rooms) {
@@ -2706,6 +2777,16 @@ int cmdAsciiUi(const cli::Args& args) {
             st.statusNote = std::string("panel ") + which + " = " + v;
             dbi.setSetting(which == "left" ? "panel_left" : "panel_right",
                            std::to_string(w));
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- panel auto on|off: size the panels to the content ----
+        if (a.command == "panel" && a.positional.size() >= 2 &&
+            a.positional[0] == "auto") {
+            st.autoPanels = (a.positional[1] != "off" && a.positional[1] != "0");
+            dbi.setSetting("panel_auto", st.autoPanels ? "1" : "0");
+            st.statusNote = std::string("panel auto ") +
+                            (st.autoPanels ? "on (sized to content)" : "off (fixed)");
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
@@ -3209,6 +3290,13 @@ int cmdAsciiUi(const cli::Args& args) {
             std::cout << "  panel R   " << (st.rightPanelW == 0 ? "off"
                         : st.rightPanelW > 0 ? std::to_string(st.rightPanelW) : "default")
                       << "  (panel right <off|on|width>)" << std::endl;
+            std::cout << "  panels    " << (st.autoPanels ? "auto (sized to content)"
+                                                          : "fixed")
+                      << "  (panel auto on / panel auto off)" << std::endl;
+            std::cout << "  members   "
+                      << (st.membersMode == 1 ? "horizontal" :
+                          st.membersMode == 2 ? "vertical list" : "auto")
+                      << "  (members <horizontal|list|auto>)" << std::endl;
             std::cout << "  layout    " << (st.mobile ? "smartphone (stacked)"
                                                       : "desktop (three columns)")
                       << "  (mobile on / mobile off)" << std::endl;
