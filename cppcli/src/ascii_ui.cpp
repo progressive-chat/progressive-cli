@@ -879,6 +879,42 @@ std::vector<std::string> roomThreadList(db::Database* db,
     return thr;
 }
 
+// Resolve a space query (id, #alias[:server] or name) to the space id.
+std::string resolveSpace(const std::vector<nlohmann::json>& rooms,
+                         const std::string& q) {
+    std::string qq = q;
+    if (qq.size() > 1 && qq[0] == '#') {
+        auto colon = qq.find(':');
+        if (colon != std::string::npos) qq = qq.substr(0, colon);
+    }
+    std::string localpart;
+    if (!qq.empty() && qq[0] == '#') {
+        localpart = qq.substr(1);
+        auto colon = localpart.find(':');
+        if (colon != std::string::npos) localpart = localpart.substr(0, colon);
+    }
+    for (const auto& r : rooms) {
+        if (!r.value("is_space", false)) continue;
+        std::string id = r.value("room_id", "");
+        std::string name = r.value("name", "");
+        if (id == qq || name == qq ||
+            (!localpart.empty() && id.find(localpart) != std::string::npos)) {
+            return id;
+        }
+    }
+    std::string ql = q;
+    for (auto& ch : ql) ch = static_cast<char>(std::tolower(ch));
+    for (const auto& r : rooms) {
+        if (!r.value("is_space", false)) continue;
+        std::string name = r.value("name", "");
+        for (auto& ch : name) ch = static_cast<char>(std::tolower(ch));
+        if (!ql.empty() && name.find(ql) != std::string::npos) {
+            return r.value("room_id", "");
+        }
+    }
+    return "";
+}
+
 // One member row: presence letter (colored), power badge, name.
 // Users without a presence entry (server with presence off, not yet
 // fetched) show as offline [F] — never without a letter.
@@ -2050,7 +2086,9 @@ int cmdAsciiUi(const cli::Args& args) {
     // Settings for the one-shot frame: --rows N (frame height) and
     // --scroll N (viewport offset) — the room list scrolls within it.
     if (args.options.count("mobile")) st.mobile = true;
-    if (args.options.count("space")) st.activeSpace = args.options.at("space");
+    if (args.options.count("space")) {
+        st.activeSpace = resolveSpace(st.rooms, args.options.at("space"));
+    }
     // Temporary one-shot layout flags (not persisted, unlike the REPL
     // commands panel/members/rows which save to the settings table):
     // --panel-left/--panel-right <off|on|width>, --panel-auto on|off,
@@ -2300,58 +2338,8 @@ int cmdAsciiUi(const cli::Args& args) {
             std::string q = a.positional.empty() ? "all" : a.positional[0];
             st.activeSpace.clear();
             if (q != "all" && q != "-") {
-                // Only spaces are matchable (so "tech" never hits "#techno").
-                std::string qq = q;
-                if (qq.size() > 1 && qq[0] == '#') {
-                    auto colon = qq.find(':');
-                    if (colon != std::string::npos) qq = qq.substr(0, colon);
-                }
-                // "#space_tech" / "#space_tech:demo.local" also match the
-                // id's localpart ("!space_tech:demo.local").
-                std::string localpart;
-                if (!qq.empty() && qq[0] == '#') {
-                    localpart = qq.substr(1);
-                    auto colon = localpart.find(':');
-                    if (colon != std::string::npos) {
-                        localpart = localpart.substr(0, colon);
-                    }
-                }
-                for (const auto& r : st.rooms) {
-                    if (!r.value("is_space", false)) continue;
-                    std::string id = r.value("room_id", "");
-                    std::string name = r.value("name", "");
-                    if (id == qq || name == qq ||
-                        (!localpart.empty() &&
-                         id.find(localpart) != std::string::npos)) {
-                        st.activeSpace = id;
-                        break;
-                    }
-                }
-                if (st.activeSpace.empty()) {
-                    std::string ql = q;
-                    for (auto& ch : ql) ch = static_cast<char>(std::tolower(ch));
-                    for (const auto& r : st.rooms) {
-                        if (!r.value("is_space", false)) continue;
-                        std::string name = r.value("name", "");
-                        std::string nl = name;
-                        for (auto& ch : nl) ch = static_cast<char>(std::tolower(ch));
-                        if (nl.find(ql) != std::string::npos) {
-                            st.activeSpace = r.value("room_id", "");
-                            break;
-                        }
-                    }
-                }
-                if (st.activeSpace.empty()) {
-                    st.statusNote = "no such space: " + q;
-                }
+                st.activeSpace = resolveSpace(st.rooms, q);
             }
-            st.scroll = 0;
-            if (st.mobile) st.mobileTab = 0;
-            st.rooms = dbi.listRooms();
-            sortRoomsByActivity(st);
-            loadRoomIntoState(st, std::string(st.currentRoomId));
-            std::cout << drawFrame(st) << std::flush;
-            continue;
         }
         if (a.command == "rooms" && st.mobile) {
             st.mobileTab = 0;

@@ -2855,6 +2855,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
         if (args.options.count("panel-right")) uiArgs.options["panel-right"] = args.options.at("panel-right");
         if (args.options.count("panel-auto")) uiArgs.options["panel-auto"] = args.options.at("panel-auto");
         if (args.options.count("members")) uiArgs.options["members"] = args.options.at("members");
+        if (args.options.count("space")) uiArgs.options["space"] = args.options.at("space");
         return matrixcli::cmdAsciiUi(uiArgs);
     }
 
