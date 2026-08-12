@@ -58,7 +58,7 @@ jobs:
 
       - name: Smoke test under qemu
         run: |
-          wget -q https://github.com/multiarch/qemu-user-static/releases/latest/download/qemu-arm-static
+          python3 -c "import urllib.request; urllib.request.urlretrieve('https://github.com/multiarch/qemu-user-static/releases/latest/download/qemu-arm-static', 'qemu-arm-static')"
           chmod +x qemu-arm-static
           ./qemu-arm-static build/src/matrixcli about
 
