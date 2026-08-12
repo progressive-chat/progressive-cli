@@ -2383,86 +2383,87 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
 
     // Fresh activity: each room gets a recent message so the room list
     // shows times (HH:MM) and sorts by recency (a few rooms keep their
-    // older last messages for the mixed date/time look).
+    // older last messages for the mixed date/time look). Every body is
+    // unique per room — no two rooms share the same last message.
     {
         struct { const char* room; const char* sender; const char* body; } fresh[] = {
-            {"!podcasts:demo.local", "@bob", "@you ping — sync call at 15:00, join us!"},
-            {"!general:demo.local", "@dave", "Coffee is ready, join in."},
-            {"!dm_bob:demo.local", "@grace", "Interesting thread in #general."},
-            {"!techno:demo.local", "@charlie", "Testing something new today."},
-            {"!history:demo.local", "@erin", "Please review my PR, @you"},
-            {"!hiking:demo.local", "@alice", "Coffee is ready, join in."},
-            {"!chess:demo.local", "@carol", "Interesting thread in #general."},
-            {"!dm_dave:demo.local", "@frank", "Testing something new today."},
-            {"!movies:demo.local", "@bob", "Morning, everyone!"},
-            {"!distro-talk:demo.local", "@dave", "Coffee is ready, join in."},
-            {"!hardware:demo.local", "@grace", "Interesting thread in #general."},
-            {"!ml:demo.local", "@charlie", "Testing something new today."},
-            {"!security:demo.local", "@erin", "Morning, everyone!"},
-            {"!selfhosting:demo.local", "@alice", "Coffee is ready, join in."},
-            {"!cycling:demo.local", "@carol", "Interesting thread in #general."},
-            {"!homelab:demo.local", "@frank", "Testing something new today."},
-            {"!sports:demo.local", "@bob", "Morning, everyone!"},
-            {"!biology:demo.local", "@dave", "Coffee is ready, join in."},
-            {"!linux:demo.local", "@grace", "Interesting thread in #general."},
-            {"!travel:demo.local", "@charlie", "Testing something new today."},
-            {"!dotfiles:demo.local", "@erin", "Morning, everyone!"},
-            {"!camping:demo.local", "@alice", "Coffee is ready, join in."},
-            {"!privacy:demo.local", "@carol", "Interesting thread in #general."},
-            {"!languages:demo.local", "@frank", "Testing something new today."},
-            {"!dev:demo.local", "@bob", "Morning, everyone!"},
-            {"!ai-art:demo.local", "@dave", "Coffee is ready, join in."},
-            {"!chemistry:demo.local", "@grace", "Interesting thread in #general."},
-            {"!retro-gaming:demo.local", "@charlie", "Testing something new today."},
-            {"!programming:demo.local", "@erin", "Morning, everyone!"},
-            {"!math:demo.local", "@alice", "Coffee is ready, join in."},
-            {"!networking:demo.local", "@carol", "Interesting thread in #general."},
-            {"!memes:demo.local", "@frank", "Testing something new today."},
-            {"!dm_alice:demo.local", "@bob", "Morning, everyone!"},
-            {"!beer:demo.local", "@dave", "Coffee is ready, join in."},
-            {"!dm_carol:demo.local", "@grace", "Interesting thread in #general."},
-            {"!synth:demo.local", "@charlie", "Testing something new today."},
-            {"!databases:demo.local", "@erin", "Morning, everyone!"},
-            {"!finance:demo.local", "@alice", "Coffee is ready, join in."},
-            {"!running:demo.local", "@carol", "Interesting thread in #general."},
-            {"!rust:demo.local", "@frank", "Testing something new today."},
-            {"!announcements:demo.local", "@bob", "Morning, everyone!"},
-            {"!dnb:demo.local", "@dave", "Coffee is ready, join in."},
-            {"!random:demo.local", "@grace", "Interesting thread in #general."},
-            {"!climbing:demo.local", "@charlie", "Testing something new today."},
-            {"!writing:demo.local", "@erin", "Morning, everyone!"},
-            {"!shell:demo.local", "@alice", "Coffee is ready, join in."},
-            {"!poetry:demo.local", "@carol", "Interesting thread in #general."},
-            {"!jazz:demo.local", "@frank", "Testing something new today."},
-            {"!classical:demo.local", "@bob", "Morning, everyone!"},
-            {"!backend:demo.local", "@dave", "Coffee is ready, join in."},
-            {"!pixelart:demo.local", "@grace", "Interesting thread in #general."},
-            {"!astronomy:demo.local", "@charlie", "Testing something new today."},
-            {"!food:demo.local", "@erin", "Morning, everyone!"},
-            {"!diy:demo.local", "@alice", "Coffee is ready, join in."},
-            {"!frontend:demo.local", "@carol", "Interesting thread in #general."},
-            {"!music-production:demo.local", "@frank", "Testing something new today."},
-            {"!design:demo.local", "@alice", "Morning, everyone!"},
-            {"!coffee:demo.local", "@dave", "Coffee is ready, join in."},
-            {"!webdev:demo.local", "@grace", "Interesting thread in #general."},
-            {"!games:demo.local", "@charlie", "Testing something new today."},
-            {"!fitness:demo.local", "@erin", "Morning, everyone!"},
-            {"!baking:demo.local", "@alice", "Coffee is ready, join in."},
-            {"!editors:demo.local", "@carol", "Interesting thread in #general."},
-            {"!metal:demo.local", "@frank", "Testing something new today."},
-            {"!crypto:demo.local", "@alice", "Morning, everyone!"},
-            {"!music:demo.local", "@dave", "Coffee is ready, join in."},
-            {"!git:demo.local", "@grace", "Interesting thread in #general."},
-            {"!vegan:demo.local", "@charlie", "Testing something new today."},
-            {"!offtopic:demo.local", "@erin", "Morning, everyone!"},
-            {"!philosophy:demo.local", "@alice", "Coffee is ready, join in."},
-            {"!photography:demo.local", "@carol", "Interesting thread in #general."},
-            {"!boardgames:demo.local", "@frank", "Great idea, @you — let's do it!"},
-            {"!help:demo.local", "@bob", "@you your turn: pick the topic for Friday."},
-            {"!science:demo.local", "@dave", "Coffee is ready, join in."},
-            {"!art:demo.local", "@grace", "Interesting thread in #general."},
-            {"!matrix:demo.local", "@charlie", "Testing something new today."},
-            {"!physics:demo.local", "@erin", "Morning, everyone!"},
+            {"!general:demo.local", "@bob", "The maintainers dropped fresh links in this room."},
+            {"!dev:demo.local", "@dave", "We is discussing a few thoughts in this room."},
+            {"!random:demo.local", "@grace", "The team keeps sharing fresh links in this room."},
+            {"!design:demo.local", "@alice", "The crew compiled the demo build in this room."},
+            {"!music:demo.local", "@erin", "Half of us compiled a question in this room."},
+            {"!games:demo.local", "@alice", "Our group is discussing the demo build in this room."},
+            {"!science:demo.local", "@carol", "I is discussing the release notes in this room."},
+            {"!offtopic:demo.local", "@frank", "Everyone compiled some findings in this room."},
+            {"!announcements:demo.local", "@bob", "Half of us compiled the release notes in this room."},
+            {"!help:demo.local", "@dave", "The maintainers uploaded useful tips in this room."},
+            {"!linux:demo.local", "@grace", "We is discussing great ideas in this room."},
+            {"!crypto:demo.local", "@alice", "The team posted useful tips in this room."},
+            {"!photography:demo.local", "@erin", "The crew posted fresh links in this room."},
+            {"!travel:demo.local", "@alice", "Half of us uploaded the roadmap in this room."},
+            {"!food:demo.local", "@carol", "Our group uploaded fresh links in this room."},
+            {"!fitness:demo.local", "@frank", "I posted the roadmap in this room."},
+            {"!movies:demo.local", "@bob", "Everyone posted the latest updates in this room."},
+            {"!programming:demo.local", "@dave", "Half of us keeps sharing the demo build in this room."},
+            {"!rust:demo.local", "@grace", "The maintainers uploaded the latest updates in this room."},
+            {"!matrix:demo.local", "@charlie", "We dropped some findings in this room."},
+            {"!sports:demo.local", "@erin", "The team keeps sharing a few thoughts in this room."},
+            {"!chess:demo.local", "@alice", "The crew keeps sharing some findings in this room."},
+            {"!retro-gaming:demo.local", "@carol", "The maintainers compiled great ideas in this room."},
+            {"!hardware:demo.local", "@frank", "Our group dropped a question in this room."},
+            {"!distro-talk:demo.local", "@bob", "I is discussing great ideas in this room."},
+            {"!shell:demo.local", "@dave", "Everyone is discussing the roadmap in this room."},
+            {"!editors:demo.local", "@grace", "Half of us compiled meeting notes in this room."},
+            {"!git:demo.local", "@charlie", "The maintainers compiled the roadmap in this room."},
+            {"!dotfiles:demo.local", "@erin", "We is discussing meeting notes in this room."},
+            {"!selfhosting:demo.local", "@alice", "The team is discussing new screenshots in this room."},
+            {"!homelab:demo.local", "@carol", "The crew posted the latest updates in this room."},
+            {"!security:demo.local", "@frank", "The maintainers compiled new screenshots in this room."},
+            {"!privacy:demo.local", "@bob", "Our group uploaded a few thoughts in this room."},
+            {"!networking:demo.local", "@dave", "I uploaded some findings in this room."},
+            {"!databases:demo.local", "@grace", "Everyone posted a few thoughts in this room."},
+            {"!webdev:demo.local", "@charlie", "Half of us posted a question in this room."},
+            {"!frontend:demo.local", "@erin", "The maintainers uploaded the demo build in this room."},
+            {"!backend:demo.local", "@alice", "We uploaded a question in this room."},
+            {"!ml:demo.local", "@carol", "The team dropped meeting notes in this room."},
+            {"!ai-art:demo.local", "@frank", "The crew posted the release notes in this room."},
+            {"!astronomy:demo.local", "@bob", "The maintainers keeps sharing meeting notes in this room."},
+            {"!physics:demo.local", "@dave", "Our group dropped the release notes in this room."},
+            {"!chemistry:demo.local", "@grace", "I dropped useful tips in this room."},
+            {"!biology:demo.local", "@charlie", "Everyone is discussing new screenshots in this room."},
+            {"!math:demo.local", "@erin", "Half of us keeps sharing useful tips in this room."},
+            {"!history:demo.local", "@alice", "Our group compiled fresh links in this room."},
+            {"!philosophy:demo.local", "@carol", "We compiled a few thoughts in this room."},
+            {"!languages:demo.local", "@frank", "The team is discussing fresh links in this room."},
+            {"!writing:demo.local", "@bob", "The crew is discussing the demo build in this room."},
+            {"!poetry:demo.local", "@dave", "The maintainers compiled the latest updates in this room."},
+            {"!art:demo.local", "@grace", "Our group compiled the demo build in this room."},
+            {"!pixelart:demo.local", "@charlie", "I uploaded the release notes in this room."},
+            {"!music-production:demo.local", "@erin", "Everyone is discussing some findings in this room."},
+            {"!synth:demo.local", "@alice", "Half of us posted the release notes in this room."},
+            {"!jazz:demo.local", "@carol", "Our group compiled some findings in this room."},
+            {"!metal:demo.local", "@frank", "We uploaded great ideas in this room."},
+            {"!classical:demo.local", "@bob", "The team uploaded useful tips in this room."},
+            {"!techno:demo.local", "@dave", "The crew posted great ideas in this room."},
+            {"!dnb:demo.local", "@grace", "The maintainers posted the roadmap in this room."},
+            {"!hiking:demo.local", "@charlie", "Our group keeps sharing fresh links in this room."},
+            {"!camping:demo.local", "@erin", "I dropped the roadmap in this room."},
+            {"!cycling:demo.local", "@alice", "Everyone dropped the latest updates in this room."},
+            {"!running:demo.local", "@carol", "Half of us keeps sharing new screenshots in this room."},
+            {"!climbing:demo.local", "@frank", "Our group keeps sharing the latest updates in this room."},
+            {"!vegan:demo.local", "@bob", "We compiled some findings in this room."},
+            {"!baking:demo.local", "@dave", "The team dropped a few thoughts in this room."},
+            {"!coffee:demo.local", "@grace", "The crew is discussing some findings in this room."},
+            {"!beer:demo.local", "@charlie", "The maintainers is discussing the release notes in this room."},
+            {"!boardgames:demo.local", "@erin", "We compiled a question in this room."},
+            {"!podcasts:demo.local", "@alice", "I compiled great ideas in this room."},
+            {"!memes:demo.local", "@carol", "Everyone is discussing a question in this room."},
+            {"!diy:demo.local", "@frank", "Half of us is discussing meeting notes in this room."},
+            {"!finance:demo.local", "@bob", "Our group posted the roadmap in this room."},
+            {"!dm_alice:demo.local", "@dave", "We compiled meeting notes in this room."},
+            {"!dm_bob:demo.local", "@grace", "The team uploaded new screenshots in this room."},
+            {"!dm_carol:demo.local", "@charlie", "The crew is discussing useful tips in this room."},
+            {"!dm_dave:demo.local", "@erin", "The maintainers posted new screenshots in this room."},
         };
         int64_t t0 = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
@@ -2601,6 +2602,54 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
             reactTo("Here you go", "👍", "@bob");
             reactTo("Latency is way down", "🚀", "@alice");
             reactTo("Green across the board", "✅", "@you");
+        }
+        // The conversation keeps going — more unique messages.
+        ins("@alice", "Roadmap review in #dev later, everyone is welcome.");
+        ins("@you", "@alice adding it to my calendar now.");
+        ins("@bob", "The new poll widget renders great on narrow screens.");
+        ins("@julia", "Can someone test the invite flow? https://matrix.org/docs/guides/creating-rooms");
+        ins("@kate", "On it, inviting @ivan to a fresh room now.");
+        ins("@heidi", "This is the friendliest community I've joined in ages.");
+        ins("@frank", "We should write this down for the docs.");
+        ins("@charlie", "Noted, I will open an issue tonight.");
+        ins("@dave", "Also: the sync loop got 5x faster after the rework.");
+        ins("@erin", "My battery thanks you, @dave.");
+        ins("@grace", "Who wants stickers for the community pack?");
+        ins("@ivan", "Sticker pack? Count me in, @grace!");
+        ins("@carol", "I can draw a few, pixel art style.");
+        ins("@julia", "The sunset.png in #design is gorgeous, btw.");
+        ins("@bob", "Link it in #general: https://matrix.to/#/!design:demo.local");
+        ins("@you", "Done — pinned it for newcomers.");
+        ins("@kate", "The ascii ui keeps impressing me. Well done, team.");
+        ins("@alice", "v0.6 planning starts next week, ideas welcome.");
+        ins("@heidi", "I have one: offline drafts!");
+        ins("@frank", "Seconded, @heidi.");
+        // More reactions on the conversation.
+        {
+            auto reactTo = [&](const std::string& bodyPrefix, const char* key, const char* who) {
+                auto evs = dbi.getEvents("!general:demo.local", 500);
+                for (const auto& ev : evs) {
+                    if (ev.content.value("body", "").find(bodyPrefix) != std::string::npos) {
+                        matrix::Event r;
+                        r.event_id = "$demo_" + std::to_string(gt);
+                        r.room_id = "!general:demo.local"; r.sender = who;
+                        r.type = "m.reaction";
+                        r.content = {{"m.relates_to",
+                                      {{"event_id", ev.event_id},
+                                       {"rel_type", "m.annotation"},
+                                       {"key", key}}}};
+                        r.origin_server_ts = gt;
+                        dbi.insertEvent(r);
+                        gt -= 60000;
+                        break;
+                    }
+                }
+            };
+            reactTo("This is the friendliest", "\xf0\x9f\x92\x96", "@kate");
+            reactTo("Who wants stickers", "\xf0\x9f\x91\x8d", "@you");
+            reactTo("The ascii ui keeps impressing", "\xf0\x9f\x8f\x86", "@grace");
+            reactTo("offline drafts", "\xf0\x9f\x92\xa1", "@alice");
+            reactTo("My battery thanks you", "\xf0\x9f\x94\x8b", "@dave");
         }
         // A reply into the conversation (to heidi's last message).
         {
