@@ -1,0 +1,68 @@
+name: ARM32 (armv7) Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  armv7:
+    runs-on: ubuntu-latest
+    name: Build matrixcli for armv7 (armhf)
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install the ARM (armhf) cross toolchain
+        run: |
+          sudo dpkg --add-architecture armhf
+          sudo apt-get update
+          sudo apt-get install -y \
+            g++-arm-linux-gnueabihf \
+            libssl-dev:armhf \
+            libsqlite3-dev:armhf \
+            cmake
+
+      - name: Cross-compile (armv7, Release)
+        run: |
+          cmake -B build -S cppcli \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=arm \
+            -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc \
+            -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ \
+            -DCMAKE_FIND_ROOT_PATH=/usr/arm-linux-gnueabihf \
+            -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+            -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+            -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+            -DBUILD_TUI=OFF \
+            -DBUILD_TESTS=OFF \
+            -DUSE_SYSTEM_OLM=OFF
+          cmake --build build -j$(nproc)
+
+      - name: Verify the binary
+        run: |
+          file build/src/matrixcli
+          test -x build/src/matrixcli
+
+      - name: Smoke test under qemu
+        run: |
+          sudo apt-get install -y qemu-user-static
+          qemu-arm-static build/src/matrixcli about
+
+      - name: Upload the artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrixcli-armv7
+          path: build/src/matrixcli
+
+      - name: Attach to the GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          cp build/src/matrixcli "matrixcli-${{ github.ref_name }}-linux-armv7"
+          gh release upload "${{ github.ref_name }}" \
+            "matrixcli-${{ github.ref_name }}-linux-armv7" --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
