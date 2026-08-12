@@ -29,6 +29,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Where are the armhf headers?
+        run: |
+          dpkg -L libcurl4-openssl-dev:armhf | grep -E "curl.h|libcurl.so" | head -8
+          dpkg -L libssl-dev:armhf | grep -E "ssl.h|libssl.so" | head -6
+          find /usr -name "curl.h" 2>/dev/null | head -5
+          ls /usr/arm-linux-gnueabihf/include 2>/dev/null | head
+
       - name: Cross-compile (armv7, Release)
         run: |
           # Point pkg-config at the armhf .pc files only — the host
