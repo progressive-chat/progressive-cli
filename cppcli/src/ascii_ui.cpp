@@ -842,8 +842,22 @@ std::vector<std::string> roomThreadList(db::Database* db,
 // One member row: presence letter (colored), power badge, name.
 // Users without a presence entry (server with presence off, not yet
 // fetched) show as offline [F] — never without a letter.
-std::string memberRowStr(const UiState& st, const std::string& mem) {
-    std::string m = senderShort(mem);
+// The full @user:server id: real sessions carry it in the sender; the
+// demo stores it in the presence map under "@short:demo.local".
+std::string fullMxid(const UiState& st, const std::string& mem) {
+    if (mem.find(':') != std::string::npos) return mem;
+    for (const auto& [k, v] : st.presence) {
+        if (k.size() > mem.size() && k.compare(0, mem.size(), mem) == 0 &&
+            k[mem.size()] == ':') {
+            return k;
+        }
+    }
+    return mem;
+}
+
+std::string memberRowStr(const UiState& st, const std::string& mem,
+                         bool fullIds = false) {
+    std::string m = fullIds ? fullMxid(st, mem) : senderShort(mem);
     std::string letter;
     auto pit = st.presence.find(mem);
     if (pit != st.presence.end() && !pit->second.empty()) {
@@ -893,10 +907,15 @@ std::string drawFrame(const UiState& st) {
             rightW = 0;
         } else {
             int longestMember = 0;
+            int fullMember = 0;
             for (const auto& mem : st.members) {
                 int w = displayWidth(memberRowStr(st, mem));
                 if (w > longestMember) longestMember = w;
+                int wf = displayWidth(memberRowStr(st, mem, true));
+                if (wf > fullMember) fullMember = wf;
             }
+            // The full matrix ids fit when they stay inside the clamp.
+            if (fullMember + 3 <= 30) longestMember = fullMember;
             // The thread list at the bottom may need more room — but the
             // panel stays capped so the chat never gets squeezed out.
             if (st.showThreadsBottom) {
@@ -1387,8 +1406,18 @@ std::string drawFrame(const UiState& st) {
     // | threads across all rooms (Element-style).
     std::vector<std::string> rightRows;
     if (st.rightPanel == 0) {
+        // Full @user:server ids when the panel has the room for them.
+        bool fullIds = false;
+        if (!st.members.empty() && rightW >= 15) {
+            int fullW = 0;
+            for (const auto& mem : st.members) {
+                int w = displayWidth(memberRowStr(st, mem, true));
+                if (w > fullW) fullW = w;
+            }
+            fullIds = (rightW - 2 >= fullW);
+        }
         for (const auto& mem : st.members) {
-            rightRows.push_back(memberRowStr(st, mem));
+            rightRows.push_back(memberRowStr(st, mem, fullIds));
         }
         // The thread list sits at the BOTTOM of the right panel, under a
         // separator (Element-style): ⤷ <preview> (<reply count>).
