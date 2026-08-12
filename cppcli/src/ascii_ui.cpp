@@ -66,7 +66,8 @@ int cpWidth(uint32_t cp) {
     if (cp >= 0x2190 && cp <= 0x21FF) return 1;      // text arrows ←↑→ are 1
     if (cp >= 0x2713 && cp <= 0x2717) return 1;      // ✓ ✗ text marks are 1
     if (cp >= 0x2600 && cp <= 0x27BF) return 2;      // ⤷❤📌 etc.
-    if (cp >= 0x2B00 && cp <= 0x2BFF) return 2;
+    // 0x2B00-0x2BFF (⭕ ⭐ …) renders 1 cell in most terminals (glibc
+    // wcwidth agrees) — keep the pipes aligned there.
     if (cp >= 0x1F000 && cp <= 0x1FAFF) return 2;    // emoji blocks
     return 1;
 }
