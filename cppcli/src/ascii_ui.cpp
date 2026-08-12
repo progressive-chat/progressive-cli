@@ -582,6 +582,16 @@ struct UiState {
     int scroll = 0;                      // viewport offset (rows)
     int leftScroll = 0;                  // rooms-list-only offset (desktop)
     int threadsScroll = 0;               // threads-section offset (desktop right)
+    int viaLimit = 3;                    // via args in permalinks; 0 = all
+    int tzOffset = 0;                    // timezone offset in hours (display)
+    int hiddenSeconds = 12;              // hide duration; 0 = until reload
+    std::string senderFilter;            // "from @user": only their messages
+    std::unordered_set<std::string> hiddenRooms;   // temporarily hidden
+    std::unordered_set<std::string> mutedRooms;    // no unread/indicators
+    std::map<std::string, std::string> roomNicks;  // "room|user" -> display name
+    std::map<std::string, std::string> roomAvatars; // room -> avatar url
+    std::map<std::string, std::string> userColors;  // @user -> color name
+    std::map<std::string, int64_t> hiddenUntil;    // room -> un-hide timestamp
     std::string accountLabel;            // e.g. "bob@matrix.org" or "demo (offline)"
     std::string proxyLabel;              // "on (socks5h ...)" or "off"
     std::string roomFilter;              // find/space filter for the left panel
@@ -915,9 +925,69 @@ std::string resolveSpace(const std::vector<nlohmann::json>& rooms,
     return "";
 }
 
+// The via arguments for a permalink: the distinct server names of the
+// room's members. limit = 0 means ALL of them (the user's choice), else
+// the first N — Element sends 3 by default.
+std::string viaSuffix(db::Database* db, const std::string& roomId, int limit) {
+    if (!db || roomId.empty()) return "";
+    auto evs = db->getEvents(roomId, 500);
+    std::vector<std::string> servers;
+    for (const auto& ev : evs) {
+        std::string s = ev.sender;
+        auto colon = s.find(':');
+        if (colon == std::string::npos) continue;
+        std::string domain = s.substr(colon + 1);
+        if (domain.empty()) continue;
+        bool seen = false;
+        for (const auto& sv : servers) {
+            if (sv == domain) { seen = true; break; }
+        }
+        if (!seen) servers.push_back(domain);
+    }
+    if (servers.empty()) return "";
+    std::string out;
+    int n = (limit <= 0) ? static_cast<int>(servers.size())
+                         : std::min(limit, static_cast<int>(servers.size()));
+    for (int i = 0; i < n; ++i) {
+        out += (i == 0 ? "?" : "&");
+        out += "via=" + servers[static_cast<size_t>(i)];
+    }
+    return out;
+}
+
 // One member row: presence letter (colored), power badge, name.
 // Users without a presence entry (server with presence off, not yet
 // fetched) show as offline [F] — never without a letter.
+// The per-room display name (the "nick" setting) or the short sender.
+std::string displayName(const UiState& st, const std::string& roomId,
+                        const std::string& sender) {
+    auto it = st.roomNicks.find(roomId + "|" + sender);
+    if (it != st.roomNicks.end() && !it->second.empty()) return it->second;
+    return senderShort(sender);
+}
+
+// The user's custom highlight color (the "color" setting).
+const char* userColorCode(const UiState& st, const std::string& sender) {
+    auto it = st.userColors.find(sender);
+    if (it == st.userColors.end()) return nullptr;
+    const std::string& c = it->second;
+    if (c == "red") return "\x1b[31m";
+    if (c == "green") return "\x1b[32m";
+    if (c == "yellow") return "\x1b[33m";
+    if (c == "blue") return "\x1b[34m";
+    if (c == "magenta") return "\x1b[35m";
+    if (c == "cyan") return "\x1b[36m";
+    return nullptr;
+}
+
+// The "[nick] " tag with the custom color applied, for chat rows.
+std::string senderTag(const UiState& st, const std::string& roomId,
+                      const std::string& sender) {
+    const char* uc = userColorCode(st, sender);
+    std::string nm = displayName(st, roomId, sender);
+    return "[" + (uc ? std::string(uc) + nm + "\x1b[0m" : nm) + "] ";
+}
+
 // The full @user:server id: real sessions carry it in the sender; the
 // demo stores it in the presence map under "@short:demo.local".
 std::string fullMxid(const UiState& st, const std::string& mem) {
@@ -1115,9 +1185,20 @@ std::string drawFrame(const UiState& st) {
     // matching rooms; the center/members keep their own (unfiltered) view.
     // Space rooms are never listed as rooms; with a space selected only
     // that space's children show.
+    // Hidden rooms: hide for hiddenSeconds (default 12s), then return.
+    // Computed locally — drawFrame takes a const state.
+    std::unordered_set<std::string> hiddenNow = st.hiddenRooms;
+    if (!st.hiddenUntil.empty()) {
+        int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        for (const auto& [rid, until] : st.hiddenUntil) {
+            if (now >= until) hiddenNow.erase(rid);
+        }
+    }
     std::vector<const nlohmann::json*> visible;
     for (const auto& r : st.rooms) {
         if (r.value("is_space", false)) continue;
+        if (hiddenNow.count(r.value("room_id", ""))) continue;
         if (!st.activeSpace.empty() &&
             r.value("space", "") != st.activeSpace) continue;
         if (st.roomFilter.empty()) {
@@ -1174,7 +1255,7 @@ std::string drawFrame(const UiState& st) {
                 auto m = ev.content.find("membership");
                 if (m != ev.content.end() && m->is_string()) {
                     std::string ms = m->get<std::string>();
-                    std::string who = senderShort(ev.sender);
+                    std::string who = displayName(st, st.currentRoomId, ev.sender);
                     if (ms == "join") center = "[" + who + "] joined the room";
                     else if (ms == "leave") center = "[" + who + "] left the room";
                     else if (ms == "invite") {
@@ -1228,7 +1309,7 @@ std::string drawFrame(const UiState& st) {
                            + (st.showEmoji ? "\u266a audio: " : "[audio] ")
                            + (body.empty() ? "?" : "\x1b[36m" + body + "\x1b[0m");
                 } else if (mt == "m.file") {
-                    center = "[" + senderShort(ev.sender) + "] "
+                    center = senderTag(st, st.currentRoomId, ev.sender)
                            + (st.showEmoji ? "\xf0\x9f\x93\x84 " : "[file] ")
                            + (body.empty() ? "?" : "\x1b[36m" + body + "\x1b[0m");
                 } else if (mt == "m.video") {
@@ -1260,7 +1341,7 @@ std::string drawFrame(const UiState& st) {
             std::string rep = eventReplyTo(ev);
             if (center.empty() && !thr.empty()) {
                 std::string preview = eventPreview(st.db, st.currentRoomId, thr);
-                center = "[" + senderShort(ev.sender) + "] \u2937 " + body
+                center = "[" + displayName(st, st.currentRoomId, ev.sender) + "] \u2937 " + body
                        + "  (thread: " + (preview.empty() ? thr : preview) + ")";
             } else if (center.empty() && !rep.empty()) {
                 // Element-style ReplyChain: walk the m.in_reply_to chain
@@ -1277,7 +1358,8 @@ std::string drawFrame(const UiState& st) {
                     // (the whole screen in mobile) — the wrap takes care of
                     // any overflow.
                     int chainW = st.mobile ? W : centerW;
-                    chain += std::string(lvl, ' ') + "> [" + senderShort(prev.sender)
+                    chain += std::string(lvl, ' ') + "> ["
+                           + displayName(st, st.currentRoomId, prev.sender)
                            + "] " + clip(preview, std::max(20, chainW)) + "\n";
                     auto rel = prev.content.find("m.relates_to");
                     if (rel == prev.content.end() || !rel->is_object()) break;
@@ -1287,14 +1369,19 @@ std::string drawFrame(const UiState& st) {
                     if (eid == ir->end() || !eid->is_string()) break;
                     cur = eid->get<std::string>();
                 }
-                center = "[" + senderShort(ev.sender) + "] " + body
+                center = "[" + displayName(st, st.currentRoomId, ev.sender) + "] " + body
                        + (chain.empty() ? "" : "\n" + chain);
             } else if (center.empty()) {
-                center = "[" + senderShort(ev.sender) + "] "
-                       + (st.showLinks
-                              ? highlightUrls(renderPermalinks(
-                                    highlightMentions(body), st.rooms, st.db))
-                              : highlightMentions(body));
+                {
+                    const char* uc = userColorCode(st, ev.sender);
+                    std::string nm = displayName(st, st.currentRoomId, ev.sender);
+                    center = "[" + (uc ? std::string(uc) + nm + "\x1b[0m" : nm)
+                           + "] "
+                           + (st.showLinks
+                                  ? highlightUrls(renderPermalinks(
+                                        highlightMentions(body), st.rooms, st.db))
+                                  : highlightMentions(body));
+                }
                 int rc = 0;
                 for (const auto& ev2 : st.messages) {
                     if (eventThreadRoot(ev2) == ev.event_id) rc++;
@@ -1423,6 +1510,9 @@ std::string drawFrame(const UiState& st) {
             }
             // Element "show join/leave messages": member events are system
             // rows — hidden when the setting is off.
+            if (!st.senderFilter.empty() && ev.type == "m.room.message" &&
+                ev.sender != st.senderFilter &&
+                ev.sender != "@" + st.senderFilter.substr(1)) continue;
             if (!st.showJoins && ev.type == "m.room.member") continue;
             // Reactions are aggregated into the message rows; the state
             // events (power levels, encryption, room meta) are system
@@ -1466,7 +1556,8 @@ std::string drawFrame(const UiState& st) {
                     if (count < total) shown += " +" + std::to_string(total - count);
                     row += "  \x1b[90m\u2713 " + shown + "\x1b[0m";  // ✓ readers
                 }
-                std::time_t t = static_cast<std::time_t>(ev.origin_server_ts / 1000);
+                std::time_t t = static_cast<std::time_t>(ev.origin_server_ts / 1000)
+                               + static_cast<std::time_t>(st.tzOffset) * 3600;
                 std::tm tm{};
                 localtime_r(&t, &tm);
                 char buf[16];
@@ -1643,6 +1734,9 @@ std::string drawFrame(const UiState& st) {
                 if (r->value("is_encrypted", false)) {
                     row += (st.showEmoji ? " 🔒" : " [E2EE]");
                 }
+                if (st.mutedRooms.count(rid)) {
+                    row += (st.showEmoji ? " 🔇" : " [muted]");
+                }
                 // The room description (topic) in dim, after the count.
                 {
                     std::string topic = r->value("topic", "");
@@ -1765,6 +1859,9 @@ std::string drawFrame(const UiState& st) {
                  + std::to_string(roomMessageCount(st.db, rid)) + ")";
             if (r.value("is_encrypted", false)) {
                 left += (st.showEmoji ? " 🔒" : " [E2EE]");
+            }
+            if (st.mutedRooms.count(rid)) {
+                left += (st.showEmoji ? " 🔇" : " [muted]");
             }
             int thr = roomThreadCount(st.db, rid);
             if (thr > 0) {
@@ -1986,6 +2083,31 @@ int cmdAsciiUi(const cli::Args& args) {
     st.autoPanels = dbi.getSetting("panel_auto") != "0";
     try { st.membersMode = std::stoi(dbi.getSetting("members_mode", "0")); } catch (...) {}
     st.showThreadsBottom = dbi.getSetting("threads_bottom") != "0";
+    try { st.viaLimit = std::stoi(dbi.getSetting("via_limit", "3")); } catch (...) {}
+    try { st.tzOffset = std::stoi(dbi.getSetting("tz_offset", "0")); } catch (...) {}
+    try { st.hiddenSeconds = std::stoi(dbi.getSetting("hidden_seconds", "12")); } catch (...) {}
+    auto loadMap = [&](const std::string& key, std::map<std::string, std::string>& out) {
+        std::string v = dbi.getSetting(key, "");
+        std::string cur;
+        for (char ch : v) {
+            if (ch == ',') {
+                auto eq = cur.find('=');
+                if (eq != std::string::npos) out[cur.substr(0, eq)] = cur.substr(eq + 1);
+                cur.clear();
+            } else cur += ch;
+        }
+        auto eq = cur.find('=');
+        if (eq != std::string::npos) out[cur.substr(0, eq)] = cur.substr(eq + 1);
+    };
+    loadMap("room_nicks", st.roomNicks);
+    loadMap("room_avatars", st.roomAvatars);
+    loadMap("user_colors", st.userColors);
+    {
+        std::string v = dbi.getSetting("muted", "");
+        std::string cur;
+        for (char ch : v) { if (ch == ',') { st.mutedRooms.insert(cur); cur.clear(); } else cur += ch; }
+        if (!cur.empty()) st.mutedRooms.insert(cur);
+    }
     // Custom character widths ("widths" setting): "cp:width,cp:width".
     {
         g_widthOverrides.clear();
@@ -2123,6 +2245,29 @@ int cmdAsciiUi(const cli::Args& args) {
     }
     if (args.options.count("scroll")) {
         try { st.scroll = std::stoi(args.options.at("scroll")); } catch (...) {}
+    }
+    // --jump <YYYY-MM-DD>: position the viewport at that day (static).
+    if (args.options.count("jump")) {
+        int64_t dayMs = parseDayMs(args.options.at("jump"));
+        if (dayMs > 0) {
+            int64_t best = 0;
+            std::string bestId;
+            for (const auto& ev : st.messages) {
+                if (ev.origin_server_ts >= dayMs) {
+                    best = ev.origin_server_ts;
+                    bestId = ev.event_id;
+                    break;
+                }
+            }
+            if (!bestId.empty()) {
+                int row = centerRowIndexOf(st, bestId);
+                if (row >= 0) {
+                    st.scroll = std::max(0, row - 12);
+                    st.focusEvent = bestId;
+                    st.statusNote = "jumped to " + args.options.at("jump");
+                }
+            }
+        }
     }
     if (args.options.count("scroll-left")) {
         try { st.leftScroll = std::stoi(args.options.at("scroll-left")); } catch (...) {}
@@ -2324,14 +2469,18 @@ int cmdAsciiUi(const cli::Args& args) {
             continue;
         }
         if (a.command == "spaces") {
-            st.mobileTab = 0;
-            st.scroll = 0;
-            std::string list = "spaces: all";
+            std::cout << "Spaces:" << std::endl;
             for (const auto& r : st.rooms) {
-                if (r.value("is_space", false)) list += ", " + r.value("name", "?");
+                if (!r.value("is_space", false)) continue;
+                std::string id = r.value("room_id", "");
+                std::cout << "  " << r.value("name", "?") << "  " << id
+                          << std::endl;
             }
-            st.statusNote = list;
-            std::cout << drawFrame(st) << std::flush;
+            if (st.mobile) {
+                st.mobileTab = 0;
+                st.scroll = 0;
+                std::cout << drawFrame(st) << std::flush;
+            }
             continue;
         }
         if (a.command == "space") {
@@ -3201,8 +3350,16 @@ int cmdAsciiUi(const cli::Args& args) {
         }
         // ---- reply: send a reply to a message ----
         if (a.command == "reply") {
+            // "reply 18:52 [bob] text" — the reference format (see below).
+            auto colon = a.positional.empty() ? std::string::npos
+                                              : a.positional[0].find(':');
+            if (a.positional.size() >= 3 && colon != std::string::npos &&
+                a.positional[0].size() == 5) {
+                goto replyRef;
+            }
             if (a.positional.size() < 3) {
-                std::cout << "Usage: reply <room> <event_id> <text>" << std::endl;
+                std::cout << "Usage: reply <room> <event_id> <text> |"
+                             " reply <HH:MM> <[nick]> <text>" << std::endl;
                 continue;
             }
             auto cliHandler = CommandRegistry::instance().findCli("reply");
@@ -3488,7 +3645,22 @@ int cmdAsciiUi(const cli::Args& args) {
         // ---- receipts on|off: Element "show read receipts" ----
         if (a.command == "receipts") {
             if (a.positional.empty() || a.positional[0] == "on") st.showReceipts = true;
-            else st.showReceipts = false;
+            else if (a.positional[0] == "off") st.showReceipts = false;
+            else if (a.positional[0] == "current") {
+                st.showReceipts = true;
+                dbi.setSetting("receipts_mode", "current");
+                st.statusNote = "read receipts: only the current marker";
+                std::cout << drawFrame(st) << std::flush;
+                continue;
+            } else if (a.positional[0] == "all") {
+                st.showReceipts = true;
+                dbi.setSetting("receipts_mode", "all");
+                st.statusNote = "read receipts: every received receipt";
+                std::cout << drawFrame(st) << std::flush;
+                continue;
+            } else {
+                st.showReceipts = false;
+            }
             dbi.setSetting("receipts", st.showReceipts ? "1" : "0");
             st.statusNote = std::string("read receipts ") + (st.showReceipts ? "shown" : "hidden");
             std::cout << drawFrame(st) << std::flush;
@@ -3504,9 +3676,9 @@ int cmdAsciiUi(const cli::Args& args) {
             continue;
         }
         // ---- links on|off: Element "enable URL previews" ----
-        if (a.command == "links") {
-            if (a.positional.empty() || a.positional[0] == "on") st.showLinks = true;
-            else st.showLinks = false;
+        if (a.command == "links" && a.positional.size() >= 1 &&
+            (a.positional[0] == "on" || a.positional[0] == "off")) {
+            st.showLinks = (a.positional[0] == "on");
             dbi.setSetting("links", st.showLinks ? "1" : "0");
             st.statusNote = std::string("link pills ") + (st.showLinks ? "shown" : "raw URLs");
             std::cout << drawFrame(st) << std::flush;
@@ -3630,6 +3802,19 @@ int cmdAsciiUi(const cli::Args& args) {
             std::cout << "  threads   "
                       << (st.showThreadsBottom ? "bottom list" : "hidden")
                       << "  (threads bottom on / threads bottom off)" << std::endl;
+            std::cout << "  via       "
+                      << (st.viaLimit == 0 ? "unlimited (all servers)"
+                                           : std::to_string(st.viaLimit))
+                      << "  (via <n> / via 0) [Element: 3]" << std::endl;
+            std::cout << "  timezone  " << (st.tzOffset >= 0 ? "+" : "")
+                      << st.tzOffset << "h  (timezone <N>)" << std::endl;
+            std::cout << "  hide      " << st.hiddenSeconds
+                      << "s  (hide <room> [seconds])" << std::endl;
+            std::cout << "  from      "
+                      << (st.senderFilter.empty() ? "all" : st.senderFilter)
+                      << "  (from <@user> / from off)" << std::endl;
+            std::cout << "  muted     " << st.mutedRooms.size()
+                      << " rooms  (mute <room> on|off)" << std::endl;
             std::cout << "  layout    " << (st.mobile ? "smartphone (stacked)"
                                                       : "desktop (three columns)")
                       << "  (mobile on / mobile off)" << std::endl;
@@ -3812,6 +3997,375 @@ int cmdAsciiUi(const cli::Args& args) {
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
+        // ---- permalink <room> <event_id>: the matrix.to link with via ----
+        if (a.command == "permalink") {
+            if (a.positional.size() < 2) {
+                std::cout << "Usage: permalink <room> <event_id>" << std::endl;
+                continue;
+            }
+            std::string roomQ = a.positional[0];
+            std::string roomId = roomQ;
+            for (const auto& r : st.rooms) {
+                std::string id = r.value("room_id", "");
+                if (id == roomQ || id.find(roomQ) != std::string::npos ||
+                    r.value("name", "") == roomQ) {
+                    roomId = id;
+                    break;
+                }
+            }
+            matrix::Event ev;
+            if (!dbi.getEventById(a.positional[1], ev)) {
+                std::cout << "Event not found in the cache." << std::endl;
+                continue;
+            }
+            std::cout << "https://matrix.to/#/" << roomId << "/" << ev.event_id
+                      << viaSuffix(&dbi, roomId, st.viaLimit) << std::endl;
+            continue;
+        }
+        // ---- via <n>: the via argument count in permalinks (0 = all) ----
+        if (a.command == "via") {
+            int v = 3;
+            if (a.positional.empty()) {
+                std::cout << "via: " << (st.viaLimit == 0 ? "unlimited (all servers)"
+                                                          : std::to_string(st.viaLimit))
+                          << "  (via <n> | via 0 = no limit)" << std::endl;
+                continue;
+            }
+            try { v = std::stoi(a.positional[0]); } catch (...) { v = -1; }
+            if (v < 0) {
+                std::cout << "Usage: via <n> | via 0 (unlimited)" << std::endl;
+                continue;
+            }
+            st.viaLimit = v;
+            dbi.setSetting("via_limit", std::to_string(v));
+            st.statusNote = std::string("permalinks via: ") +
+                            (v == 0 ? "unlimited (all servers)" : std::to_string(v));
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- from <@user> | from off: only that sender's messages ----
+        if (a.command == "from") {
+            if (a.positional.empty() || a.positional[0] == "off" ||
+                a.positional[0] == "all") {
+                st.senderFilter.clear();
+                st.statusNote = "showing all messages";
+            } else {
+                st.senderFilter = a.positional[0];
+                if (st.senderFilter[0] != '@') st.senderFilter = "@" + st.senderFilter;
+                st.statusNote = "showing only " + st.senderFilter;
+            }
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- hide [room] [seconds]: temporarily hide a room ----
+        if (a.command == "hide") {
+            std::string q = a.positional.empty() ? st.currentRoomId : a.positional[0];
+            std::string roomId = q;
+            for (const auto& r : st.rooms) {
+                std::string id = r.value("room_id", "");
+                std::string name = r.value("name", "");
+                if (id == q || id.find(q) != std::string::npos || name == q) {
+                    roomId = id;
+                    break;
+                }
+            }
+            int secs = st.hiddenSeconds;
+            if (a.positional.size() >= 2) {
+                try { secs = std::stoi(a.positional[1]); } catch (...) {}
+            }
+            if (secs <= 0) {
+                st.hiddenRooms.erase(roomId);
+                st.hiddenUntil.erase(roomId);
+                st.statusNote = roomId + " unhidden";
+            } else {
+                st.hiddenRooms.insert(roomId);
+                st.hiddenUntil[roomId] =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::system_clock::now().time_since_epoch()).count()
+                    + int64_t(secs) * 1000;
+                st.statusNote = roomId + " hidden for " + std::to_string(secs) + "s";
+            }
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- mute <room> on|off: no indicators, just stay ----
+        if (a.command == "mute") {
+            if (a.positional.size() < 2) {
+                std::cout << "Usage: mute <room> on|off" << std::endl;
+                continue;
+            }
+            std::string q = a.positional[0];
+            std::string roomId = q;
+            for (const auto& r : st.rooms) {
+                std::string id = r.value("room_id", "");
+                if (id == q || id.find(q) != std::string::npos ||
+                    r.value("name", "") == q) {
+                    roomId = id;
+                    break;
+                }
+            }
+            bool on = a.positional[1] != "off";
+            if (on) st.mutedRooms.insert(roomId);
+            else st.mutedRooms.erase(roomId);
+            std::string saved;
+            for (const auto& id : st.mutedRooms) {
+                if (!saved.empty()) saved += ",";
+                saved += id;
+            }
+            dbi.setSetting("muted", saved);
+            st.statusNote = roomId + (on ? " muted (no indicators)" : " unmuted");
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- timezone <N>: hours offset for all displayed times ----
+        if (a.command == "timezone") {
+            if (a.positional.empty()) {
+                std::cout << "timezone: " << (st.tzOffset >= 0 ? "+" : "")
+                          << st.tzOffset << "h  (timezone <N> | timezone 0)"
+                          << std::endl;
+                continue;
+            }
+            try { st.tzOffset = std::stoi(a.positional[0]); } catch (...) { st.tzOffset = 0; }
+            dbi.setSetting("tz_offset", std::to_string(st.tzOffset));
+            st.statusNote = std::string("timezone UTC") + (st.tzOffset >= 0 ? "+" : "")
+                          + std::to_string(st.tzOffset);
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- nick <room> <@user> <name>: per-room display names ----
+        if (a.command == "nick") {
+            if (a.positional.size() < 3) {
+                std::cout << "Usage: nick <room> <@user> <name>" << std::endl;
+                continue;
+            }
+            std::string roomId = a.positional[0];
+            for (const auto& r : st.rooms) {
+                std::string id = r.value("room_id", "");
+                std::string name = r.value("name", "");
+                if (id == roomId || name == roomId ||
+                    name.find(roomId) == 0 || id.find(roomId) != std::string::npos) {
+                    roomId = id;
+                    break;
+                }
+            }
+            std::string user = a.positional[1];
+            if (user[0] != '@') user = "@" + user;
+            std::string name = a.positional[2];
+            st.roomNicks[roomId + "|" + user] = name;
+            std::string saved;
+            for (const auto& [k, v] : st.roomNicks) {
+                if (!saved.empty()) saved += ",";
+                saved += k + "=" + v;
+            }
+            dbi.setSetting("room_nicks", saved);
+            st.statusNote = "nick: " + user + " = " + name + " (in " + roomId + ")";
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- avatar <room> <url>: per-room avatar (shown in info) ----
+        if (a.command == "avatar") {
+            if (a.positional.size() < 2) {
+                std::cout << "Usage: avatar <room> <mxc|url>" << std::endl;
+                continue;
+            }
+            std::string roomId = a.positional[0];
+            for (const auto& r : st.rooms) {
+                if (r.value("room_id", "") == roomId ||
+                    r.value("name", "") == roomId) {
+                    roomId = r.value("room_id", "");
+                    break;
+                }
+            }
+            st.roomAvatars[roomId] = a.positional[1];
+            std::string saved;
+            for (const auto& [k, v] : st.roomAvatars) {
+                if (!saved.empty()) saved += ",";
+                saved += k + "=" + v;
+            }
+            dbi.setSetting("room_avatars", saved);
+            st.statusNote = "avatar set for " + roomId;
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- color <@user> <color|off>: custom nickname highlight ----
+        if (a.command == "color") {
+            if (a.positional.empty()) {
+                std::cout << "Usage: color <@user> <red|green|yellow|blue|magenta|cyan|off>"
+                          << std::endl;
+                continue;
+            }
+            std::string user = a.positional[0];
+            if (user[0] != '@') user = "@" + user;
+            if (a.positional.size() < 2 || a.positional[1] == "off") {
+                st.userColors.erase(user);
+            } else {
+                st.userColors[user] = a.positional[1];
+            }
+            std::string saved;
+            for (const auto& [k, v] : st.userColors) {
+                if (!saved.empty()) saved += ",";
+                saved += k + "=" + v;
+            }
+            dbi.setSetting("user_colors", saved);
+            st.statusNote = std::string("color ") + user + " "
+                          + (st.userColors.count(user) ? st.userColors[user] : "off");
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- info <room>: members, version, avatar, member search ----
+        if (a.command == "info") {
+            std::string q = a.positional.empty() ? st.currentRoomId : a.positional[0];
+            std::string roomId = q;
+            std::string roomName = q;
+            for (const auto& r : st.rooms) {
+                std::string id = r.value("room_id", "");
+                if (id == q || id.find(q) != std::string::npos ||
+                    r.value("name", "") == q || r.value("name", "").find(q) == 0) {
+                    roomId = id;
+                    roomName = r.value("name", "");
+                    break;
+                }
+            }
+            std::cout << "Room: " << roomName << " (" << roomId << ")" << std::endl;
+            auto it = st.roomAvatars.find(roomId);
+            std::cout << "  avatar: " << (it != st.roomAvatars.end() ? it->second
+                                                                     : "(none)")
+                      << std::endl;
+            std::cout << "  version: demo.db (local cache)" << std::endl;
+            std::string membersQ = a.positional.size() >= 2 ? a.positional[1] : "";
+            auto evs = dbi.getEvents(roomId, 500);
+            std::vector<std::string> members;
+            for (const auto& ev : evs) {
+                if (std::find(members.begin(), members.end(), ev.sender) ==
+                    members.end()) {
+                    members.push_back(ev.sender);
+                }
+            }
+            int shown = 0;
+            for (const auto& mem : members) {
+                if (!membersQ.empty() &&
+                    mem.find(membersQ) == std::string::npos) continue;
+                std::string nm = displayName(st, roomId, mem);
+                std::cout << "  " << nm;
+                auto nickIt = st.roomNicks.find(roomId + "|" + mem);
+                if (nickIt != st.roomNicks.end()) {
+                    std::cout << " (" << senderShort(mem) << ")";
+                }
+                std::cout << std::endl;
+                shown++;
+            }
+            std::cout << "  members: " << members.size()
+                      << (membersQ.empty() ? "" : " (filter: '" + membersQ + "')")
+                      << std::endl;
+            continue;
+        }
+        // ---- reply/react/thread/pin/copy "HH:MM [nick]" — find the last
+        // matching message and act on it ----
+replyRef:
+        if (a.command == "reply" || a.command == "react" ||
+            a.command == "thread" || a.command == "pin" ||
+            a.command == "copy") {
+            if (a.positional.size() < 2) {
+                std::cout << "Usage: " << a.command
+                          << " <HH:MM> <[nick]> [text|emoji]" << std::endl;
+                continue;
+            }
+            // Parse the reference.
+            int hh = 0, mm = 0;
+            bool badRef = false;
+            {
+                auto colon = a.positional[0].find(':');
+                if (colon == std::string::npos) badRef = true;
+                else {
+                    try {
+                        hh = std::stoi(a.positional[0].substr(0, colon));
+                        mm = std::stoi(a.positional[0].substr(colon + 1));
+                    } catch (...) { badRef = true; }
+                }
+            }
+            if (badRef) {
+                std::cout << "Usage: " << a.command << " <HH:MM> <[nick]> [text]"
+                          << std::endl;
+                continue;
+            }
+            std::string nick = a.positional[1];
+            if (!nick.empty() && nick.front() == '[' && nick.back() == ']') {
+                nick = nick.substr(1, nick.size() - 2);
+            }
+            const matrix::Event* target = nullptr;
+            for (auto it = st.messages.rbegin(); it != st.messages.rend(); ++it) {
+                std::time_t t = static_cast<std::time_t>(it->origin_server_ts / 1000)
+                              + static_cast<std::time_t>(st.tzOffset) * 3600;
+                std::tm tm{};
+                localtime_r(&t, &tm);
+                if (tm.tm_hour == hh && tm.tm_min == mm &&
+                    senderShort(it->sender) == nick) {
+                    target = &(*it);
+                    break;
+                }
+            }
+            if (!target) {
+                std::cout << "No message matching " << a.positional[0] << " ["
+                          << nick << "] in the window." << std::endl;
+                continue;
+            }
+            std::string roomId = st.currentRoomId;
+            int64_t nowTs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            if (a.command == "copy") {
+                std::cout << "https://matrix.to/#/" << roomId << "/"
+                          << target->event_id
+                          << viaSuffix(&dbi, roomId, st.viaLimit) << std::endl;
+                continue;
+            }
+            if (a.command == "pin") {
+                matrix::Event pin;
+                pin.event_id = "$demo_pin_" + std::to_string(nowTs);
+                pin.room_id = roomId; pin.sender = "@you";
+                pin.type = "m.room.pinned_events";
+                pin.state_key = "";
+                pin.content = {{"pinned", nlohmann::json::array({target->event_id})}};
+                pin.origin_server_ts = nowTs;
+                dbi.insertEvent(pin);
+                st.statusNote = "pinned " + target->event_id;
+                std::cout << drawFrame(st) << std::flush;
+                continue;
+            }
+            if (a.positional.size() < 3) {
+                std::cout << "Usage: " << a.command << " <HH:MM> <[nick]> <text>"
+                          << std::endl;
+                continue;
+            }
+            std::string text = a.positional[2];
+            matrix::Event act;
+            act.event_id = "$demo_" + std::to_string(nowTs);
+            act.room_id = roomId; act.sender = "@you";
+            act.type = "m.room.message";
+            act.origin_server_ts = nowTs;
+            if (a.command == "react") {
+                act.type = "m.reaction";
+                act.content = {{"m.relates_to",
+                                {{"event_id", target->event_id},
+                                 {"rel_type", "m.annotation"},
+                                 {"key", text}}}};
+            } else if (a.command == "thread") {
+                std::string root = eventThreadRoot(*target);
+                std::string rootId = root.empty() ? target->event_id : root;
+                act.content = {{"msgtype", "m.text"}, {"body", text},
+                               {"m.relates_to", {{"event_id", rootId},
+                                                 {"rel_type", "m.thread"}}}};
+            } else {  // reply
+                act.content = {{"msgtype", "m.text"}, {"body", text},
+                               {"m.relates_to",
+                                {{"m.in_reply_to", {{"event_id", target->event_id}}}}}};
+            }
+            dbi.insertEvent(act);
+            st.statusNote = std::string(a.command) + " to "
+                          + a.positional[0] + " [" + nick + "]";
+            loadRoomIntoState(st, std::string(st.currentRoomId));
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
         // ---- links: list the matrix.to permalinks of the current room ----
         if (a.command == "links") {
             const std::string marker = "matrix.to/#/";
@@ -3857,6 +4411,7 @@ int cmdAsciiUi(const cli::Args& args) {
                         }
                     }
                     std::cout << "\n      url: " << url
+                              << viaSuffix(st.db, roomPart, st.viaLimit)
                               << "\n      read: raw " << roomPart << " " << evPart
                               << "\n      jump: goto " << evPart
                               << "\n";

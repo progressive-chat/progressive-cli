@@ -2574,6 +2574,25 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
             dbi.insertEvent(ev);
             gt -= 60000;
         }
+        // Members from other servers — they give the permalink via list
+        // real servers (matrix.org, element.io, mozilla.org).
+        {
+            struct { const char* sender; const char* name; } ext[] = {
+                {"@mallory:matrix.org", "mallory"},
+                {"@trent:element.io", "trent"},
+                {"@wendy:mozilla.org", "wendy"},
+            };
+            for (auto& e : ext) {
+                matrix::Event ev;
+                ev.event_id = "$demo_" + std::to_string(gt);
+                ev.room_id = "!general:demo.local"; ev.sender = e.sender;
+                ev.type = "m.room.member";
+                ev.content = {{"membership", "join"}, {"displayname", e.name}};
+                ev.origin_server_ts = gt;
+                dbi.insertEvent(ev);
+                gt -= 60000;
+            }
+        }
         ins("@alice", "The demo build is ready, testers welcome!");
         ins("@heidi", "Just joined! Hi everyone");
         ins("@bob", "Welcome @heidi! Check the pinned message.");
