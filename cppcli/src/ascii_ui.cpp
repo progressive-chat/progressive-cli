@@ -51,9 +51,33 @@ int terminalWidth() {
     return 100;
 }
 
+// Per-character width overrides (the "widths" setting): the phone
+// terminal renders some glyphs narrower/wider than the default table
+// (👑 🛡 ⤷ ❤ …), which shifted the pipes. The user can fix any of them.
+std::map<uint32_t, int> g_widthOverrides;
+
+// The first UTF-8 codepoint of a string (for the widths command).
+uint32_t utf8FirstCp(const std::string& s) {
+    if (s.empty()) return 0;
+    unsigned char c = static_cast<unsigned char>(s[0]);
+    if (c < 0x80) return c;
+    size_t len = 0;
+    if ((c & 0xE0) == 0xC0) len = 2;
+    else if ((c & 0xF0) == 0xE0) len = 3;
+    else if ((c & 0xF8) == 0xF0) len = 4;
+    if (s.size() < len) return 0;
+    uint32_t cp = c & (len == 2 ? 0x1F : len == 3 ? 0x0F : 0x07);
+    for (size_t i = 1; i < len; ++i) {
+        cp = (cp << 6) | (static_cast<unsigned char>(s[i]) & 0x3F);
+    }
+    return cp;
+}
+
 // Approximate terminal display width of one UTF-8 codepoint: 2 for CJK,
 // emoji and misc symbols, 0 for combining marks, else 1.
 int cpWidth(uint32_t cp) {
+    auto it = g_widthOverrides.find(cp);
+    if (it != g_widthOverrides.end()) return it->second;
     if (cp >= 0x0300 && cp <= 0x036F) return 0;      // combining
     if (cp == 0xFE0F || cp == 0xFE0E) return 0;      // variation selectors
     if (cp >= 0x1100 && cp <= 0x115F) return 2;
@@ -1917,6 +1941,31 @@ int cmdAsciiUi(const cli::Args& args) {
     st.autoPanels = dbi.getSetting("panel_auto") != "0";
     try { st.membersMode = std::stoi(dbi.getSetting("members_mode", "0")); } catch (...) {}
     st.showThreadsBottom = dbi.getSetting("threads_bottom") != "0";
+    // Custom character widths ("widths" setting): "cp:width,cp:width".
+    {
+        g_widthOverrides.clear();
+        auto parseOne = [](const std::string& seg) {
+            auto colon = seg.find(':');
+            if (colon == std::string::npos) return;
+            uint32_t cp = static_cast<uint32_t>(
+                std::strtoul(seg.substr(0, colon).c_str(), nullptr, 16));
+            int wd = std::atoi(seg.substr(colon + 1).c_str());
+            if (cp > 0 && (wd == 1 || wd == 2)) {
+                g_widthOverrides[cp] = wd;
+            }
+        };
+        std::string w = dbi.getSetting("widths", "");
+        std::string cur;
+        for (char ch : w) {
+            if (ch == ',') {
+                parseOne(cur);
+                cur.clear();
+            } else {
+                cur += ch;
+            }
+        }
+        parseOne(cur);  // the last (or only) entry
+    }
     // Demo/offline: static presence so the right panel shows the letters.
     // The demo events carry short senders ("@alice") — key both forms.
     if (st.accountLabel == "demo (offline)") {
@@ -3678,6 +3727,75 @@ int cmdAsciiUi(const cli::Args& args) {
             if (shown == 0) {
                 std::cout << "  No media in this room." << std::endl;
             }
+            continue;
+        }
+        // ---- widths: custom per-character widths (fix the pipes) ----
+        if (a.command == "widths") {
+            if (a.positional.empty()) {
+                if (g_widthOverrides.empty()) {
+                    std::cout << "No custom widths. Usage: widths <char> <1|2>"
+                              << std::endl;
+                } else {
+                    for (const auto& [cp, wd] : g_widthOverrides) {
+                        std::string glyph = "?";
+                        if (cp < 0x80) {
+                            glyph = std::string(1, static_cast<char>(cp));
+                        } else if (cp < 0x800) {
+                            glyph = std::string(1, static_cast<char>(0xC0 | (cp >> 6)))
+                                  + static_cast<char>(0x80 | (cp & 0x3F));
+                        } else if (cp < 0x10000) {
+                            glyph = std::string(1, static_cast<char>(0xE0 | (cp >> 12)))
+                                  + static_cast<char>(0x80 | ((cp >> 6) & 0x3F))
+                                  + static_cast<char>(0x80 | (cp & 0x3F));
+                        } else {
+                            glyph = std::string(1, static_cast<char>(0xF0 | (cp >> 18)))
+                                  + static_cast<char>(0x80 | ((cp >> 12) & 0x3F))
+                                  + static_cast<char>(0x80 | ((cp >> 6) & 0x3F))
+                                  + static_cast<char>(0x80 | (cp & 0x3F));
+                        }
+                        char buf[16];
+                        std::snprintf(buf, sizeof(buf), "U+%04X", cp);
+                        std::cout << "  " << glyph << " " << buf << " = "
+                                  << wd << " cell" << (wd == 1 ? "" : "s")
+                                  << std::endl;
+                    }
+                    std::cout << "Usage: widths <char> <1|2> | widths reset"
+                              << std::endl;
+                }
+                continue;
+            }
+            if (a.positional[0] == "reset") {
+                g_widthOverrides.clear();
+                dbi.setSetting("widths", "");
+                st.statusNote = "custom widths cleared";
+                std::cout << drawFrame(st) << std::flush;
+                continue;
+            }
+            if (a.positional.size() < 2) {
+                std::cout << "Usage: widths <char> <1|2>" << std::endl;
+                continue;
+            }
+            uint32_t cp = utf8FirstCp(a.positional[0]);
+            int wd = 0;
+            try { wd = std::stoi(a.positional[1]); } catch (...) {}
+            if (cp == 0 || (wd != 1 && wd != 2)) {
+                std::cout << "Usage: widths <char> <1|2>" << std::endl;
+                continue;
+            }
+            g_widthOverrides[cp] = wd;
+            std::string saved;
+            for (const auto& [c, w] : g_widthOverrides) {
+                if (!saved.empty()) saved += ",";
+                char buf[16];
+                std::snprintf(buf, sizeof(buf), "%X:%d", c, w);
+                saved += buf;
+            }
+            dbi.setSetting("widths", saved);
+            char buf[32];
+            std::snprintf(buf, sizeof(buf), "U+%04X = %d cell", cp, wd);
+            st.statusNote = std::string("width ") + a.positional[0] + " (" + buf
+                            + (wd == 1 ? ")" : "s)");
+            std::cout << drawFrame(st) << std::flush;
             continue;
         }
         // ---- links: list the matrix.to permalinks of the current room ----
