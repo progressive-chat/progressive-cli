@@ -29,33 +29,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Where are the armhf headers?
-        run: |
-          dpkg -L libcurl4-openssl-dev:armhf | grep -E "curl.h|libcurl.so" | head -8
-          dpkg -L libssl-dev:armhf | grep -E "ssl.h|libssl.so" | head -6
-          find /usr -name "curl.h" 2>/dev/null | head -5
-          ls /usr/arm-linux-gnueabihf/include 2>/dev/null | head
-
       - name: Cross-compile (armv7, Release)
         run: |
           # Point pkg-config at the armhf .pc files only — the host
           # pkg-config otherwise can't see the cross libs (sqlite3/curl).
-          export PKG_CONFIG_LIBDIR=/usr/arm-linux-gnueabihf/lib/pkgconfig
+          export PKG_CONFIG_LIBDIR=/usr/lib/arm-linux-gnueabihf/pkgconfig
           cmake -B build -S cppcli \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_SYSTEM_NAME=Linux \
             -DCMAKE_SYSTEM_PROCESSOR=arm \
             -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc \
             -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ \
-            -DCMAKE_FIND_ROOT_PATH=/usr/arm-linux-gnueabihf \
+            -DCMAKE_FIND_ROOT_PATH=/usr \
             -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
             -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
             -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
             -DBUILD_TUI=OFF \
             -DBUILD_TESTS=OFF \
             -DUSE_SYSTEM_OLM=OFF \
-            -DPROGRESSIVE_CORE_USE_ARTIFACT=OFF \
-            -DCMAKE_FIND_DEBUG_MODE=ON
+            -DPROGRESSIVE_CORE_USE_ARTIFACT=OFF
           cmake --build build -j$(nproc)
 
       - name: Verify the binary
