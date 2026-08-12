@@ -1128,6 +1128,17 @@ std::string drawFrame(const UiState& st) {
                     center = "[" + senderShort(ev.sender) + "] "
                            + (st.showEmoji ? "\u2b55 poll: " : "[poll] ")
                            + (qtext.empty() ? "?" : qtext);
+                } else if (mt == "m.poll.response") {
+                    // A poll vote — the event has no body, render it as a
+                    // vote row instead of an empty "[alice]".
+                    auto rel = ev.content.find("m.relates_to");
+                    std::string target;
+                    if (rel != ev.content.end() && rel->is_object()) {
+                        target = rel->value("event_id", "");
+                    }
+                    center = "[" + senderShort(ev.sender) + "] "
+                           + (st.showEmoji ? "\xf0\x9f\x97\xb3 voted"
+                                           : "[poll] voted");
                 } else if (mt == "m.sticker") {
                     center = "[" + senderShort(ev.sender) + "] "
                            + (st.showEmoji ? "\u2b1c sticker: " : "[sticker] ")
