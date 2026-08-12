@@ -180,13 +180,14 @@ bool Database::upsertRoom(const std::string& room_id, const matrix::SyncRoom& ro
 bool Database::upsertRoom(const json& room_data, const std::string& room_id) {
     sqlite3_stmt* stmt;
     const char* sql = R"(
-        INSERT OR REPLACE INTO rooms(room_id, name, topic, avatar_url, member_count, is_space, space)
-        VALUES(?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO rooms(room_id, name, topic, avatar_url, member_count, is_encrypted, is_space, space)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?)
     )";
     std::string name = room_data.value("name", "");
     std::string topic = room_data.value("topic", "");
     std::string avatar = room_data.value("avatar_url", "");
     int count = room_data.value("member_count", 0);
+    int encrypted = room_data.value("is_encrypted", 0) ? 1 : 0;
     int isSpace = room_data.value("is_space", 0) ? 1 : 0;
     std::string space = room_data.value("space", "");
 
@@ -196,8 +197,9 @@ bool Database::upsertRoom(const json& room_data, const std::string& room_id) {
     sqlite3_bind_text(stmt, 3, topic.c_str(), topic.size(), SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 4, avatar.c_str(), avatar.size(), SQLITE_TRANSIENT);
     sqlite3_bind_int(stmt, 5, count);
-    sqlite3_bind_int(stmt, 6, isSpace);
-    sqlite3_bind_text(stmt, 7, space.c_str(), space.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 6, encrypted);
+    sqlite3_bind_int(stmt, 7, isSpace);
+    sqlite3_bind_text(stmt, 8, space.c_str(), space.size(), SQLITE_TRANSIENT);
     sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     return true;

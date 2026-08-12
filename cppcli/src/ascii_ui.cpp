@@ -557,6 +557,7 @@ struct UiState {
     std::string activeSpace;             // "" = all rooms; else a space id
     bool autoPanels = true;             // size the panels to the content
     int membersMode = 0;                // 0 auto, 1 horizontal, 2 vertical list
+    bool showThreadsBottom = true;      // thread list at the right panel bottom
     std::unordered_set<std::string> invited;  // rooms with an open invite
     std::string focusEvent;              // event the viewport jumped to (goto)
     int mobileTab = 0;                   // 0=Rooms 1=Chat 2=People (bottom nav)
@@ -856,16 +857,20 @@ std::string drawFrame(const UiState& st) {
     int centerW = std::max(20, W - leftW - rightW - 2);
 
     std::string roomName = "No room selected";
+    std::string e2eeMark;  // the lock for the open room
     for (const auto& r : st.rooms) {
         if (r.value("room_id", "") == st.currentRoomId) {
             roomName = roomDisplayName(r);
+            if (r.value("is_encrypted", false)) {
+                e2eeMark = (st.showEmoji ? " 🔒 " : " [E2EE] ");
+            }
             break;
         }
     }
 
     // Header
     std::string out;
-    std::string header = " " + roomName + " ";
+    std::string header = " " + roomName + e2eeMark + " ";
     int headerFill = W - static_cast<int>(header.size());
     if (headerFill < 0) headerFill = 0;
     out += header + repeat('=', headerFill) + "\n";
@@ -974,6 +979,26 @@ std::string drawFrame(const UiState& st) {
                 mrow += memberRowStr(st, mem);
             }
             centerRows.push_back("[90m" + clip(mrow, centerW - 2) + "[0m");
+            // The thread list follows as a second horizontal row.
+            if (st.showThreadsBottom && !st.currentRoomId.empty()) {
+                auto evs = st.db->getEvents(st.currentRoomId, 300);
+                std::string trow;
+                for (const auto& ev : evs) {
+                    int rc = 0;
+                    for (const auto& ev2 : evs) {
+                        if (eventThreadRoot(ev2) == ev.event_id) rc++;
+                    }
+                    if (rc > 0) {
+                        if (!trow.empty()) trow += "  ";
+                        trow += "⤷ " + clip(eventBody(ev), 20) + " ("
+                              + std::to_string(rc) + ")";
+                    }
+                }
+                if (!trow.empty()) {
+                    centerRows.push_back("[90m" + clip(trow, centerW - 2)
+                                         + "[0m");
+                }
+            }
         }
  {
         auto renderRow = [&](const matrix::Event& ev) -> std::string {
@@ -1301,6 +1326,26 @@ std::string drawFrame(const UiState& st) {
         for (const auto& mem : st.members) {
             rightRows.push_back(memberRowStr(st, mem));
         }
+        // The thread list sits at the BOTTOM of the right panel, under a
+        // separator (Element-style): ⤷ <preview> (<reply count>).
+        if (st.showThreadsBottom && !st.currentRoomId.empty()) {
+            auto evs = st.db->getEvents(st.currentRoomId, 300);
+            std::vector<std::string> thr;
+            for (const auto& ev : evs) {
+                int rc = 0;
+                for (const auto& ev2 : evs) {
+                    if (eventThreadRoot(ev2) == ev.event_id) rc++;
+                }
+                if (rc > 0) {
+                    thr.push_back("⤷ " + clip(eventBody(ev), 22) + " ("
+                                  + std::to_string(rc) + ")");
+                }
+            }
+            if (!thr.empty()) {
+                rightRows.push_back("----------");
+                rightRows.insert(rightRows.end(), thr.begin(), thr.end());
+            }
+        }
     } else if (st.rightPanel == 1) {
         // The room's threads: the roots with their reply counts.
         auto evs = st.db->getEvents(st.threadRoomId, 300);
@@ -1376,6 +1421,19 @@ std::string drawFrame(const UiState& st) {
                 std::vector<std::string>& dst = st.invited.count(rid) ? invRows : allRows;
                 std::string row = mark + "[1m" + name + "[0m ("
                                 + std::to_string(roomMessageCount(st.db, rid)) + ")";
+                if (r->value("is_encrypted", false)) {
+                    row += (st.showEmoji ? " 🔒" : " [E2EE]");
+                }
+                // The room description (topic) in dim, after the count.
+                {
+                    std::string topic = r->value("topic", "");
+                    if (!topic.empty()) {
+                        int used = displayWidth(row) + 2;
+                        row += "[90m" + clip(" · " + topic,
+                                                 std::max(4, W - 8 - used))
+                             + "[0m";
+                    }
+                }
                 std::string ltime = roomLastTime(st.db, rid, st.showSeconds,
                                                    st.clock12h);
                 if (!ltime.empty()) {
@@ -1481,6 +1539,9 @@ std::string drawFrame(const UiState& st) {
                 name = (st.showEmoji ? "💬 " : "[DM] ") + name;
             left = mark + "[1m" + name + "[0m ("
                  + std::to_string(roomMessageCount(st.db, rid)) + ")";
+            if (r.value("is_encrypted", false)) {
+                left += (st.showEmoji ? " 🔒" : " [E2EE]");
+            }
             int thr = roomThreadCount(st.db, rid);
             if (thr > 0) {
                 left += (st.showEmoji ? " 🧵" : " (threads ") + std::to_string(thr)
@@ -1700,6 +1761,7 @@ int cmdAsciiUi(const cli::Args& args) {
     st.clock12h = dbi.getSetting("clock12h") == "1";
     st.autoPanels = dbi.getSetting("panel_auto") != "0";
     try { st.membersMode = std::stoi(dbi.getSetting("members_mode", "0")); } catch (...) {}
+    st.showThreadsBottom = dbi.getSetting("threads_bottom") != "0";
     // Demo/offline: static presence so the right panel shows the letters.
     // The demo events carry short senders ("@alice") — key both forms.
     if (st.accountLabel == "demo (offline)") {
@@ -3341,6 +3403,9 @@ int cmdAsciiUi(const cli::Args& args) {
                       << (st.membersMode == 1 ? "horizontal" :
                           st.membersMode == 2 ? "vertical list" : "auto")
                       << "  (members <horizontal|list|auto>)" << std::endl;
+            std::cout << "  threads   "
+                      << (st.showThreadsBottom ? "bottom list" : "hidden")
+                      << "  (threads bottom on / threads bottom off)" << std::endl;
             std::cout << "  layout    " << (st.mobile ? "smartphone (stacked)"
                                                       : "desktop (three columns)")
                       << "  (mobile on / mobile off)" << std::endl;
@@ -3399,6 +3464,16 @@ int cmdAsciiUi(const cli::Args& args) {
             st.scroll = 1 << 30;  // clamped to the bottom in drawFrame
             st.statusNote = "back to the latest messages";
             if (st.mobile) st.mobileTab = 1;
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- threads bottom on|off: the thread list in the right panel ----
+        if (a.command == "threads" && a.positional.size() >= 2 &&
+            a.positional[0] == "bottom") {
+            st.showThreadsBottom = (a.positional[1] != "off");
+            dbi.setSetting("threads_bottom", st.showThreadsBottom ? "1" : "0");
+            st.statusNote = std::string("thread list in the right panel ") +
+                            (st.showThreadsBottom ? "on" : "off");
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
