@@ -16,6 +16,7 @@ jobs:
     steps:
       - name: Install the ARM (armhf) cross toolchain
         run: |
+          dpkg --add-architecture armhf
           apt-get update
           apt-get install -y --no-install-recommends \
             g++-arm-linux-gnueabihf \
