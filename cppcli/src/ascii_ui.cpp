@@ -899,16 +899,26 @@ std::string drawFrame(const UiState& st) {
                 int w = displayWidth(memberRowStr(st, mem));
                 if (w > longestMember) longestMember = w;
             }
-            // The thread list at the bottom may need more room.
+            // The thread list at the bottom may need more room — but the
+            // panel stays capped so the chat never gets squeezed out.
             if (st.showThreadsBottom) {
-                auto thr = roomThreadList(st.db, st.currentRoomId, 30);
+                auto thr = roomThreadList(st.db, st.currentRoomId, 20);
                 for (const auto& t : thr) {
                     int w = displayWidth(t);
                     if (w > longestMember) longestMember = w;
                 }
             }
-            rightW = std::max(10, std::min(40, longestMember + 3));
+            rightW = std::max(10, std::min(30, longestMember + 3));
         }
+    }
+    // Keep the chat usable: the panels never squeeze the center below
+    // ~28 columns — the rooms list gives way first, then the members.
+    int minCenter = 28;
+    if (W - leftW - rightW - 2 < minCenter) {
+        leftW = std::max(24, W - rightW - 2 - minCenter);
+    }
+    if (W - leftW - rightW - 2 < minCenter) {
+        rightW = std::max(10, W - leftW - 2 - minCenter);
     }
     int centerW = std::max(20, W - leftW - rightW - 2);
 
