@@ -47,7 +47,8 @@ jobs:
             -DBUILD_TUI=OFF \
             -DBUILD_TESTS=OFF \
             -DUSE_SYSTEM_OLM=OFF \
-            -DPROGRESSIVE_CORE_USE_ARTIFACT=OFF
+            -DPROGRESSIVE_CORE_USE_ARTIFACT=OFF \
+            -DCMAKE_FIND_DEBUG_MODE=ON
           cmake --build build -j$(nproc)
 
       - name: Verify the binary
