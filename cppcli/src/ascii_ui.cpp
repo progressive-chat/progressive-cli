@@ -715,10 +715,13 @@ void loadRoomIntoState(UiState& st, const std::string& query) {
     st.receipts.clear();
     auto abbrev = minimalUniqueNames(st.members);
     for (const auto& ev : st.messages) {
+        // Deduplicate: a sender with several later messages counts once.
         std::string readers;
+        std::unordered_set<std::string> seen;
         for (const auto& ev2 : st.messages) {
             if (ev2.origin_server_ts > ev.origin_server_ts &&
-                ev2.sender != ev.sender) {
+                ev2.sender != ev.sender && !seen.count(ev2.sender)) {
+                seen.insert(ev2.sender);
                 auto it = abbrev.find(ev2.sender);
                 if (it != abbrev.end()) {
                     if (!readers.empty()) readers += " ";
@@ -727,6 +730,20 @@ void loadRoomIntoState(UiState& st, const std::string& query) {
             }
         }
         st.receipts[ev.event_id] = readers;
+    }
+    // The read marker: the ✓ readers only sit on the LAST message read by
+    // the user (the newest message that anyone has read up to) — one
+    // marker per room, like Element's "read up to here" line.
+    std::string markerId;
+    for (auto it = st.messages.rbegin(); it != st.messages.rend(); ++it) {
+        auto rIt = st.receipts.find(it->event_id);
+        if (rIt != st.receipts.end() && !rIt->second.empty()) {
+            markerId = it->event_id;
+            break;
+        }
+    }
+    for (auto& [id, readers] : st.receipts) {
+        if (id != markerId) readers.clear();
     }
 }
 
