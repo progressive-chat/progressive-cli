@@ -986,8 +986,12 @@ std::string drawFrame(const UiState& st) {
                     if (!st.db->getEventById(cur, prev)) break;
                     std::string preview = eventBody(prev);
                     if (preview.empty()) break;
+                    // The chain line uses the full effective panel width
+                    // (the whole screen in mobile) — the wrap takes care of
+                    // any overflow.
+                    int chainW = st.mobile ? W : centerW;
                     chain += std::string(lvl, ' ') + "> [" + senderShort(prev.sender)
-                           + "] " + clip(preview, std::max(20, centerW - 26)) + "\n";
+                           + "] " + clip(preview, std::max(20, chainW)) + "\n";
                     auto rel = prev.content.find("m.relates_to");
                     if (rel == prev.content.end() || !rel->is_object()) break;
                     auto ir = rel->find("m.in_reply_to");
