@@ -203,7 +203,9 @@ std::vector<std::string> wrapText(const std::string& s, int width) {
         if (c == ' ' || c == '\n') {
             flushWord();
             if (c == '\n') {
-                lines.push_back(cur);
+                // No empty rows from double newlines (\n\n in quoted
+                // bodies) — a break pushes the line only when it has text.
+                if (!cur.empty()) lines.push_back(cur);
                 cur.clear();
             } else if (!cur.empty() && displayWidth(cur) + 1 > width) {
                 lines.push_back(cur);
