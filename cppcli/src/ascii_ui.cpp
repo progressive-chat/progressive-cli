@@ -813,12 +813,29 @@ std::vector<std::string> roomThreadList(db::Database* db,
     auto evs = db->getEvents(roomId, 300);
     for (const auto& ev : evs) {
         int rc = 0;
+        const matrix::Event* last = nullptr;  // the newest reply
         for (const auto& ev2 : evs) {
-            if (eventThreadRoot(ev2) == ev.event_id) rc++;
+            if (eventThreadRoot(ev2) == ev.event_id) {
+                rc++;
+                if (ev2.event_id != ev.event_id &&
+                    (!last || ev2.origin_server_ts > last->origin_server_ts)) {
+                    last = &ev2;
+                }
+            }
         }
         if (rc > 0) {
             thr.push_back("⤷ " + clip(eventBody(ev), clipW) + " ("
                           + std::to_string(rc) + ")");
+            // The last reply under it: nickname + time, like Element.
+            if (last) {
+                std::time_t t = static_cast<std::time_t>(last->origin_server_ts / 1000);
+                std::tm tm{};
+                localtime_r(&t, &tm);
+                char buf[8];
+                std::snprintf(buf, sizeof(buf), "%02d:%02d", tm.tm_hour, tm.tm_min);
+                thr.push_back("  " + senderShort(last->sender) + " · "
+                              + buf);
+            }
         }
     }
     return thr;
