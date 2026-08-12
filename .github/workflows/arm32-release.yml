@@ -23,7 +23,7 @@ jobs:
             libssl-dev:armhf \
             libsqlite3-dev:armhf \
             libcurl4-openssl-dev:armhf \
-            cmake make git ca-certificates
+            cmake make git ca-certificates python3
 
       - uses: actions/checkout@v6
         with:
