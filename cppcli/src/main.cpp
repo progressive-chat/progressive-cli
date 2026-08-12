@@ -2477,6 +2477,154 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
         }
     }
 
+    // More users and a livelier #general: fresh members join, a long
+    // conversation runs over the last hour (mentions, URLs, a file, a
+    // second poll with votes, reactions and a reply).
+    {
+        int64_t t0 = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        int64_t gt = t0 - 90 * 60000;
+        auto ins = [&](const char* sender, const char* body) {
+            matrix::Event ev;
+            ev.event_id = "$demo_" + std::to_string(gt);
+            ev.room_id = "!general:demo.local"; ev.sender = sender;
+            ev.type = "m.room.message";
+            ev.content = {{"msgtype", "m.text"}, {"body", body}};
+            ev.origin_server_ts = gt;
+            dbi.insertEvent(ev);
+            gt -= 120000;
+        };
+        // The new members join.
+        const char* newbies[] = {"@heidi", "@ivan", "@julia", "@kate"};
+        for (const char* nb : newbies) {
+            matrix::Event ev;
+            ev.event_id = "$demo_" + std::to_string(gt);
+            ev.room_id = "!general:demo.local"; ev.sender = nb;
+            ev.type = "m.room.member";
+            ev.content = {{"membership", "join"},
+                          {"displayname", std::string(nb + 1)}};
+            ev.origin_server_ts = gt;
+            dbi.insertEvent(ev);
+            gt -= 60000;
+        }
+        ins("@alice", "The demo build is ready, testers welcome!");
+        ins("@heidi", "Just joined! Hi everyone");
+        ins("@bob", "Welcome @heidi! Check the pinned message.");
+        ins("@ivan", "Anyone tried the new ui? https://github.com/progressive-chat/progressive-cli");
+        ins("@you", "The ascii client looks great on my phone.");
+        ins("@julia", "Screenshots or it didn't happen");
+        ins("@kate", "Here you go: https://matrix.org/docs/guide");
+        ins("@charlie", "E2EE finally works between devices.");
+        ins("@dave", "Latency is way down after the sync rewrite.");
+        ins("@erin", "Morning all! Coffee's on me.");
+        ins("@frank", "Did the CI pass today?");
+        ins("@grace", "Green across the board");
+        ins("@carol", "The new poll feature is slick.");
+        // A second poll in #general, voted on by the newcomers.
+        {
+            std::string pollId = "$demo_" + std::to_string(gt);
+            matrix::Event p;
+            p.event_id = pollId;
+            p.room_id = "!general:demo.local"; p.sender = "@alice";
+            p.type = "m.room.message";
+            p.content = {{"msgtype", "m.poll.start"},
+                         {"question", {{"text", "Meeting time tomorrow?"}}},
+                         {"answers", {{{"id", "a"}, {"text", "Morning"}},
+                                      {{"id", "b"}, {"text", "Evening"}}}},
+                         {"m.relates_to", {{"event_id", pollId}, {"rel_type", "m.reference"}}}};
+            p.origin_server_ts = gt;
+            dbi.insertEvent(p);
+            gt -= 60000;
+            struct { const char* sender; const char* vote; } votes2[] = {
+                {"@heidi", "a"}, {"@ivan", "b"}, {"@julia", "a"},
+                {"@kate", "b"}, {"@you", "a"}, {"@charlie", "b"},
+            };
+            for (auto& v : votes2) {
+                matrix::Event r;
+                r.event_id = "$demo_" + std::to_string(gt);
+                r.room_id = "!general:demo.local"; r.sender = v.sender;
+                r.type = "m.room.message";
+                r.content = {{"msgtype", "m.poll.response"},
+                             {"m.relates_to", {{"event_id", pollId}, {"rel_type", "m.reference"}}},
+                             {"selections", {v.vote}}};
+                r.origin_server_ts = gt;
+                dbi.insertEvent(r);
+                gt -= 60000;
+            }
+        }
+        ins("@ivan", "Voted! Morning works for me.");
+        ins("@julia", "Evening is better for the EU folks.");
+        ins("@heidi", "@bob where are the release notes?");
+        ins("@bob", "Here: https://github.com/progressive-chat/progressive-cli/releases");
+        ins("@kate", "Awesome work, the demo is impressive.");
+        ins("@alice", "Meeting in 30, don't be late!");
+        ins("@you", "On my way.");
+        ins("@charlie", "Also relevant: https://spec.matrix.org/v1.13/");
+        // A file share.
+        {
+            matrix::Event f;
+            f.event_id = "$demo_" + std::to_string(gt);
+            f.room_id = "!general:demo.local"; f.sender = "@dave";
+            f.type = "m.room.message";
+            f.content = {{"msgtype", "m.file"}, {"body", "roadmap-q3.pdf"},
+                         {"url", "mxc://demo.local/roadmap_q3"},
+                         {"filename", "roadmap-q3.pdf"}, {"mimetype", "application/pdf"}};
+            f.origin_server_ts = gt;
+            dbi.insertEvent(f);
+            gt -= 120000;
+        }
+        ins("@erin", "Thanks @dave, looks solid.");
+        ins("@heidi", "Count me in for tomorrow!");
+        // Reactions on some of these messages.
+        {
+            auto reactTo = [&](const std::string& bodyPrefix, const char* key, const char* who) {
+                auto evs = dbi.getEvents("!general:demo.local", 500);
+                for (const auto& ev : evs) {
+                    if (ev.content.value("body", "").find(bodyPrefix) != std::string::npos) {
+                        matrix::Event r;
+                        r.event_id = "$demo_" + std::to_string(gt);
+                        r.room_id = "!general:demo.local"; r.sender = who;
+                        r.type = "m.reaction";
+                        r.content = {{"m.relates_to",
+                                      {{"event_id", ev.event_id},
+                                       {"rel_type", "m.annotation"},
+                                       {"key", key}}}};
+                        r.origin_server_ts = gt;
+                        dbi.insertEvent(r);
+                        gt -= 60000;
+                        break;
+                    }
+                }
+            };
+            reactTo("The demo build is ready", "🤗", "@heidi");
+            reactTo("The demo build is ready", "👍", "@ivan");
+            reactTo("Here you go", "👍", "@bob");
+            reactTo("Latency is way down", "🚀", "@alice");
+            reactTo("Green across the board", "✅", "@you");
+        }
+        // A reply into the conversation (to heidi's last message).
+        {
+            std::string targetId;
+            auto evs = dbi.getEvents("!general:demo.local", 500);
+            for (const auto& ev : evs) {
+                if (ev.content.value("body", "").find("Count me in") != std::string::npos) {
+                    targetId = ev.event_id;
+                    break;
+                }
+            }
+            matrix::Event rep;
+            rep.event_id = "$demo_" + std::to_string(gt);
+            rep.room_id = "!general:demo.local"; rep.sender = "@kate";
+            rep.type = "m.room.message";
+            rep.content = {{"msgtype", "m.text"},
+                           {"body", "> <@heidi:demo.local> Count me in for tomorrow!\nSee you there then!"},
+                           {"m.relates_to",
+                            {{"m.in_reply_to", {{"event_id", targetId}}}}}};
+            rep.origin_server_ts = gt;
+            dbi.insertEvent(rep);
+        }
+    }
+
     std::cout << "Populated DB: " << (sizeof(rooms)/sizeof(rooms[0])) << " rooms, "
               << (sizeof(msgs)/sizeof(msgs[0])) + 2 + 4 << " messages (incl. a thread)." << std::endl;
     std::cout << "Try:  matrixcli rooms | matrixcli view #general | matrixcli view #dev" << std::endl;
