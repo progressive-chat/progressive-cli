@@ -1776,6 +1776,32 @@ int cmdAsciiUi(const cli::Args& args) {
     // --scroll N (viewport offset) — the room list scrolls within it.
     if (args.options.count("mobile")) st.mobile = true;
     if (args.options.count("space")) st.activeSpace = args.options.at("space");
+    // Temporary one-shot layout flags (not persisted, unlike the REPL
+    // commands panel/members/rows which save to the settings table):
+    // --panel-left/--panel-right <off|on|width>, --panel-auto on|off,
+    // --members horizontal|list|auto.
+    auto parsePanel = [](const std::string& v) -> int {
+        if (v == "off") return 0;
+        if (v == "on" || v.empty()) return -1;
+        try { return std::stoi(v); } catch (...) { return -1; }
+    };
+    if (args.options.count("panel-left")) {
+        st.leftPanelW = parsePanel(args.options.at("panel-left"));
+        st.autoPanels = false;
+    }
+    if (args.options.count("panel-right")) {
+        st.rightPanelW = parsePanel(args.options.at("panel-right"));
+        st.autoPanels = false;
+    }
+    if (args.options.count("panel-auto")) {
+        st.autoPanels = args.options.at("panel-auto") != "off";
+    }
+    if (args.options.count("members")) {
+        std::string m = args.options.at("members");
+        if (m == "horizontal") st.membersMode = 1;
+        else if (m == "list" || m == "vertical") st.membersMode = 2;
+        else st.membersMode = 0;
+    }
     // Element Classic: with a room on the command line, open it in the
     // Chat tab right away; without one, land on the Rooms tab.
     if (st.mobile && !initial.empty()) st.mobileTab = 1;
