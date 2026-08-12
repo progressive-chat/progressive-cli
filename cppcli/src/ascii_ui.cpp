@@ -792,15 +792,21 @@ void loadRoomIntoState(UiState& st, const std::string& query) {
 }
 
 // One member row: presence letter (colored), power badge, name.
+// Users without a presence entry (server with presence off, not yet
+// fetched) show as offline [F] — never without a letter.
 std::string memberRowStr(const UiState& st, const std::string& mem) {
     std::string m = senderShort(mem);
+    std::string letter;
     auto pit = st.presence.find(mem);
     if (pit != st.presence.end() && !pit->second.empty()) {
-        const char* pc = "\x1b[32m";
-        if (pit->second == "A") pc = "\x1b[33m";
-        else if (pit->second == "F") pc = "\x1b[31m";
-        m = std::string(pc) + "[" + pit->second + "]" + "\x1b[0m " + m;
+        letter = pit->second;
+    } else {
+        letter = "F";  // offline by default
     }
+    const char* pc = "\x1b[32m";
+    if (letter == "A") pc = "\x1b[33m";
+    else if (letter == "F") pc = "\x1b[31m";
+    m = std::string(pc) + "[" + letter + "]" + "\x1b[0m " + m;
     auto pl = st.powerLevels.find(mem);
     if (pl != st.powerLevels.end()) {
         if (pl->second >= 100) m = "\xf0\x9f\x91\x91 " + m;
@@ -1699,6 +1705,15 @@ int cmdAsciiUi(const cli::Args& args) {
             {"@bob:demo.local", "@bob", "A"},
             {"@charlie:demo.local", "@charlie", "F"},
             {"@you:demo.local", "@you", "O"},
+            {"@carol:demo.local", "@carol", "O"},
+            {"@dave:demo.local", "@dave", "O"},
+            {"@erin:demo.local", "@erin", "A"},
+            {"@frank:demo.local", "@frank", "F"},
+            {"@grace:demo.local", "@grace", "O"},
+            {"@heidi:demo.local", "@heidi", "O"},
+            {"@ivan:demo.local", "@ivan", "A"},
+            {"@julia:demo.local", "@julia", "O"},
+            {"@kate:demo.local", "@kate", "F"},
         };
         for (auto& p : demoPres) {
             st.presence[p.full] = p.letter;
