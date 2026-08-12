@@ -936,12 +936,13 @@ std::string drawFrame(const UiState& st) {
                     if (w > longestMember) longestMember = w;
                 }
             }
-            rightW = std::max(10, std::min(40, longestMember + 3));
+            int rightMax = std::min(40, std::max(24, W / 3));
+            rightW = std::max(10, std::min(rightMax, longestMember + 3));
         }
     }
     // Keep the chat usable: the panels never squeeze the center below
-    // ~22 columns — the rooms list gives way first, then the members.
-    int minCenter = 22;
+    // ~30 columns — the rooms list gives way first, then the members.
+    int minCenter = 30;
     if (W - leftW - rightW - 2 < minCenter) {
         leftW = std::max(24, W - rightW - 2 - minCenter);
     }
@@ -1106,7 +1107,16 @@ std::string drawFrame(const UiState& st) {
                     std::string who = senderShort(ev.sender);
                     if (ms == "join") center = "[" + who + "] joined the room";
                     else if (ms == "leave") center = "[" + who + "] left the room";
-                    else if (ms == "invite") center = "[" + who + "] was invited";
+                    else if (ms == "invite") {
+                        std::string target = ev.state_key.empty()
+                                                 ? "" : senderShort(ev.state_key);
+                        std::string reason = ev.content.value("reason", "");
+                        center = "[" + who + "] invited "
+                               + (target.empty() ? "someone" : target);
+                        if (!reason.empty()) {
+                            center += " — " + reason;  // — reason
+                        }
+                    }
                     else if (ms == "ban") center = "[" + who + "] was banned";
                     else center = "[" + who + "] membership: " + ms;
                 }
@@ -1344,6 +1354,18 @@ std::string drawFrame(const UiState& st) {
             // Element "show join/leave messages": member events are system
             // rows — hidden when the setting is off.
             if (!st.showJoins && ev.type == "m.room.member") continue;
+            // Reactions are aggregated into the message rows; the state
+            // events (power levels, encryption, room meta) are system
+            // data — neither should become standalone (empty) lines.
+            if (ev.type == "m.reaction" || ev.type == "m.room.power_levels" ||
+                ev.type == "m.room.encryption" || ev.type == "m.room.create" ||
+                ev.type == "m.room.topic" || ev.type == "m.room.name" ||
+                ev.type == "m.room.avatar" || ev.type == "m.room.canonical_alias" ||
+                ev.type == "m.room.join_rules" ||
+                ev.type == "m.room.history_visibility" ||
+                ev.type == "m.room.encrypted" || ev.type == "m.room.redaction") {
+                continue;
+            }
             std::string row = renderRow(ev);
             if (!st.showNames) {
                 // Element compact mode: hide the sender nicknames.

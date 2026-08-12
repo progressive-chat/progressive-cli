@@ -2217,10 +2217,11 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
             {"!meta:demo.local", "@you", "join"},
             {"!space_tech:demo.local", "@you", "join"},
             {"!space_social:demo.local", "@you", "join"},
-            // Open invites for @you — the header shows the invite count.
-            {"!design:demo.local", "@you", "invite"},
-            {"!crypto:demo.local", "@you", "invite"},
-            {"!books:demo.local", "@you", "invite"},
+            // Open invites FOR @you (sent by other members) — the header
+            // shows the invite count, the timeline the invite rows.
+            {"!design:demo.local", "@alice", "invite"},
+            {"!crypto:demo.local", "@bob", "invite"},
+            {"!books:demo.local", "@grace", "invite"},
                {"!sports:demo.local", "@you", "join"},
             {"!sports:demo.local", "@bob", "join"},
             {"!sports:demo.local", "@erin", "join"},
@@ -2361,6 +2362,19 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
             nlohmann::json content;
             content["membership"] = m.ms;
             content["displayname"] = shortName(m.sender);
+            // Invites carry the invited user and a reason, shown in the
+            // timeline ("alice invited you — reason").
+            if (strcmp(m.ms, "invite") == 0) {
+                ev.state_key = "@you:demo.local";
+                const char* reason = m.room;
+                if (strcmp(m.room, "!design:demo.local") == 0)
+                    reason = "the design crew wants you!";
+                else if (strcmp(m.room, "!crypto:demo.local") == 0)
+                    reason = "we discuss the latest coins";
+                else if (strcmp(m.room, "!books:demo.local") == 0)
+                    reason = "book club needs new readers";
+                content["reason"] = reason;
+            }
             ev.content = content;
             ev.origin_server_ts = ts;
             dbi.insertEvent(ev);
