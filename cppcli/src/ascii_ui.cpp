@@ -892,17 +892,22 @@ std::string drawFrame(const UiState& st) {
         // Size the panels to the content so the screen is filled: the
         // room panel fits the longest room row plus a preview budget, the
         // member panel fits the longest member name.
+        // The rooms list is sized to the LONGEST ACTUAL row (name, count,
+        // thread marker and the last-message preview), so no column space
+        // is wasted — the chat keeps the rest.
         int longestRoom = 0;
         for (const auto& r : st.rooms) {
             if (r.value("is_space", false)) continue;
+            std::string rid = r.value("room_id", "");
             std::string nm = roomDisplayName(r);
             if (r.value("is_direct", false)) nm = "  " + nm;
-            int w = displayWidth(nm) + 6;
+            int w = displayWidth(" " + nm + " ("
+                                 + std::to_string(roomMessageCount(st.db, rid)) + ")");
+            std::string last = roomLastMsg(st.db, rid, st.rooms);
+            if (!last.empty()) w += 3 + displayWidth(last);  // " · preview"
             if (w > longestRoom) longestRoom = w;
         }
-        // The rooms list gets the bigger share: the previews fill it, the
-        // chat keeps the rest (the members panel stays at the right edge).
-        leftW = std::max(24, std::min(56, longestRoom + 40));
+        leftW = std::max(24, std::min(56, longestRoom + 2));
         if (horizMembers) {
             rightW = 0;
         } else {
