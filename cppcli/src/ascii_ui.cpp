@@ -924,13 +924,13 @@ std::string drawFrame(const UiState& st) {
             // The thread list at the bottom may need more room — but the
             // panel stays capped so the chat never gets squeezed out.
             if (st.showThreadsBottom) {
-                auto thr = roomThreadList(st.db, st.currentRoomId, 20);
+                auto thr = roomThreadList(st.db, st.currentRoomId, 30);
                 for (const auto& t : thr) {
                     int w = displayWidth(t);
                     if (w > longestMember) longestMember = w;
                 }
             }
-            rightW = std::max(10, std::min(34, longestMember + 3));
+            rightW = std::max(10, std::min(40, longestMember + 3));
         }
     }
     // Keep the chat usable: the panels never squeeze the center below
