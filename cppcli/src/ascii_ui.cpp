@@ -1019,9 +1019,19 @@ std::string drawFrame(const UiState& st) {
             if (st.redactedIds.count(ev.event_id)) {
                 center += "  (\xf0\x9f\x97\x91 deleted)";
             }
-            // Poll response counts under the poll.
+            // Poll response counts under the poll — with the option texts.
             if (!center.empty() &&
                 center.find("poll:") != std::string::npos && ev.content.is_object()) {
+                std::map<std::string, std::string> answerTexts;
+                auto ans = ev.content.find("answers");
+                if (ans != ev.content.end() && ans->is_array()) {
+                    for (const auto& a : *ans) {
+                        if (!a.is_object()) continue;
+                        std::string id = a.value("id", "");
+                        std::string text = a.value("text", "");
+                        if (!id.empty()) answerTexts[id] = text;
+                    }
+                }
                 std::map<std::string, int> votes;
                 for (const auto& ev2 : st.messages) {
                     if (!ev2.content.is_object()) continue;
@@ -1043,7 +1053,10 @@ std::string drawFrame(const UiState& st) {
                     std::string vstr;
                     for (const auto& [k, n] : votes) {
                         if (!vstr.empty()) vstr += ", ";
-                        vstr += k + ": " + std::to_string(n);
+                        auto it = answerTexts.find(k);
+                        std::string label = (it != answerTexts.end() && !it->second.empty())
+                                                ? it->second : k;
+                        vstr += label + ": " + std::to_string(n);
                     }
                     center += "  \xf0\x9f\x97\xb3 " + vstr;  // 🗳
                 }
@@ -3091,6 +3104,68 @@ int cmdAsciiUi(const cli::Args& args) {
             dbi.setSetting("clock12h", st.clock12h ? "1" : "0");
             st.statusNote = std::string("clock ") + (st.clock12h ? "12h (AM/PM)" : "24h");
             std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- poll <event_id>: the poll variants and the voters ----
+        if (a.command == "poll") {
+            if (a.positional.empty()) {
+                std::cout << "Usage: poll <event_id>   (ids on shows the ids)"
+                          << std::endl;
+                continue;
+            }
+            matrix::Event pev;
+            if (!st.db->getEventById(a.positional[0], pev) ||
+                pev.content.value("msgtype", "") != "m.poll.start") {
+                std::cout << "No poll with that id." << std::endl;
+                continue;
+            }
+            std::string qtext;
+            auto q = pev.content.find("question");
+            if (q != pev.content.end() && q->is_object()) {
+                qtext = q->value("text", "");
+            }
+            std::cout << "Poll: " << (qtext.empty() ? "?" : qtext) << std::endl;
+            std::map<std::string, std::string> answerTexts;
+            std::map<std::string, std::vector<std::string>> voters;
+            auto ans = pev.content.find("answers");
+            if (ans != pev.content.end() && ans->is_array()) {
+                for (const auto& a : *ans) {
+                    if (!a.is_object()) continue;
+                    std::string id = a.value("id", "");
+                    std::string text = a.value("text", "");
+                    if (!id.empty()) answerTexts[id] = text;
+                }
+            }
+            for (const auto& ev2 : st.messages) {
+                if (ev2.content.value("msgtype", "") != "m.poll.response") continue;
+                auto rel2 = ev2.content.find("m.relates_to");
+                if (rel2 == ev2.content.end() || !rel2->is_object()) continue;
+                if (rel2->value("event_id", "") != pev.event_id) continue;
+                auto sel = ev2.content.find("selections");
+                if (sel == ev2.content.end() || !sel->is_array() ||
+                    sel->empty() || !(*sel)[0].is_string()) continue;
+                voters[(*sel)[0].get<std::string>()].push_back(
+                    senderShort(ev2.sender));
+            }
+            int shown = 0;
+            for (const auto& [id, votersList] : voters) {
+                auto it = answerTexts.find(id);
+                std::string label = (it != answerTexts.end() && !it->second.empty())
+                                        ? it->second : id;
+                std::string who;
+                for (const auto& v : votersList) {
+                    if (!who.empty()) who += ", ";
+                    who += v;
+                }
+                std::cout << "  (" << id << ") " << label << " — "
+                          << votersList.size() << " vote"
+                          << (votersList.size() == 1 ? "" : "s")
+                          << (who.empty() ? "" : " (" + who + ")") << std::endl;
+                shown++;
+            }
+            if (shown == 0) {
+                std::cout << "  No votes yet." << std::endl;
+            }
             continue;
         }
         // ---- settings: the current client settings ----
