@@ -805,7 +805,8 @@ void loadRoomIntoState(UiState& st, const std::string& query) {
 
 // The thread rows of a room ("⤷ preview (N)") for the right panel.
 std::vector<std::string> roomThreadList(db::Database* db,
-                                         const std::string& roomId, int clipW) {
+                                         const std::string& roomId, int clipW,
+                                         bool showIds) {
     std::vector<std::string> thr;
     if (!db || roomId.empty()) return thr;
     auto evs = db->getEvents(roomId, 300);
@@ -833,6 +834,11 @@ std::vector<std::string> roomThreadList(db::Database* db,
                 std::snprintf(buf, sizeof(buf), "%02d:%02d", tm.tm_hour, tm.tm_min);
                 thr.push_back("  " + senderShort(last->sender) + " · "
                               + buf);
+            }
+            // With --ids: the thread master's full id on the next line.
+            if (showIds) {
+                thr.push_back("  ‹" + clip(ev.event_id, clipW - 2)
+                              + "›");
             }
         }
     }
@@ -924,7 +930,7 @@ std::string drawFrame(const UiState& st) {
             // The thread list at the bottom may need more room — but the
             // panel stays capped so the chat never gets squeezed out.
             if (st.showThreadsBottom) {
-                auto thr = roomThreadList(st.db, st.currentRoomId, 30);
+                auto thr = roomThreadList(st.db, st.currentRoomId, 30, st.showIds);
                 for (const auto& t : thr) {
                     int w = displayWidth(t);
                     if (w > longestMember) longestMember = w;
@@ -1404,6 +1410,13 @@ std::string drawFrame(const UiState& st) {
                         centerRows.push_back(std::string(8, ' ') + lines[li]);
                     }
                 }
+                // Thread master messages: their full id on its own line
+                // (with --ids), so the roots are easy to reference.
+                if (st.showIds && !ev.event_id.empty() &&
+                    eventThreadRoot(ev) == ev.event_id) {
+                    centerRows.push_back("      \xe2\xa4\xb7 thread root: "
+                                         + clip(ev.event_id, centerW - 16));
+                }
             }
         }
     }
@@ -1430,7 +1443,7 @@ std::string drawFrame(const UiState& st) {
         // with its own scroll (--scroll-threads).
         if (st.showThreadsBottom && !st.currentRoomId.empty()) {
             std::vector<std::string> thr =
-                roomThreadList(st.db, st.currentRoomId, rightW - 7);
+                roomThreadList(st.db, st.currentRoomId, rightW - 7, st.showIds);
             if (!thr.empty()) {
                 // Reserve room for the threads: the member list gets capped
                 // so the thread window (at least 1 row) always fits.
