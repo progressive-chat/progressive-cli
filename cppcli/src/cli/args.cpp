@@ -141,6 +141,7 @@ void printUsage() {
               << "  --static      draw the frame once and exit (pipe-friendly)\n"
               << "  --rows N      frame height in rows (0/omit = fit terminal)\n"
               << "  --scroll N    viewport offset in the room list (with --rows)\n"
+              << "  --scroll-left N  scroll ONLY the rooms list (desktop)\n"
               << "  --mobile      smartphone layout: stacked sections (portrait)\n"
               << "  --panel-left <off|on|width>   temporary left panel size\n"
               << "  --panel-right <off|on|width>  temporary right panel size\n"

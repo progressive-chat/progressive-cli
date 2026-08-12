@@ -547,6 +547,7 @@ struct UiState {
     std::vector<std::string> members;    // unique senders in the room
     int limit = 25;
     int scroll = 0;                      // viewport offset (rows)
+    int leftScroll = 0;                  // rooms-list-only offset (desktop)
     std::string accountLabel;            // e.g. "bob@matrix.org" or "demo (offline)"
     std::string proxyLabel;              // "on (socks5h ...)" or "off"
     std::string roomFilter;              // find/space filter for the left panel
@@ -1525,13 +1526,18 @@ std::string drawFrame(const UiState& st) {
     visCount = std::max(visCount, static_cast<int>(rightRows.size()));
     int maxScroll = std::max(0, visCount - rows);
     int scroll = std::min(std::max(0, st.scroll), maxScroll);
+    // The rooms list can scroll on its own (--scroll-left): only the
+    // left panel moves, the chat and members stay put.
+    int leftScroll = std::min(std::max(0, st.leftScroll),
+                              std::max(0, static_cast<int>(visible.size()) - rows));
     if (scroll > 0) out += "  ^ more above (scroll up)\n";
     if (scroll + rows < contentRows(st)) out += "  v more below (scroll down)\n";
     for (int i = 0; i < rows; ++i) {
         int src = scroll + i;  // the content row this view row shows
+        int leftSrc = leftScroll + i;  // the rooms row (scrolled separately)
         std::string left, center, right;
-        if (src < static_cast<int>(visible.size())) {
-            const auto& r = *visible[static_cast<size_t>(src)];
+        if (leftSrc < static_cast<int>(visible.size())) {
+            const auto& r = *visible[static_cast<size_t>(leftSrc)];
             std::string rid = r.value("room_id", "");
             std::string mark = rid == st.currentRoomId ? "*" : " ";
             std::string name = roomDisplayName(r);
@@ -1872,6 +1878,9 @@ int cmdAsciiUi(const cli::Args& args) {
     }
     if (args.options.count("scroll")) {
         try { st.scroll = std::stoi(args.options.at("scroll")); } catch (...) {}
+    }
+    if (args.options.count("scroll-left")) {
+        try { st.leftScroll = std::stoi(args.options.at("scroll-left")); } catch (...) {}
     }
     std::cout << drawFrame(st) << std::flush;
 
