@@ -22,7 +22,7 @@ jobs:
             g++-arm-linux-gnueabihf \
             libssl-dev:armhf \
             libsqlite3-dev:armhf \
-            cmake git ca-certificates
+            cmake make git ca-certificates
 
       - uses: actions/checkout@v6
         with:
