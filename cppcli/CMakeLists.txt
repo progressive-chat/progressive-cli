@@ -23,7 +23,11 @@ FetchContent_Declare(
 set(PROGRESSIVE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 # Download the prebuilt core for this commit (fast builds). Falls back to
 # compiling from source automatically when the artifact isn't published yet.
-set(PROGRESSIVE_CORE_USE_ARTIFACT ON CACHE BOOL "" FORCE)
+# Cross builds (e.g. armv7) pass -DPROGRESSIVE_CORE_USE_ARTIFACT=OFF to
+# build the core from source — the prebuilt artifact is x86_64/aarch64.
+if(NOT DEFINED PROGRESSIVE_CORE_USE_ARTIFACT)
+    set(PROGRESSIVE_CORE_USE_ARTIFACT ON CACHE BOOL "" FORCE)
+endif()
 FetchContent_MakeAvailable(progressive-core)
 # Keep the historical target name so all consumers (api, src, tui) link
 # unchanged against the fetched core.
