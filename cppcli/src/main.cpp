@@ -2064,6 +2064,51 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
         ts -= 3600000;
     }
 
+    // More threads across the demo: each root + a few replies (m.thread).
+    {
+        int64_t tt = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count() - 3 * 3600000;
+        struct { const char* room; const char* sender; const char* body; } roots[] = {
+            {"!general:demo.local", "@you", "Poll idea: community call every Friday?"},
+            {"!design:demo.local", "@carol", "New color palette for the app"},
+            {"!random:demo.local", "@bob", "The best terminal emulator debate"},
+            {"!music:demo.local", "@alice", "This week's playlist drop"},
+            {"!books:demo.local", "@grace", "Book club pick for August"},
+        };
+        for (auto& rt : roots) {
+            std::string rootId = "$demo_thread_" + std::to_string(tt);
+            matrix::Event root;
+            root.event_id = rootId;
+            root.room_id = rt.room; root.sender = rt.sender;
+            root.type = "m.room.message";
+            root.content = {{"msgtype", "m.text"}, {"body", rt.body},
+                            {"m.relates_to", {{"event_id", rootId},
+                                              {"rel_type", "m.thread"}}}};
+            root.origin_server_ts = tt;
+            dbi.insertEvent(root);
+            tt -= 3600000;
+            struct { const char* sender; const char* body; } reps[] = {
+                {"@you", "Sounds good, count me in!"},
+                {"@bob", "I would join."},
+                {"@alice", "Seconded."},
+                {"@charlie", "Love this."},
+            };
+            int n = (std::string(rt.body).size() % 3) + 2;  // 2..4 replies
+            for (int ri = 0; ri < n; ++ri) {
+                matrix::Event rep;
+                rep.event_id = "$demo_thread_" + std::to_string(tt);
+                rep.room_id = rt.room; rep.sender = reps[ri].sender;
+                rep.type = "m.room.message";
+                rep.content = {{"msgtype", "m.text"}, {"body", reps[ri].body},
+                               {"m.relates_to", {{"event_id", rootId},
+                                                 {"rel_type", "m.thread"}}}};
+                rep.origin_server_ts = tt;
+                dbi.insertEvent(rep);
+                tt -= 60000;
+            }
+        }
+    }
+
     // Power levels in the DMs: everybody is admin there (like Element).
     {
         matrix::Event pl;

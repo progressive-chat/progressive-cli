@@ -271,10 +271,20 @@ std::string eventThreadRoot(const matrix::Event& ev) {
     if (!ev.content.is_object()) return "";
     auto rel = ev.content.find("m.relates_to");
     if (rel == ev.content.end() || !rel->is_object()) return "";
+    // New format: m.relates_to.m.thread.event_id
     auto thr = rel->find("m.thread");
     if (thr != rel->end() && thr->is_object()) {
         auto eid = thr->find("event_id");
         if (eid != thr->end() && eid->is_string()) {
+            return eid->get<std::string>();
+        }
+    }
+    // Older format: m.relates_to.{rel_type: "m.thread", event_id}
+    auto rt = rel->find("rel_type");
+    if (rt != rel->end() && rt->is_string() &&
+        rt->get<std::string>() == "m.thread") {
+        auto eid = rel->find("event_id");
+        if (eid != rel->end() && eid->is_string()) {
             return eid->get<std::string>();
         }
     }
@@ -548,6 +558,7 @@ struct UiState {
     int limit = 25;
     int scroll = 0;                      // viewport offset (rows)
     int leftScroll = 0;                  // rooms-list-only offset (desktop)
+    int threadsScroll = 0;               // threads-section offset (desktop right)
     std::string accountLabel;            // e.g. "bob@matrix.org" or "demo (offline)"
     std::string proxyLabel;              // "on (socks5h ...)" or "off"
     std::string roomFilter;              // find/space filter for the left panel
@@ -794,6 +805,25 @@ void loadRoomIntoState(UiState& st, const std::string& query) {
     }
 }
 
+// The thread rows of a room ("⤷ preview (N)") for the right panel.
+std::vector<std::string> roomThreadList(db::Database* db,
+                                         const std::string& roomId, int clipW) {
+    std::vector<std::string> thr;
+    if (!db || roomId.empty()) return thr;
+    auto evs = db->getEvents(roomId, 300);
+    for (const auto& ev : evs) {
+        int rc = 0;
+        for (const auto& ev2 : evs) {
+            if (eventThreadRoot(ev2) == ev.event_id) rc++;
+        }
+        if (rc > 0) {
+            thr.push_back("⤷ " + clip(eventBody(ev), clipW) + " ("
+                          + std::to_string(rc) + ")");
+        }
+    }
+    return thr;
+}
+
 // One member row: presence letter (colored), power badge, name.
 // Users without a presence entry (server with presence off, not yet
 // fetched) show as offline [F] — never without a letter.
@@ -852,7 +882,15 @@ std::string drawFrame(const UiState& st) {
                 int w = displayWidth(memberRowStr(st, mem));
                 if (w > longestMember) longestMember = w;
             }
-            rightW = std::max(10, std::min(34, longestMember + 3));
+            // The thread list at the bottom may need more room.
+            if (st.showThreadsBottom) {
+                auto thr = roomThreadList(st.db, st.currentRoomId, 30);
+                for (const auto& t : thr) {
+                    int w = displayWidth(t);
+                    if (w > longestMember) longestMember = w;
+                }
+            }
+            rightW = std::max(10, std::min(40, longestMember + 3));
         }
     }
     int centerW = std::max(20, W - leftW - rightW - 2);
@@ -1329,22 +1367,27 @@ std::string drawFrame(const UiState& st) {
         }
         // The thread list sits at the BOTTOM of the right panel, under a
         // separator (Element-style): ⤷ <preview> (<reply count>).
+        // The members get the top rows, the threads a window at the bottom
+        // with its own scroll (--scroll-threads).
         if (st.showThreadsBottom && !st.currentRoomId.empty()) {
-            auto evs = st.db->getEvents(st.currentRoomId, 300);
-            std::vector<std::string> thr;
-            for (const auto& ev : evs) {
-                int rc = 0;
-                for (const auto& ev2 : evs) {
-                    if (eventThreadRoot(ev2) == ev.event_id) rc++;
-                }
-                if (rc > 0) {
-                    thr.push_back("⤷ " + clip(eventBody(ev), 22) + " ("
-                                  + std::to_string(rc) + ")");
-                }
-            }
+            std::vector<std::string> thr =
+                roomThreadList(st.db, st.currentRoomId, rightW - 7);
             if (!thr.empty()) {
+                // Reserve room for the threads: the member list gets capped
+                // so the thread window (at least 1 row) always fits.
+                int membersShown = static_cast<int>(rightRows.size());
+                int wantThr = std::min(static_cast<int>(thr.size()),
+                                       std::max(1, rows / 5));
+                int membersCap = std::max(0, rows - wantThr - 1);
+                if (membersShown > membersCap) rightRows.resize(membersCap);
+                int thrWindow = std::max(1, rows - membersShown - 1);
+                int ts = std::min(std::max(0, st.threadsScroll),
+                                  std::max(0, static_cast<int>(thr.size()) - thrWindow));
                 rightRows.push_back("----------");
-                rightRows.insert(rightRows.end(), thr.begin(), thr.end());
+                for (int k = 0; k < thrWindow && ts + k < static_cast<int>(thr.size());
+                     ++k) {
+                    rightRows.push_back(thr[static_cast<size_t>(ts + k)]);
+                }
             }
         }
     } else if (st.rightPanel == 1) {
@@ -1881,6 +1924,9 @@ int cmdAsciiUi(const cli::Args& args) {
     }
     if (args.options.count("scroll-left")) {
         try { st.leftScroll = std::stoi(args.options.at("scroll-left")); } catch (...) {}
+    }
+    if (args.options.count("scroll-threads")) {
+        try { st.threadsScroll = std::stoi(args.options.at("scroll-threads")); } catch (...) {}
     }
     std::cout << drawFrame(st) << std::flush;
 
