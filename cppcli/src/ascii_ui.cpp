@@ -732,18 +732,51 @@ void loadRoomIntoState(UiState& st, const std::string& query) {
         st.receipts[ev.event_id] = readers;
     }
     // The read marker: the ✓ readers only sit on the LAST message read by
-    // the user (the newest message that anyone has read up to) — one
-    // marker per room, like Element's "read up to here" line.
+    // the user — the newest message in the room (the user has read up to
+    // it). Its readers are everyone else who has read the room: all the
+    // other senders, deduplicated and capped at 3 + "+N" — like Element's
+    // "Seen by A, B, C" line.
+    std::string me = st.accountLabel == "demo (offline)" ? "@you"
+                                                         : "@" + st.accountLabel;
     std::string markerId;
     for (auto it = st.messages.rbegin(); it != st.messages.rend(); ++it) {
-        auto rIt = st.receipts.find(it->event_id);
-        if (rIt != st.receipts.end() && !rIt->second.empty()) {
+        if (it->sender != me) {
             markerId = it->event_id;
             break;
         }
     }
+    std::string markerReaders;
+    if (!markerId.empty()) {
+        std::unordered_set<std::string> seen;
+        std::string markerSender;
+        for (const auto& ev : st.messages) {
+            if (ev.event_id == markerId) { markerSender = ev.sender; break; }
+        }
+        for (const auto& ev : st.messages) {
+            if (ev.sender == markerSender || ev.sender == me) continue;
+            if (!seen.insert(ev.sender).second) continue;
+            auto it = abbrev.find(ev.sender);
+            if (it == abbrev.end()) continue;
+            if (!markerReaders.empty()) markerReaders += " ";
+            markerReaders += it->second;
+        }
+        // Cap: 'a b c +5' instead of the full list.
+        std::string shown;
+        int count = 0;
+        std::istringstream rss(markerReaders);
+        std::string tok;
+        while (rss >> tok && count < 3) {
+            if (!shown.empty()) shown += " ";
+            shown += tok;
+            count++;
+        }
+        int total = 0;
+        { std::istringstream rss2(markerReaders); std::string t2; while (rss2 >> t2) total++; }
+        if (count < total) shown += " +" + std::to_string(total - count);
+        markerReaders = shown;
+    }
     for (auto& [id, readers] : st.receipts) {
-        if (id != markerId) readers.clear();
+        readers = (id == markerId) ? markerReaders : "";
     }
 }
 
