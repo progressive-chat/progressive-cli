@@ -588,6 +588,7 @@ struct UiState {
     std::string senderFilter;            // "from @user": only their messages
     std::unordered_set<std::string> hiddenRooms;   // temporarily hidden
     std::unordered_set<std::string> mutedRooms;    // no unread/indicators
+    std::unordered_set<std::string> starredRooms;  // ★ pinned to the top
     std::map<std::string, std::string> roomNicks;  // "room|user" -> display name
     std::map<std::string, std::string> roomAvatars; // room -> avatar url
     std::map<std::string, std::string> userColors;  // @user -> color name
@@ -622,7 +623,9 @@ struct UiState {
     int leftPanelW = -1;        // -1 = default width, 0 = hidden
     int rightPanelW = -1;       // -1 = default width, 0 = hidden
     std::map<std::string, int> powerLevels;  // member -> power level
+    int eventsDefault = 0;               // the room's send permission level
     std::unordered_set<std::string> redactedIds;  // events that were redacted
+    std::unordered_set<std::string> pinned;       // the room's pinned ids
     std::map<std::string, std::string> receipts;  // eventId -> "a b" readers
     int rightPanel = 0;
     std::string threadRoomId;   // for the room thread list
@@ -668,12 +671,19 @@ int centerRowIndexOf(const UiState& st, const std::string& eventId) {
 
 // Element-style room list: most recently active rooms first.
 void sortRoomsByActivity(UiState& st) {
+    // Starred (anchored) rooms are pinned to the top, like Element's
+    // Favourite; the rest sorts by last activity.
     std::stable_sort(st.rooms.begin(), st.rooms.end(),
         [&st](const nlohmann::json& a, const nlohmann::json& b) {
-            int64_t ta = roomLastTs(st.db, a.value("room_id", ""));
-            int64_t tb = roomLastTs(st.db, b.value("room_id", ""));
+            std::string ia = a.value("room_id", "");
+            std::string ib = b.value("room_id", "");
+            bool sa = st.starredRooms.count(ia) != 0;
+            bool sb = st.starredRooms.count(ib) != 0;
+            if (sa != sb) return sa;
+            int64_t ta = roomLastTs(st.db, ia);
+            int64_t tb = roomLastTs(st.db, ib);
             if (ta != tb) return ta > tb;
-            return a.value("room_id", "") < b.value("room_id", "");
+            return ia < ib;
         });
 }
 
@@ -727,6 +737,25 @@ std::map<std::string, std::string> minimalUniqueNames(
 std::map<std::string, std::string> minimalUniqueNames(
     const std::vector<std::string>& members);
 
+// The ids of the room's pinned events (from the latest m.room.pinned_events).
+std::unordered_set<std::string> pinnedIds(db::Database* db,
+                                           const std::string& roomId) {
+    std::unordered_set<std::string> out;
+    if (!db || roomId.empty()) return out;
+    auto evs = db->getEvents(roomId, 300);
+    for (const auto& ev : evs) {
+        if (ev.type != "m.room.pinned_events") continue;
+        auto pinned = ev.content.find("pinned");
+        if (pinned == ev.content.end() || !pinned->is_array()) continue;
+        out.clear();
+        for (const auto& id : *pinned) {
+            if (id.is_string()) out.insert(id.get<std::string>());
+        }
+        break;
+    }
+    return out;
+}
+
 void loadRoomIntoState(UiState& st, const std::string& query) {
     st.currentRoomId.clear();
     // Accept the id ("!room:server"), the full alias ("#alias:server") or
@@ -758,9 +787,11 @@ void loadRoomIntoState(UiState& st, const std::string& query) {
     }
     st.messages = st.db->getEvents(st.currentRoomId, st.limit);
     std::reverse(st.messages.begin(), st.messages.end());  // newest last
+    st.pinned = pinnedIds(st.db, st.currentRoomId);
     st.scroll = 0;  // clamped to the bottom in drawFrame
     st.members.clear();
     st.powerLevels.clear();
+    st.eventsDefault = 0;
     st.redactedIds.clear();
     for (const auto& ev : st.messages) {
         if (std::find(st.members.begin(), st.members.end(), ev.sender) ==
@@ -775,6 +806,10 @@ void loadRoomIntoState(UiState& st, const std::string& query) {
                 }
             }
         }
+            auto ed = ev.content.find("events_default");
+            if (ed != ev.content.end() && ed->is_number()) {
+                st.eventsDefault = ed->get<int>();
+            }
         if (!ev.redacts.empty()) st.redactedIds.insert(ev.redacts);
     }
     // Read receipts (approximation): a message is read by the members whose
@@ -924,6 +959,7 @@ std::string resolveSpace(const std::vector<nlohmann::json>& rooms,
     }
     return "";
 }
+
 
 // The via arguments for a permalink: the distinct server names of the
 // room's members. limit = 0 means ALL of them (the user's choice), else
@@ -1121,6 +1157,35 @@ std::string drawFrame(const UiState& st) {
     }
     if (!topic.empty()) {
         out += "  " + clip(topic, W - 2) + "\n";
+    }
+    // Pinned messages (the "pin" command inserts m.room.pinned_events):
+    // a 📌 line with the preview of the last pinned event.
+    if (!st.currentRoomId.empty()) {
+        auto evs = st.db->getEvents(st.currentRoomId, 300);
+        for (const auto& ev : evs) {
+            if (ev.type != "m.room.pinned_events") continue;
+            auto pinned = ev.content.find("pinned");
+            if (pinned == ev.content.end() || !pinned->is_array() ||
+                pinned->empty()) continue;
+            const std::string& pid = (*pinned)[0].get<std::string>();
+            matrix::Event pev;
+            if (st.db->getEventById(pid, pev)) {
+                std::string pv = eventBody(pev);
+                out += "  \xf0\x9f\x93\x8c " + clip(pv, W - 4) + "\n";
+            }
+            break;
+        }
+    }
+    // Send permission (like Element): @you's level vs the room default.
+    {
+        int myLevel = 0;
+        auto me = st.accountLabel == "demo (offline)" ? "@you" : "@" + st.accountLabel;
+        auto it = st.powerLevels.find(me);
+        if (it != st.powerLevels.end()) myLevel = it->second;
+        if (myLevel < st.eventsDefault && !st.currentRoomId.empty()) {
+            out += "  \x1b[31m[read-only: level " + std::to_string(st.eventsDefault)
+                 + " required to send (you: " + std::to_string(myLevel) + ")]\x1b[0m\n";
+        }
     }
     // Smartphone top bar: the logged-in account, the open-invite count and
     // where we are (the space name, or "all rooms" when everything shows).
@@ -1580,6 +1645,9 @@ std::string drawFrame(const UiState& st) {
                                   tm.tm_hour, tm.tm_min);
                 }
                 std::string first = buf + std::string(" ") + row;
+                if (st.pinned.count(ev.event_id)) {
+                    first = (st.showEmoji ? "\xf0\x9f\x93\x8c " : "[pin] ") + first;
+                }
                 if (ev.event_id == st.focusEvent) {
                     first = "[7m â [0m" + first;
                 }
@@ -1737,6 +1805,9 @@ std::string drawFrame(const UiState& st) {
                 if (st.mutedRooms.count(rid)) {
                     row += (st.showEmoji ? " 🔇" : " [muted]");
                 }
+                if (st.starredRooms.count(rid)) {
+                    row += " ★";  // ★
+                }
                 // The room description (topic) in dim, after the count.
                 {
                     std::string topic = r->value("topic", "");
@@ -1862,6 +1933,9 @@ std::string drawFrame(const UiState& st) {
             }
             if (st.mutedRooms.count(rid)) {
                 left += (st.showEmoji ? " 🔇" : " [muted]");
+            }
+            if (st.starredRooms.count(rid)) {
+                left += " ★";  // ★
             }
             int thr = roomThreadCount(st.db, rid);
             if (thr > 0) {
@@ -2108,6 +2182,14 @@ int cmdAsciiUi(const cli::Args& args) {
         for (char ch : v) { if (ch == ',') { st.mutedRooms.insert(cur); cur.clear(); } else cur += ch; }
         if (!cur.empty()) st.mutedRooms.insert(cur);
     }
+    {
+        std::string v = dbi.getSetting("starred", "");
+        std::string cur;
+        for (char ch : v) { if (ch == ',') { st.starredRooms.insert(cur); cur.clear(); } else cur += ch; }
+        if (!cur.empty()) st.starredRooms.insert(cur);
+    }
+    // The starred rooms must be known before the list is sorted.
+    sortRoomsByActivity(st);
     // Custom character widths ("widths" setting): "cp:width,cp:width".
     {
         g_widthOverrides.clear();
@@ -2718,8 +2800,7 @@ int cmdAsciiUi(const cli::Args& args) {
             continue;
         }
         // ---- moderation + room settings (delegate to the registry) ----
-        if (a.command == "ban" || a.command == "kick" || a.command == "unban" ||
-            a.command == "topic" || a.command == "roomname") {
+        if (a.command == "ban" || a.command == "kick" || a.command == "unban") {
             auto cliHandler = CommandRegistry::instance().findCli(a.command);
             if (!cliHandler) {
                 std::cout << a.command << " not available in this build." << std::endl;
@@ -3573,9 +3654,12 @@ int cmdAsciiUi(const cli::Args& args) {
             continue;
         }
         // ---- pin / unpin ----
-        if (a.command == "pin" || a.command == "unpin") {
+        if ((a.command == "pin" || a.command == "unpin") &&
+            !(a.positional.size() >= 2 && a.positional[0].size() == 5 &&
+              a.positional[0][2] == ':')) {
             if (a.positional.size() < 2) {
-                std::cout << "Usage: " << a.command << " <room> <event_id>" << std::endl;
+                std::cout << "Usage: " << a.command << " <room> <event_id> |"
+                             " pin <HH:MM> <[nick]>" << std::endl;
                 continue;
             }
             if (!(pcore::init() && pcore::loadSavedSession())) {
@@ -3918,8 +4002,26 @@ int cmdAsciiUi(const cli::Args& args) {
                 std::snprintf(buf, sizeof(buf), "%02d:%02d", tm.tm_hour, tm.tm_min);
                 std::cout << "  " << icon << ": " << clip(name, 40)
                           << "  [" << senderShort(ev.sender) << " " << buf << "]"
-                          << "\n      id: " << ev.event_id
-                          << "\n      open: media " << roomId << " " << ev.event_id
+                          << "\n      id: " << ev.event_id;
+                std::string mxc;
+                auto urlIt = ev.content.find("url");
+                if (urlIt != ev.content.end() && urlIt->is_string()) {
+                    mxc = urlIt->get<std::string>();
+                }
+                if (!mxc.empty()) {
+                    std::cout << "\n      mxc: " << mxc;
+                    // mxc://host/id -> the standard download URL.
+                    auto hostEnd = mxc.find('/', 6);
+                    if (mxc.compare(0, 6, "mxc://") == 0 &&
+                        hostEnd != std::string::npos) {
+                        std::string host = mxc.substr(6, hostEnd - 6);
+                        std::string mediaId = mxc.substr(hostEnd + 1);
+                        std::cout << "\n      url: https://" << host
+                                  << "/_matrix/media/v3/download/" << host << "/"
+                                  << mediaId;
+                    }
+                }
+                std::cout << "\n      open: media " << roomId << " " << ev.event_id
                           << " --open\n";
                 shown++;
             }
@@ -4363,6 +4465,177 @@ replyRef:
             st.statusNote = std::string(a.command) + " to "
                           + a.positional[0] + " [" + nick + "]";
             loadRoomIntoState(st, std::string(st.currentRoomId));
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- star <room> on|off: anchor the room to the top of the list ----
+        if (a.command == "star" || a.command == "anchor") {
+            if (a.positional.empty()) {
+                std::cout << "Usage: " << a.command << " <room> on|off" << std::endl;
+                continue;
+            }
+            std::string q = a.positional[0];
+            std::string roomId = q;
+            for (const auto& r : st.rooms) {
+                std::string id = r.value("room_id", "");
+                std::string name = r.value("name", "");
+                if (id == q || name == q || name.find(q) == 0 ||
+                    id.find(q) != std::string::npos) {
+                    roomId = id;
+                    break;
+                }
+            }
+            bool on = a.positional.size() < 2 || a.positional[1] != "off";
+            if (on) st.starredRooms.insert(roomId);
+            else st.starredRooms.erase(roomId);
+            std::string saved;
+            for (const auto& id : st.starredRooms) {
+                if (!saved.empty()) saved += ",";
+                saved += id;
+            }
+            dbi.setSetting("starred", saved);
+            sortRoomsByActivity(st);
+            fprintf(stderr, "DBG star: first=%s starred=%zu\n",
+                    st.rooms.empty() ? "?" : st.rooms.front().value("name","").c_str(),
+                    st.starredRooms.size());
+            st.statusNote = roomId + (on ? " ★ starred (top)" : " unstarred");
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- roomname <room> <name> / topic <room> <text>: like Element ----
+        if (a.command == "roomname" || a.command == "topic") {
+            if (a.positional.size() < 2) {
+                std::cout << "Usage: " << a.command << " <room> <value>"
+                          << std::endl;
+                continue;
+            }
+            std::string q = a.positional[0];
+            std::string roomId = q;
+            for (const auto& r : st.rooms) {
+                std::string id = r.value("room_id", "");
+                std::string name = r.value("name", "");
+                if (id == q || name == q || name.find(q) == 0 ||
+                    id.find(q) != std::string::npos) {
+                    roomId = id;
+                    break;
+                }
+            }
+            std::string value = a.positional[1];
+            for (size_t pi = 2; pi < a.positional.size(); ++pi) {
+                value += " " + a.positional[pi];
+            }
+            for (const auto& r : st.rooms) {
+                if (r.value("room_id", "") != roomId) continue;
+                nlohmann::json j;
+                j["name"] = a.command == "roomname"
+                                ? value : r.value("name", roomId);
+                j["topic"] = a.command == "topic"
+                                 ? value : r.value("topic", "");
+                j["member_count"] = r.value("member_count", 0);
+                j["is_direct"] = r.value("is_direct", false);
+                j["is_encrypted"] = r.value("is_encrypted", false);
+                dbi.upsertRoom(j, roomId);
+                break;
+            }
+            st.rooms = dbi.listRooms();
+            sortRoomsByActivity(st);
+            loadRoomIntoState(st, std::string(st.currentRoomId));
+            st.statusNote = roomId + ": " + std::string(a.command) + " = " + value;
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- power <room>: the power levels; power <room> <@user> <level>;
+        // power <room> default <level> (send permission) ----
+        if (a.command == "power") {
+            if (a.positional.empty()) {
+                std::cout << "Usage: power <room> [<@user> <level>|default <level>]"
+                          << std::endl;
+                continue;
+            }
+            std::string q = a.positional[0];
+            std::string roomId = q;
+            for (const auto& r : st.rooms) {
+                std::string id = r.value("room_id", "");
+                std::string name = r.value("name", "");
+                if (id == q || name == q || name.find(q) == 0 ||
+                    id.find(q) != std::string::npos) {
+                    roomId = id;
+                    break;
+                }
+            }
+            auto evs = dbi.getEvents(roomId, 500);
+            int eventsDefault = 0;
+            for (const auto& ev : evs) {
+                if (ev.type == "m.room.power_levels") {
+                    eventsDefault = ev.content.value("events_default", 0);
+                    break;
+                }
+            }
+            if (a.positional.size() < 3) {
+                std::cout << "Power levels of " << roomId << ":" << std::endl;
+                std::cout << "  events_default (send): " << eventsDefault
+                          << std::endl;
+                for (const auto& ev : evs) {
+                    if (ev.type != "m.room.power_levels") continue;
+                    auto users = ev.content.find("users");
+                    if (users == ev.content.end() || !users->is_object()) continue;
+                    for (auto& [u, lvl] : users->items()) {
+                        std::cout << "  " << u << " = "
+                                  << lvl.get<int>() << std::endl;
+                    }
+                    break;
+                }
+                continue;
+            }
+            int level = 0;
+            try { level = std::stoi(a.positional[2]); } catch (...) {
+                std::cout << "Usage: power <room> <@user> <level>"
+                          << std::endl;
+                continue;
+            }
+            // Insert/update the power levels event (offline demo: local).
+            bool found = false;
+            for (auto& ev : evs) {
+                if (ev.type != "m.room.power_levels") continue;
+                found = true;
+                nlohmann::json users = ev.content.value("users", nlohmann::json::object());
+                if (a.positional[1] == "default") {
+                    ev.content["events_default"] = level;
+                } else {
+                    std::string u = a.positional[1];
+                    if (u[0] != '@') u = "@" + u;
+                    users[u] = level;
+                    ev.content["users"] = users;
+                }
+                ev.origin_server_ts = std::chrono::duration_cast<
+                    std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
+                dbi.insertEvent(ev);
+                break;
+            }
+            if (!found) {
+                matrix::Event pl;
+                pl.event_id = "$demo_power_" + std::to_string(
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::system_clock::now().time_since_epoch()).count());
+                pl.room_id = roomId; pl.sender = "@you";
+                pl.type = "m.room.power_levels";
+                pl.content = {{"events_default", eventsDefault}};
+                if (a.positional[1] != "default") {
+                    std::string u = a.positional[1];
+                    if (u[0] != '@') u = "@" + u;
+                    pl.content["users"] = {{u, level}};
+                } else {
+                    pl.content["events_default"] = level;
+                }
+                pl.origin_server_ts = std::chrono::duration_cast<
+                    std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
+                dbi.insertEvent(pl);
+            }
+            loadRoomIntoState(st, std::string(st.currentRoomId));
+            st.statusNote = "power: " + roomId + " " + a.positional[1]
+                          + " = " + std::to_string(level);
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
