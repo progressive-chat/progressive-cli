@@ -839,7 +839,9 @@ std::string drawFrame(const UiState& st) {
             int w = displayWidth(nm) + 6;
             if (w > longestRoom) longestRoom = w;
         }
-        leftW = std::max(22, std::min(46, longestRoom + 28));
+        // The rooms list gets the bigger share: the previews fill it, the
+        // chat keeps the rest (the members panel stays at the right edge).
+        leftW = std::max(24, std::min(56, longestRoom + 40));
         if (horizMembers) {
             rightW = 0;
         } else {
