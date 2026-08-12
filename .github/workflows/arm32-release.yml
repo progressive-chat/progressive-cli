@@ -24,7 +24,7 @@ jobs:
             libsqlite3-dev:armhf \
             libcurl4-openssl-dev:armhf \
             libsodium-dev:armhf \
-            cmake make git ca-certificates python3 pkg-config
+            cmake make git ca-certificates python3 pkg-config file
 
       - uses: actions/checkout@v6
         with:
