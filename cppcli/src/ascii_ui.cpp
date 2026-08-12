@@ -3549,6 +3549,48 @@ int cmdAsciiUi(const cli::Args& args) {
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
+        // ---- files: the room's media messages (audio/video/image/file) ----
+        if (a.command == "files") {
+            std::string q = a.positional.empty() ? st.currentRoomId : a.positional[0];
+            std::string roomId = q;
+            for (const auto& r : st.rooms) {
+                std::string id = r.value("room_id", "");
+                if (id == q || id.find(q) != std::string::npos) {
+                    roomId = id;
+                    break;
+                }
+            }
+            auto evs = dbi.getEvents(roomId, 300);
+            int shown = 0;
+            std::cout << "Media in " << roomId << ":" << std::endl;
+            for (const auto& ev : evs) {
+                if (!ev.content.is_object()) continue;
+                std::string mt = ev.content.value("msgtype", "");
+                std::string icon;
+                if (mt == "m.audio") icon = "\xf0\x9f\x8e\xb5 audio";
+                else if (mt == "m.video") icon = "\xe2\x96\xb6 video";
+                else if (mt == "m.image") icon = "\xf0\x9f\x96\xbc image";
+                else if (mt == "m.file") icon = "\xf0\x9f\x93\x84 file";
+                else continue;
+                std::string name = ev.content.value("body",
+                                     ev.content.value("filename", "?"));
+                std::time_t t = static_cast<std::time_t>(ev.origin_server_ts / 1000);
+                std::tm tm{};
+                localtime_r(&t, &tm);
+                char buf[8];
+                std::snprintf(buf, sizeof(buf), "%02d:%02d", tm.tm_hour, tm.tm_min);
+                std::cout << "  " << icon << ": " << clip(name, 40)
+                          << "  [" << senderShort(ev.sender) << " " << buf << "]"
+                          << "\n      id: " << ev.event_id
+                          << "\n      open: media " << roomId << " " << ev.event_id
+                          << " --open\n";
+                shown++;
+            }
+            if (shown == 0) {
+                std::cout << "  No media in this room." << std::endl;
+            }
+            continue;
+        }
         // ---- links: list the matrix.to permalinks of the current room ----
         if (a.command == "links") {
             const std::string marker = "matrix.to/#/";
