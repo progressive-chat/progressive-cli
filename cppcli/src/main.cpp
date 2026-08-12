@@ -2070,6 +2070,11 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
             std::chrono::system_clock::now().time_since_epoch()).count() - 3 * 3600000;
         struct { const char* room; const char* sender; const char* body; } roots[] = {
             {"!general:demo.local", "@you", "Poll idea: community call every Friday?"},
+            {"!general:demo.local", "@alice", "Best command line trick you have learned?"},
+            {"!general:demo.local", "@dave", "The sync rework: how it works under the hood"},
+            {"!general:demo.local", "@kate", "What is on your desktop setup?"},
+            {"!general:demo.local", "@you", "Weekly demo showcase — what should we show?"},
+            {"!general:demo.local", "@bob", "E2EE best practices discussion"},
             {"!design:demo.local", "@carol", "New color palette for the app"},
             {"!random:demo.local", "@bob", "The best terminal emulator debate"},
             {"!music:demo.local", "@alice", "This week's playlist drop"},
