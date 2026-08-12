@@ -1171,9 +1171,9 @@ std::string drawFrame(const UiState& st) {
                     if (rel != ev.content.end() && rel->is_object()) {
                         target = rel->value("event_id", "");
                     }
-                    center = "[" + senderShort(ev.sender) + "] "
-                           + (st.showEmoji ? "\xf0\x9f\x97\xb3 voted"
-                                           : "[poll] voted");
+                    // The vote row uses plain text — the 🗳 glyph renders
+                    // one cell in the phone terminal and shifted the pipes.
+                    center = "[" + senderShort(ev.sender) + "] voted";
                 } else if (mt == "m.sticker") {
                     center = "[" + senderShort(ev.sender) + "] "
                            + (st.showEmoji ? "\u2b1c sticker: " : "[sticker] ")
