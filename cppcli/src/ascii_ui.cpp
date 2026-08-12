@@ -930,12 +930,12 @@ std::string drawFrame(const UiState& st) {
                     if (w > longestMember) longestMember = w;
                 }
             }
-            rightW = std::max(10, std::min(30, longestMember + 3));
+            rightW = std::max(10, std::min(34, longestMember + 3));
         }
     }
     // Keep the chat usable: the panels never squeeze the center below
-    // ~28 columns — the rooms list gives way first, then the members.
-    int minCenter = 28;
+    // ~22 columns — the rooms list gives way first, then the members.
+    int minCenter = 22;
     if (W - leftW - rightW - 2 < minCenter) {
         leftW = std::max(24, W - rightW - 2 - minCenter);
     }
