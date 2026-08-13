@@ -59,6 +59,31 @@ struct Message {
     std::string toolName;           // for role == "tool"
 };
 
+// The user's answer to a permission prompt.
+enum class ConfirmVerdict { Decline = 0, Once, Session, Always };
+
+struct CronJob {
+    std::string id;
+    std::string spec;       // "30m" | "every 2h" | the cron expr | ISO time
+    std::string prompt;
+    int64_t nextRun = 0;    // the epoch seconds
+    std::string monitorUrl; // the change-detection URL ("" = none)
+    std::string monitorHash; // the last seen SHA-256 ("" = the baseline next run)
+};
+
+// The hermes-style schedule parser: the next epoch seconds, -1 on error.
+int64_t nextRunFromSpec(const std::string& spec, int64_t now);
+
+// The cron jobs store (the JSON file).
+void saveCronJobs(const std::string& path, const std::vector<CronJob>& jobs);
+bool loadCronJobs(const std::string& path, std::vector<CronJob>& jobs);
+
+// The hardline dangerous-command patterns (they deny even under trust allow).
+bool isDangerousCommand(const std::string& cmd);
+
+// The e-stop sentinel.
+bool eStopEngaged(const std::string& path = ".agent-estop");
+
 struct Result {
     bool ok = false;
     std::string text;
@@ -74,7 +99,7 @@ struct Result {
 // `history` carries the conversation across calls (the interactive mode).
 Result run(const Config& cfg, const std::string& prompt,
            std::vector<Message>& history,
-           const std::function<bool(const std::string& cmd)>& confirm,
+           const std::function<int(const std::string& cmd)>& confirm,
            const std::function<std::string(const std::string& questionsJson)>& ask,
            const std::function<void(const std::string&)>& log,
            const std::function<void(const std::string&)>& onToken = {});
@@ -82,7 +107,7 @@ Result run(const Config& cfg, const std::string& prompt,
 // A single tool execution (used by run; exposed for testing).
 std::string executeTool(const Config& cfg, const std::string& name,
                         const std::string& argsJson,
-                        const std::function<bool(const std::string&)>& confirm,
+                        const std::function<int(const std::string&)>& confirm,
                         const std::function<std::string(const std::string&)>& ask,
                         const std::function<void(const std::string&)>& log,
                         int depth = 0);

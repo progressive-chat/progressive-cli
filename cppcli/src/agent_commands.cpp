@@ -470,11 +470,14 @@ static int cmdAgentCode(const cli::Args& args) {
     bool verbose = args.options.count("verbose");
     std::vector<Message> history;
     Result res = run(cfg, prompt, history,
-        [&](const std::string& cmd) -> bool {
-            std::cout << "run: " << cmd << " [y/N] " << std::flush;
+        [&](const std::string& cmd) -> int {
+            std::cout << "run: " << cmd << " [y/N/a/A] " << std::flush;
             std::string ans;
             std::getline(std::cin, ans);
-            return ans == "y" || ans == "Y";
+            if (ans == "y" || ans == "Y") return 1;
+            if (ans == "a") return 2;
+            if (ans == "A") return 3;
+            return 0;
         },
         [&](const std::string& questionsJson) -> std::string {
             nlohmann::json qs;

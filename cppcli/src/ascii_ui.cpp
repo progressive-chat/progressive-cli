@@ -2651,11 +2651,14 @@ int cmdAsciiUi(const cli::Args& args) {
         std::vector<agenttools::Message> history;
         agenttools::Result res = agenttools::run(cfg, args.options.at("agent"),
             history,
-            [&](const std::string& cmd) -> bool {
-                std::cout << "run: " << cmd << " [y/N] " << std::flush;
+            [&](const std::string& cmd) -> int {
+                std::cout << "run: " << cmd << " [y/N/a/A] " << std::flush;
                 std::string ans;
                 std::getline(std::cin, ans);
-                return ans == "y" || ans == "Y";
+                if (ans == "y" || ans == "Y") return 1;
+                if (ans == "a") return 2;
+                if (ans == "A") return 3;
+                return 0;
             },
             [&](const std::string& questionsJson) -> std::string {
                 nlohmann::json qs;
@@ -3927,6 +3930,35 @@ int cmdAsciiUi(const cli::Args& args) {
                 st.statusNote = "agent " + k + " set";
                 continue;
             }
+            auto confirm = [&](const std::string& cmd) -> int {
+                std::cout << "  run: " << cmd << " [y/N/a/A] " << std::flush;
+                std::string ans;
+                std::getline(std::cin, ans);
+                if (ans == "y" || ans == "Y") return 1;
+                if (ans == "a") return 2;
+                if (ans == "A") return 3;
+                return 0;
+            };
+            auto ask = [&](const std::string& questionsJson) -> std::string {
+                nlohmann::json qs;
+                try { qs = nlohmann::json::parse(questionsJson); }
+                catch (...) { return "error: bad questions JSON"; }
+                std::string out;
+                for (const auto& q : qs.value("questions", nlohmann::json::array())) {
+                    std::cout << "  Q: " << q.value("question", "?") << std::endl;
+                    auto opts = q.value("options", nlohmann::json::array());
+                    for (size_t i = 0; i < opts.size(); ++i) {
+                        std::cout << "    " << i + 1 << ") "
+                                  << opts[i].value("label", "") << std::endl;
+                    }
+                    std::cout << "  answer> " << std::flush;
+                    std::string ans;
+                    std::getline(std::cin, ans);
+                    out += "Q: " + q.value("question", "?") + "\nA: " + ans + "\n";
+                }
+                return out.empty() ? "(no questions answered)" : out;
+            };
+            auto log = [](const std::string& l) { std::cout << l << std::endl; };
             if (!a.positional.empty() && a.positional[0] == "permit") {
                 // agent permit <tool> <glob> <allow|ask|deny>
                 if (a.positional.size() < 4) {
@@ -4005,8 +4037,38 @@ int cmdAsciiUi(const cli::Args& args) {
                 continue;
             }
             if (!a.positional.empty() && a.positional[0] == "compact") {
-                // Drop the old tool results (the codex prune) — keep the
-                // last 8 messages intact.
+                // "compact here N": keep the last N user turns, the head
+                // becomes one summary note (the hermes partial compress).
+                int keepTurns = -1;
+                if (a.positional.size() >= 3 && a.positional[1] == "here") {
+                    try { keepTurns = std::stoi(a.positional[2]); } catch (...) {}
+                }
+                if (keepTurns > 0) {
+                    // Count the user turns from the end; the tail starts
+                    // at the (N+1)-th user message from the end.
+                    int userSeen = 0;
+                    int cut = static_cast<int>(agentHistory.size());
+                    for (int i = static_cast<int>(agentHistory.size()) - 1;
+                         i >= 0; --i) {
+                        if (agentHistory[static_cast<size_t>(i)].role == "user") {
+                            if (++userSeen > keepTurns) break;
+                            cut = i;
+                        }
+                    }
+                    std::vector<agenttools::Message> tail(
+                        agentHistory.begin() + cut, agentHistory.end());
+                    agenttools::Message note;
+                    note.role = "user";
+                    note.content = "[CONTEXT COMPACTION: the earlier turns are "
+                                   "summarised away — continue from here]";
+                    agentHistory.clear();
+                    agentHistory.push_back(note);
+                    for (auto& m : tail) agentHistory.push_back(m);
+                    st.statusNote = "history compacted to the last "
+                                  + std::to_string(keepTurns) + " turns";
+                    continue;
+                }
+                // The default: drop the old tool results (the codex prune).
                 int kept = 0;
                 for (auto it = agentHistory.rbegin(); it != agentHistory.rend();
                      ++it) {
@@ -4015,6 +4077,98 @@ int cmdAsciiUi(const cli::Args& args) {
                     }
                 }
                 st.statusNote = "history compacted";
+                continue;
+            }
+            if (!a.positional.empty() &&
+                (a.positional[0] == "pause" || a.positional[0] == "resume")) {
+                const char* estop = ".agent-estop";
+                if (a.positional[0] == "pause") {
+                    std::ofstream f(estop, std::ios::trunc);
+                    f << "paused";
+                    st.statusNote = "agent paused (e-stop)";
+                } else {
+                    std::remove(estop);
+                    st.statusNote = "agent resumed";
+                }
+                continue;
+            }
+            if (!a.positional.empty() && a.positional[0] == "cron") {
+                // agent cron add <spec> <prompt...> | list | remove <id> | check
+                const std::string cronPath = ".agent-cron/jobs.json";
+                std::vector<agenttools::CronJob> jobs;
+                agenttools::loadCronJobs(cronPath, jobs);
+                std::string act = a.positional.size() >= 2 ? a.positional[1] : "";
+                if (act == "add" && a.positional.size() >= 4) {
+                    int64_t next = agenttools::nextRunFromSpec(
+                        a.positional[2], static_cast<int64_t>(std::time(nullptr)));
+                    if (next < 0) {
+                        std::cout << "bad schedule: " << a.positional[2]
+                                  << " (try '30m', 'every 2h', a cron expr,"
+                                     " or YYYY-MM-DD)" << std::endl;
+                        continue;
+                    }
+                    std::string prompt;
+                    for (size_t i = 3; i < a.positional.size(); ++i) {
+                        prompt += (prompt.empty() ? "" : " ") + a.positional[i];
+                    }
+                    agenttools::CronJob j;
+                    j.id = "job_" + std::to_string(std::time(nullptr))
+                         + "_" + std::to_string(jobs.size());
+                    j.spec = a.positional[2];
+                    j.prompt = prompt;
+                    j.nextRun = next;
+                    jobs.push_back(j);
+                    mkdir(".agent-cron", 0755);
+                    agenttools::saveCronJobs(cronPath, jobs);
+                    st.statusNote = "cron added: " + j.spec;
+                } else if (act == "list" || act.empty()) {
+                    for (const auto& j : jobs) {
+                        std::time_t t = static_cast<std::time_t>(j.nextRun);
+                        std::tm tm{};
+                        localtime_r(&t, &tm);
+                        char buf[32];
+                        std::strftime(buf, sizeof(buf), "%m-%d %H:%M", &tm);
+                        std::cout << "  " << j.id << "  " << j.spec << "  next "
+                                  << buf << "  " << j.prompt << std::endl;
+                    }
+                    if (jobs.empty()) std::cout << "  (no cron jobs)" << std::endl;
+                } else if (act == "remove" && a.positional.size() >= 3) {
+                    std::vector<agenttools::CronJob> kept;
+                    for (const auto& j : jobs) {
+                        if (j.id != a.positional[2]) kept.push_back(j);
+                    }
+                    jobs = kept;
+                    agenttools::saveCronJobs(cronPath, jobs);
+                    st.statusNote = "cron removed: " + a.positional[2];
+                } else if (act == "check") {
+                    int64_t now = static_cast<int64_t>(std::time(nullptr));
+                    bool any = false;
+                    for (auto& j : jobs) {
+                        if (j.nextRun > now) continue;
+                        if (agenttools::eStopEngaged()) {
+                            std::cout << "  cron paused (the e-stop)" << std::endl;
+                            break;
+                        }
+                        any = true;
+                        std::cout << "== cron " << j.id << ": " << j.prompt
+                                  << std::endl;
+                        agenttools::Result res = agenttools::run(
+                            cfg, j.prompt, agentHistory, confirm, ask, log,
+                            [](const std::string& t) {
+                                std::cout << t << std::flush;
+                            });
+                        std::cout << (res.ok ? res.text
+                                             : "[agent error] " + res.error)
+                                  << std::endl;
+                        j.nextRun = agenttools::nextRunFromSpec(j.spec, now);
+                        if (j.nextRun < 0) j.nextRun = now + 86400;
+                    }
+                    if (any) agenttools::saveCronJobs(cronPath, jobs);
+                    else st.statusNote = "cron check: nothing due";
+                } else {
+                    std::cout << "Usage: agent cron add <spec> <prompt> |"
+                                 " list | remove <id> | check" << std::endl;
+                }
                 continue;
             }
             if (!a.positional.empty() && a.positional[0] == "proxy") {
@@ -4085,32 +4239,6 @@ int cmdAsciiUi(const cli::Args& args) {
                           << std::endl;
                 continue;
             }
-            auto confirm = [&](const std::string& cmd) -> bool {
-                std::cout << "  run: " << cmd << " [y/N] " << std::flush;
-                std::string ans;
-                std::getline(std::cin, ans);
-                return ans == "y" || ans == "Y";
-            };
-            auto ask = [&](const std::string& questionsJson) -> std::string {
-                nlohmann::json qs;
-                try { qs = nlohmann::json::parse(questionsJson); }
-                catch (...) { return "error: bad questions JSON"; }
-                std::string out;
-                for (const auto& q : qs.value("questions", nlohmann::json::array())) {
-                    std::cout << "  Q: " << q.value("question", "?") << std::endl;
-                    auto opts = q.value("options", nlohmann::json::array());
-                    for (size_t i = 0; i < opts.size(); ++i) {
-                        std::cout << "    " << i + 1 << ") "
-                                  << opts[i].value("label", "") << std::endl;
-                    }
-                    std::cout << "  answer> " << std::flush;
-                    std::string ans;
-                    std::getline(std::cin, ans);
-                    out += "Q: " + q.value("question", "?") + "\nA: " + ans + "\n";
-                }
-                return out.empty() ? "(no questions answered)" : out;
-            };
-            auto log = [](const std::string& l) { std::cout << l << std::endl; };
             if (a.positional.empty()) {
                 std::cout << "agent (" << cfg.provider << ", " << cfg.model
                           << ", trust: " << cfg.trust
