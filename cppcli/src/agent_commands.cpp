@@ -497,7 +497,8 @@ static int cmdAgentCode(const cli::Args& args) {
         },
         [&](const std::string& l) {
             if (verbose) std::cout << l << std::endl;
-        });
+        },
+        [](const std::string& t) { std::cout << t << std::flush; });
     if (!res.ok) {
         std::cerr << "agent error: " << res.error << std::endl;
         return 1;

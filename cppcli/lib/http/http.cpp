@@ -648,6 +648,178 @@ Response Client::doRequest(const Request& req) {
     return resp;
 }
 
+Response Client::streamPost(const std::string& url,
+                            const std::string& body,
+                            const std::map<std::string, std::string>& headers,
+                            const std::function<void(const std::string&)>& onChunk) {
+    Response resp;
+
+    std::string host;
+    int port;
+    std::string path;
+    bool use_ssl;
+    if (!parseURL(url, host, port, path, use_ssl)) {
+        resp.error_message = "Failed to parse URL: " + url;
+        return resp;
+    }
+
+    ProxyConfig proxy;
+    int timeout;
+    SSL_CTX* ctx;
+    {
+        std::lock_guard<std::mutex> lk(impl->mtx);
+        proxy = impl->proxy;
+        timeout = impl->timeout_seconds;
+        ctx = impl->ssl_ctx;
+        if (!proxy.enabled()) {
+            ProxyConfig env_proxy = readProxyFromEnv();
+            if (env_proxy.enabled()) proxy = env_proxy;
+        }
+    }
+
+    std::string connect_host = host;
+    int connect_port = port;
+    if (proxy.enabled()) {
+        connect_host = proxy.host;
+        connect_port = proxy.port;
+    }
+
+    int sock = createTcpSocket(connect_host, connect_port, timeout);
+    if (sock < 0) {
+        resp.error_message = "Failed to connect to " + connect_host;
+        return resp;
+    }
+    if (proxy.enabled()) {
+        if (proxy.type == ProxyType::HTTP) {
+            if (use_ssl && !httpConnectTunnel(sock, host, port, proxy.username,
+                                              proxy.password)) {
+                close(sock);
+                resp.error_message = "HTTP CONNECT tunnel failed";
+                return resp;
+            }
+        } else if (proxy.type == ProxyType::SOCKS5) {
+            if (!socks5Handshake(sock, host, port, proxy.username,
+                                 proxy.password)) {
+                close(sock);
+                resp.error_message = "SOCKS5 handshake failed";
+                return resp;
+            }
+        }
+    }
+
+    Request req;
+    req.method = "POST";
+    req.url = url;
+    req.body = body;
+    req.headers = headers;
+    std::string requestStr = buildHttpRequest(req);
+    if (requestStr.empty()) {
+        close(sock);
+        resp.error_message = "Failed to build HTTP request";
+        return resp;
+    }
+
+    SSL* ssl = nullptr;
+    if (use_ssl) {
+        ssl = SSL_new(ctx);
+        if (!ssl) {
+            close(sock);
+            resp.error_message = "SSL_new failed";
+            return resp;
+        }
+        SSL_set_fd(ssl, sock);
+        if (!SSL_set_tlsext_host_name(ssl, host.c_str())) {
+            SSL_free(ssl);
+            close(sock);
+            resp.error_message = "SSL SNI setup failed";
+            return resp;
+        }
+        if (SSL_connect(ssl) != 1) {
+            resp.error_message = "SSL_connect failed";
+            SSL_free(ssl);
+            close(sock);
+            return resp;
+        }
+        if (SSL_write(ssl, requestStr.c_str(),
+                      static_cast<int>(requestStr.size())) <= 0) {
+            resp.error_message = "SSL_write failed";
+            SSL_shutdown(ssl);
+            SSL_free(ssl);
+            close(sock);
+            return resp;
+        }
+    } else {
+        if (!sendAll(sock, requestStr.c_str(), requestStr.size())) {
+            close(sock);
+            resp.error_message = "Failed to send HTTP request";
+            return resp;
+        }
+    }
+
+    std::string raw;
+    bool headersDone = false;
+    std::string carry;  // the body remainder after the header split
+    char buf[8192];
+    int idle = timeout > 0 ? timeout : 30;
+    auto readSome = [&](std::string& into) -> bool {
+        int sock_fd = ssl ? SSL_get_fd(ssl) : sock;
+        struct pollfd pfd{sock_fd, POLLIN, 0};
+        int pret = poll(&pfd, 1, idle * 1000);
+        if (pret <= 0) return false;
+        if (ssl) {
+            int n = SSL_read(ssl, buf, sizeof(buf));
+            if (n > 0) {
+                into.append(buf, static_cast<size_t>(n));
+                return true;
+            }
+            int err = SSL_get_error(ssl, n);
+            return err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE;
+        }
+        int n = static_cast<int>(recv(sock, buf, sizeof(buf), 0));
+        if (n > 0) {
+            into.append(buf, static_cast<size_t>(n));
+            return true;
+        }
+        return n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK);
+    };
+    // Read until the header block ends, then stream the body.
+    while (!headersDone) {
+        std::string chunk;
+        if (!readSome(chunk)) break;
+        raw += chunk;
+        auto sep = raw.find("\r\n\r\n");
+        if (sep != std::string::npos) {
+            // Parse the status line for the caller.
+            auto firstNl = raw.find("\r\n");
+            if (firstNl != std::string::npos) {
+                std::string statusLine = raw.substr(0, firstNl);
+                auto codeStart = statusLine.find(' ');
+                if (codeStart != std::string::npos) {
+                    try {
+                        resp.status_code =
+                            std::stoi(statusLine.substr(codeStart + 1, 3));
+                    } catch (...) {}
+                }
+            }
+            carry = raw.substr(sep + 4);
+            headersDone = true;
+            break;
+        }
+    }
+    if (!carry.empty() && onChunk) onChunk(carry);
+    while (headersDone) {
+        std::string chunk;
+        if (!readSome(chunk)) break;
+        if (onChunk) onChunk(chunk);
+    }
+    if (ssl) {
+        SSL_shutdown(ssl);
+        SSL_free(ssl);
+    }
+    close(sock);
+    return resp;
+}
+
 RateLimitInfo parseRateLimitHeaders(const Response& resp) {
     RateLimitInfo info;
     auto it = resp.headers.find("X-RateLimit-Limit");

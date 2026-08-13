@@ -920,11 +920,118 @@ std::string executeTool(const Config& cfg, const std::string& name,
     return "unknown tool: " + name;
 }
 
+// ---- the SSE streaming ----
+
+struct SseAcc {
+    Message msg;
+    std::string buf;
+    bool done = false;
+};
+
+void feedOpenAiSse(SseAcc& acc, const std::string& chunk,
+                   const std::function<void(const std::string&)>& onToken) {
+    acc.buf += chunk;
+    size_t pos;
+    while ((pos = acc.buf.find('\n')) != std::string::npos) {
+        std::string line = acc.buf.substr(0, pos);
+        acc.buf.erase(0, pos + 1);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line == "data: [DONE]") { acc.done = true; return; }
+        if (line.rfind("data: ", 0) != 0) continue;
+        json j;
+        try {
+            j = json::parse(line.substr(6));
+        } catch (...) {
+            continue;
+        }
+        auto choices = j.value("choices", json::array());
+        if (choices.empty()) continue;
+        auto delta = choices[0].value("delta", json::object());
+        if (delta.contains("content") && delta["content"].is_string()) {
+            std::string t = delta["content"].get<std::string>();
+            if (!t.empty()) {
+                acc.msg.content += t;
+                if (onToken) onToken(t);
+            }
+        }
+        auto tcs = delta.value("tool_calls", json::array());
+        for (const auto& tc : tcs) {
+            int idx = tc.value("index", 0);
+            if (static_cast<int>(acc.msg.calls.size()) <= idx) {
+                acc.msg.calls.resize(static_cast<size_t>(idx + 1));
+            }
+            auto& tc2 = acc.msg.calls[static_cast<size_t>(idx)];
+            if (tc.contains("id") && tc["id"].is_string()) {
+                tc2.id += tc["id"].get<std::string>();
+            }
+            auto fn = tc.value("function", json::object());
+            if (fn.contains("name") && fn["name"].is_string()) {
+                tc2.name += fn["name"].get<std::string>();
+            }
+            if (fn.contains("arguments") && fn["arguments"].is_string()) {
+                tc2.args += fn["arguments"].get<std::string>();
+            }
+        }
+    }
+}
+
+void feedAnthropicSse(SseAcc& acc, const std::string& chunk,
+                      const std::function<void(const std::string&)>& onToken) {
+    acc.buf += chunk;
+    size_t pos;
+    while ((pos = acc.buf.find('\n')) != std::string::npos) {
+        std::string line = acc.buf.substr(0, pos);
+        acc.buf.erase(0, pos + 1);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.rfind("data: ", 0) != 0) continue;
+        json j;
+        try {
+            j = json::parse(line.substr(6));
+        } catch (...) {
+            continue;
+        }
+        std::string type = j.value("type", "");
+        if (type == "content_block_start") {
+            auto cb = j.value("content_block", json::object());
+            if (cb.value("type", "") == "tool_use") {
+                int idx = j.value("index", 0);
+                if (static_cast<int>(acc.msg.calls.size()) <= idx) {
+                    acc.msg.calls.resize(static_cast<size_t>(idx + 1));
+                }
+                auto& tc = acc.msg.calls[static_cast<size_t>(idx)];
+                tc.id = cb.value("id", "");
+                tc.name = cb.value("name", "");
+            }
+        } else if (type == "content_block_delta") {
+            auto d = j.value("delta", json::object());
+            if (d.contains("text") && d["text"].is_string()) {
+                std::string t = d["text"].get<std::string>();
+                if (!t.empty()) {
+                    acc.msg.content += t;
+                    if (onToken) onToken(t);
+                }
+            }
+            if (d.contains("partial_json") && d["partial_json"].is_string()) {
+                int idx = j.value("index", 0);
+                if (static_cast<int>(acc.msg.calls.size()) <= idx) {
+                    acc.msg.calls.resize(static_cast<size_t>(idx + 1));
+                }
+                acc.msg.calls[static_cast<size_t>(idx)].args
+                    += d["partial_json"].get<std::string>();
+            }
+        } else if (type == "message_stop") {
+            acc.done = true;
+            return;
+        }
+    }
+}
+
 Result run(const Config& cfg, const std::string& prompt,
            std::vector<Message>& history,
            const std::function<bool(const std::string&)>& confirm,
            const std::function<std::string(const std::string&)>& ask,
-           const std::function<void(const std::string&)>& log) {
+           const std::function<void(const std::string&)>& log,
+           const std::function<void(const std::string&)>& onToken) {
     Result result;
     if (!cfg.cwd.empty() && chdir(cfg.cwd.c_str()) != 0 && log) {
         log("cannot chdir to " + cfg.cwd);
@@ -1022,41 +1129,70 @@ Result run(const Config& cfg, const std::string& prompt,
         req.body = reqBody.dump();
         if (log) log("[agent] iteration " + std::to_string(iter + 1)
                       + ": calling " + cfg.model + " ...");
-        http::Response resp;
-        int attempts = 0;
-        for (; attempts < 3; ++attempts) {
-            resp = httpClient.doRequest(req);
-            if (resp.ok()) break;
-            // The agora retry semantics: back off on rate limits and
-            // server errors, give up on the 4xx ones.
-            if (!resp.server_error() && resp.status_code != 429) break;
-            if (attempts < 2) {
-                if (log) log("[agent] retrying in " +
-                             std::to_string(1 << attempts) + "s ...");
-                sleep(1 << attempts);
+        Message assistant;
+        assistant.role = "assistant";
+        bool haveAssistant = false;
+        if (onToken) {
+            // The SSE streaming: the tokens appear as they arrive; the
+            // tool-call fragments are merged from the deltas.
+            json sBody = reqBody;
+            if (cfg.provider != "anthropic") sBody["stream"] = true;
+            SseAcc acc;
+            acc.msg.role = "assistant";
+            http::Response sresp = httpClient.streamPost(
+                req.url, sBody.dump(), req.headers,
+                [&](const std::string& chunk) {
+                    if (cfg.provider == "anthropic") {
+                        feedAnthropicSse(acc, chunk, onToken);
+                    } else {
+                        feedOpenAiSse(acc, chunk, onToken);
+                    }
+                });
+            if (sresp.ok() && (acc.done || !acc.msg.content.empty() ||
+                               !acc.msg.calls.empty())) {
+                assistant = acc.msg;
+                haveAssistant = true;
+                result.streamed = true;
             }
         }
-        if (!resp.ok()) {
-            result.error = "HTTP " + std::to_string(resp.status_code) + ": "
-                         + (resp.body.size() > 300 ? resp.body.substr(0, 300)
-                                                   : resp.body);
-            return result;
+        if (!haveAssistant) {
+            http::Response resp;
+            int attempts = 0;
+            for (; attempts < 3; ++attempts) {
+                resp = httpClient.doRequest(req);
+                if (resp.ok()) break;
+                // The agora retry semantics: back off on rate limits and
+                // server errors, give up on the 4xx ones.
+                if (!resp.server_error() && resp.status_code != 429) break;
+                if (attempts < 2) {
+                    if (log) log("[agent] retrying in " +
+                                 std::to_string(1 << attempts) + "s ...");
+                    sleep(1 << attempts);
+                }
+            }
+            if (!resp.ok()) {
+                result.error = "HTTP " + std::to_string(resp.status_code) + ": "
+                             + (resp.body.size() > 300 ? resp.body.substr(0, 300)
+                                                       : resp.body);
+                return result;
+            }
+            json parsed;
+            try {
+                parsed = json::parse(resp.body);
+            } catch (...) {
+                result.error = "bad JSON from the LLM: "
+                             + resp.body.substr(0, 200);
+                return result;
+            }
+            assistant = cfg.provider == "anthropic"
+                            ? parseAnthropicResponse(parsed)
+                            : parseOpenAiResponse(parsed);
         }
-        json parsed;
-        try {
-            parsed = json::parse(resp.body);
-        } catch (...) {
-            result.error = "bad JSON from the LLM: "
-                         + resp.body.substr(0, 200);
-            return result;
-        }
-        Message assistant = cfg.provider == "anthropic"
-                                ? parseAnthropicResponse(parsed)
-                                : parseOpenAiResponse(parsed);
         if (assistant.calls.empty()) {
             history.push_back(assistant);
             result.ok = true;
             result.text = assistant.content;
+            if (result.streamed && onToken) onToken("\n");
             return result;
         }
         history.push_back(assistant);

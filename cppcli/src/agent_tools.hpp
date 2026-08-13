@@ -64,6 +64,7 @@ struct Result {
     std::string text;
     std::string error;
     int iterations = 0;
+    bool streamed = false;  // the tokens were already printed live
 };
 
 // One agentic run: the prompt is answered, tool calls are executed (the
@@ -75,7 +76,8 @@ Result run(const Config& cfg, const std::string& prompt,
            std::vector<Message>& history,
            const std::function<bool(const std::string& cmd)>& confirm,
            const std::function<std::string(const std::string& questionsJson)>& ask,
-           const std::function<void(const std::string&)>& log);
+           const std::function<void(const std::string&)>& log,
+           const std::function<void(const std::string&)>& onToken = {});
 
 // A single tool execution (used by run; exposed for testing).
 std::string executeTool(const Config& cfg, const std::string& name,

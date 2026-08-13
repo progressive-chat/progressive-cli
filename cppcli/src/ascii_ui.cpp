@@ -2676,7 +2676,8 @@ int cmdAsciiUi(const cli::Args& args) {
                 }
                 return out.empty() ? "(no questions answered)" : out;
             },
-            [](const std::string& l) { std::cout << l << std::endl; });
+            [](const std::string& l) { std::cout << l << std::endl; },
+            [](const std::string& t) { std::cout << t << std::flush; });
         if (!res.ok) std::cout << "[agent error] " << res.error << std::endl;
         else std::cout << res.text << std::endl;
     }
@@ -4104,9 +4105,12 @@ int cmdAsciiUi(const cli::Args& args) {
                     if (line == "exit" || line == "quit") break;
                     if (line == "reset") { agentHistory.clear(); continue; }
                     agenttools::Result res =
-                        agenttools::run(cfg, line, agentHistory, confirm, ask, log);
+                        agenttools::run(cfg, line, agentHistory, confirm, ask, log,
+                              [](const std::string& t) {
+                                  std::cout << t << std::flush;
+                              });
                     if (!res.ok) std::cout << "[agent error] " << res.error << std::endl;
-                    else std::cout << res.text << std::endl;
+                    else if (!res.streamed) std::cout << res.text << std::endl;
                 }
                 continue;
             }
@@ -4155,10 +4159,13 @@ int cmdAsciiUi(const cli::Args& args) {
                 continue;
             }
             agenttools::Result res =
-                agenttools::run(cfg, prompt, agentHistory, confirm, ask, log);
+                agenttools::run(cfg, prompt, agentHistory, confirm, ask, log,
+                              [](const std::string& t) {
+                                  std::cout << t << std::flush;
+                              });
             if (!res.ok) {
                 std::cout << "[agent error] " << res.error << std::endl;
-            } else {
+            } else if (!res.streamed) {
                 std::cout << res.text << std::endl;
             }
             continue;

@@ -76,6 +76,15 @@ public:
 
     Response doRequest(const Request& req);
 
+    // POST with the SSE streaming: after the HTTP header block, the body
+    // chunks are fed to onChunk as they arrive (no total timeout — the
+    // low-speed idle timeout applies instead). The returned Response
+    // carries the status code + the headers, the body stays empty.
+    Response streamPost(const std::string& url,
+                        const std::string& body,
+                        const std::map<std::string, std::string>& headers,
+                        const std::function<void(const std::string& chunk)>& onChunk);
+
 private:
     struct Impl;
     std::unique_ptr<Impl> impl;
