@@ -90,8 +90,7 @@ int cpWidth(uint32_t cp) {
     // Misc symbols and dingbats (❤ ♪ ★ ⤷ ⭕ …) render ONE cell in the
     // phone terminal (glibc wcwidth agrees) — counting them 2 broke the
     // pipes. Only the real emoji blocks and CJK are wide.
-    if (cp == 0x1F451) return 2;                     // 👑 renders wide on the phone
-    if (cp == 0x1F6E1) return 1;                     // 🛡 power badge is narrow
+    if (cp == 0x1F451 || cp == 0x1F6E1) return 1;   // 👑 🛡 power badges are narrow
     if (cp == 0x1F5F3) return 1;                    // 🗳 ballot box is narrow too
     if (cp == 0x2B55) return 2;                     // ⭕ heavy circle renders wide
     if (cp >= 0x1F000 && cp <= 0x1FAFF) return 2;    // emoji blocks
@@ -1096,8 +1095,10 @@ std::string memberRowStr(const UiState& st, const std::string& mem,
                   + " (" + mx + ")";
     auto pl = st.powerLevels.find(mem);
     if (pl != st.powerLevels.end()) {
+        // The crown carries its own wide glyph box; the narrow shield
+        // needs an explicit space so the letter isn't glued to it.
         if (pl->second >= 100) m = "\xf0\x9f\x91\x91" + m;
-        else if (pl->second >= 50) m = "\xf0\x9f\x9b\xa1" + m;
+        else if (pl->second >= 50) m = "\xf0\x9f\x9b\xa1 " + m;
     }
     return m;
 }
