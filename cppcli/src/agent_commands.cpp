@@ -503,7 +503,7 @@ static int cmdAgentCode(const cli::Args& args) {
         std::cerr << "agent error: " << res.error << std::endl;
         return 1;
     }
-    std::cout << res.text << std::endl;
+    if (!res.streamed) std::cout << res.text << std::endl;
     return 0;
 }
 
