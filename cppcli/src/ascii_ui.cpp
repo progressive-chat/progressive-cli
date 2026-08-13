@@ -542,9 +542,18 @@ std::string highlightUrls(const std::string& text) {
 std::string roomLastMsg(db::Database* db, const std::string& roomId,
                         const std::vector<nlohmann::json>& rooms) {
     if (!db) return "";
-    auto evs = db->getEvents(roomId, 1);
+    auto evs = db->getEvents(roomId, 30);
     if (evs.empty()) return "";
-    const matrix::Event& ev = evs.front();
+    // The newest MESSAGE — pins/state events (the newest entries) must not
+    // swallow the preview.
+    const matrix::Event* found = &evs.front();
+    for (const auto& e : evs) {
+        if (e.type == "m.room.message" || e.type == "m.sticker") {
+            found = &e;
+            break;
+        }
+    }
+    const matrix::Event& ev = *found;
     std::string preview;
     if (ev.type == "m.room.message" || ev.type == "m.sticker") {
         std::string body = eventBody(ev);
@@ -1556,7 +1565,15 @@ std::string drawFrame(const UiState& st) {
                 } else {
                     label = dateStr;
                 }
-                std::string sep = "── " + label + " ──";
+                // The day's message count next to the date, like Element.
+                int dayCount = 0;
+                for (const auto& ev2 : st.messages) {
+                    if (ev2.origin_server_ts / 86400000 != day) continue;
+                    if (ev2.type != "m.room.message" && ev2.type != "m.sticker") continue;
+                    dayCount++;
+                }
+                std::string sep = "── " + label + " ──  " + std::to_string(dayCount)
+                                + " msgs";
                 if (static_cast<int>(sep.size()) < centerW) {
                     sep = std::string((centerW - static_cast<int>(sep.size())) / 2, ' ') + sep;
                 }
