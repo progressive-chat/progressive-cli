@@ -91,6 +91,8 @@ int cpWidth(uint32_t cp) {
     // phone terminal (glibc wcwidth agrees) — counting them 2 broke the
     // pipes. Only the real emoji blocks and CJK are wide.
     if (cp == 0x1F451 || cp == 0x1F6E1) return 1;   // 👑 🛡 power badges are narrow
+    if (cp == 0x1F5F3) return 1;                    // 🗳 ballot box is narrow too
+    if (cp == 0x2B55) return 2;                     // ⭕ heavy circle renders wide
     if (cp >= 0x1F000 && cp <= 0x1FAFF) return 2;    // emoji blocks
     return 1;
 }
@@ -1153,7 +1155,7 @@ std::string drawFrame(const UiState& st) {
     // Header
     std::string out;
     std::string header = " " + roomName + e2eeMark + " ";
-    int headerFill = W - static_cast<int>(header.size());
+    int headerFill = W - static_cast<int>(header.size()) - 1;
     if (headerFill < 0) headerFill = 0;
     out += header + repeat('=', headerFill) + "\n";
 
@@ -1240,9 +1242,9 @@ std::string drawFrame(const UiState& st) {
     if (!st.mobile) {
         out += pad(leftHeader, static_cast<size_t>(leftW)) + PIPE + "|" + X
              + pad(headRoom, static_cast<size_t>(centerW)) + PIPE + "|" + X
-             + " Members" + std::string(std::max(0, rightW - 8), ' ') + "\n";
+             + " Members\n";
         out += PIPE + repeat('-', leftW) + "+" + repeat('-', centerW) + "+"
-             + repeat('-', rightW) + X + "\n";
+             + repeat('-', std::max(0, rightW - 1)) + X + "\n";
     }
 
     // Body rows: fill the terminal height or default to 24 rows.
@@ -1874,7 +1876,7 @@ std::string drawFrame(const UiState& st) {
             stream.insert(stream.end(), allRows.begin(), allRows.end());
             section = " Rooms ";
         } else if (st.mobileTab == 1) {
-            stream.push_back(clip("── " + roomName + " ──", W));
+            stream.push_back(clip("── " + roomName + " ──", std::max(1, W - 1)));
             stream.insert(stream.end(), centerRows.begin(), centerRows.end());
             section = " Chat ";
         } else {
@@ -1888,10 +1890,10 @@ std::string drawFrame(const UiState& st) {
         if (scroll + rows < total) out += "  v more below (scroll down)\n";
         for (int i = 0; i < rows; ++i) {
             int src = scroll + i;
-            out += (src < total) ? clip(stream[static_cast<size_t>(src)], W) + "\n"
+            out += (src < total) ? clip(stream[static_cast<size_t>(src)], std::max(1, W - 1)) + "\n"
                                  : "\n";
         }
-        out += repeat('=', W) + "\n";
+        out += repeat('=', std::max(0, W - 1)) + "\n";
         // Bottom navigation (Element Classic style): the active tab is
         // bracketed, the others are bare.
         std::string nav;
@@ -1986,13 +1988,17 @@ std::string drawFrame(const UiState& st) {
         if (src < static_cast<int>(rightRows.size())) {
             right = rightRows[static_cast<size_t>(src)];
         }
+        std::string rightOut = clip(right, static_cast<size_t>(rightW));
+        if (rightOut.find('\x1b') != std::string::npos) rightOut += "\x1b[0m";
+        // The right panel gets no trailing padding: a row of exactly W
+        // cells makes Konsole wrap onto a phantom blank line.
         out += pad(left, static_cast<size_t>(leftW)) + PIPE + "|" + X
              + pad(center, static_cast<size_t>(centerW)) + PIPE + "|" + X
-             + pad(right, static_cast<size_t>(rightW)) + "\n";
+             + rightOut + "\n";
     }
 
     // Status line
-    out += repeat('=', W) + "\n";
+    out += repeat('=', std::max(0, W - 1)) + "\n";
     std::string pos;
     if (contentRows(st) > rows) {
         pos = " [rows " + std::to_string(scroll + 1) + "-"
