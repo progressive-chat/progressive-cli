@@ -13,6 +13,8 @@
 #include "../lib/util/logger.hpp"
 #include "agent_tools.hpp"
 #include <cstdlib>
+#include <glob.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include "cli/args.hpp"
 #include "pcore.hpp"
@@ -3852,6 +3854,25 @@ int cmdAsciiUi(const cli::Args& args) {
                 };
                 loadCsv("agent_allow", cfg.allowPrefixes);
                 loadCsv("agent_deny", cfg.denyPrefixes);
+                std::vector<std::string> rules;
+                loadCsv("agent_rules", rules);
+                for (const auto& r : rules) {
+                    auto a = r.find('|');
+                    auto b = r.rfind('|');
+                    if (a != std::string::npos && b != std::string::npos && a < b) {
+                        cfg.rules.push_back({r.substr(0, a), r.substr(a + 1, b - a - 1),
+                                             r.substr(b + 1)});
+                    }
+                }
+                std::vector<std::string> mcps;
+                loadCsv("agent_mcp", mcps);
+                for (const auto& m : mcps) {
+                    auto p = m.find('|');
+                    if (p != std::string::npos) {
+                        cfg.mcpServers.push_back({m.substr(0, p), m.substr(p + 1)});
+                    }
+                }
+                cfg.sandbox = dbi.getSetting("agent_sandbox", "off");
             }
             char cwdbuf[4096];
             if (getcwd(cwdbuf, sizeof(cwdbuf))) cfg.cwd = cwdbuf;
@@ -3902,6 +3923,123 @@ int cmdAsciiUi(const cli::Args& args) {
                     continue;
                 }
                 st.statusNote = "agent " + k + " set";
+                continue;
+            }
+            if (!a.positional.empty() && a.positional[0] == "permit") {
+                // agent permit <tool> <glob> <allow|ask|deny>
+                if (a.positional.size() < 4) {
+                    std::cout << "Usage: agent permit <read|write|edit|shell|"
+                                 "apply_patch|*> <glob> <allow|ask|deny>" << std::endl;
+                    continue;
+                }
+                std::string act = a.positional[3];
+                if (act != "allow" && act != "ask" && act != "deny") {
+                    std::cout << "the action must be allow|ask|deny" << std::endl;
+                    continue;
+                }
+                cfg.rules.push_back({a.positional[1], a.positional[2], act});
+                std::string csv;
+                for (const auto& r : cfg.rules) {
+                    csv += (csv.empty() ? "" : ",") + r.tool + "|" + r.glob
+                         + "|" + r.action;
+                }
+                dbi.setSetting("agent_rules", csv);
+                st.statusNote = "agent permit: " + a.positional[1] + " "
+                              + a.positional[2] + " " + act;
+                continue;
+            }
+            if (!a.positional.empty() && a.positional[0] == "session") {
+                // agent session save|load|list [name]
+                std::string act = a.positional.size() >= 2 ? a.positional[1] : "";
+                std::string name = a.positional.size() >= 3 ? a.positional[2] : "";
+                std::string dir = ".agent-sessions";
+                if (act == "save" && !name.empty()) {
+                    mkdir(dir.c_str(), 0755);
+                    agenttools::saveSession(dir + "/" + name + ".json",
+                                            agentHistory);
+                    st.statusNote = "session saved: " + name;
+                } else if (act == "load" && !name.empty()) {
+                    if (agenttools::loadSession(dir + "/" + name + ".json",
+                                                agentHistory)) {
+                        st.statusNote = "session loaded: " + name;
+                    } else {
+                        std::cout << "no such session: " << name << std::endl;
+                    }
+                } else if (act == "list" || act.empty()) {
+                    glob_t g{};
+                    if (glob((dir + "/*.json").c_str(), 0, nullptr, &g) == 0) {
+                        for (size_t i = 0; i < g.gl_pathc; ++i) {
+                            std::cout << "  " << g.gl_pathv[i] << std::endl;
+                        }
+                        globfree(&g);
+                    } else {
+                        std::cout << "  (no saved sessions)" << std::endl;
+                    }
+                } else {
+                    std::cout << "Usage: agent session save|load|list [name]"
+                              << std::endl;
+                }
+                continue;
+            }
+            if (!a.positional.empty() && a.positional[0] == "compact") {
+                // Drop the old tool results (the codex prune) — keep the
+                // last 8 messages intact.
+                int kept = 0;
+                for (auto it = agentHistory.rbegin(); it != agentHistory.rend();
+                     ++it) {
+                    if (++kept > 8 && it->role == "tool") {
+                        it->content = "(old tool result removed)";
+                    }
+                }
+                st.statusNote = "history compacted";
+                continue;
+            }
+            if (!a.positional.empty() && a.positional[0] == "sandbox") {
+                std::string v = a.positional.size() >= 2 ? a.positional[1] : "";
+                if (v != "off" && v != "bwrap") {
+                    std::cout << "Usage: agent sandbox off|bwrap" << std::endl;
+                    continue;
+                }
+                dbi.setSetting("agent_sandbox", v);
+                st.statusNote = "agent sandbox: " + v;
+                continue;
+            }
+            if (!a.positional.empty() && a.positional[0] == "mcp") {
+                // agent mcp add <name> <command> | list | del <name>
+                std::string act = a.positional.size() >= 2 ? a.positional[1] : "";
+                if (act == "list" || act.empty()) {
+                    for (const auto& m : cfg.mcpServers) {
+                        std::cout << "  " << m.name << "  →  " << m.command
+                                  << std::endl;
+                    }
+                } else if (act == "add" && a.positional.size() >= 4) {
+                    std::string cmdline;
+                    for (size_t i = 3; i < a.positional.size(); ++i) {
+                        cmdline += (cmdline.empty() ? "" : " ") + a.positional[i];
+                    }
+                    cfg.mcpServers.push_back({a.positional[2], cmdline});
+                    std::string csv;
+                    for (const auto& m : cfg.mcpServers) {
+                        csv += (csv.empty() ? "" : ",") + m.name + "|" + m.command;
+                    }
+                    dbi.setSetting("agent_mcp", csv);
+                    st.statusNote = "agent mcp: " + a.positional[2] + " added";
+                } else if (act == "del" && a.positional.size() >= 3) {
+                    std::vector<agenttools::McpServer> kept;
+                    for (const auto& m : cfg.mcpServers) {
+                        if (m.name != a.positional[2]) kept.push_back(m);
+                    }
+                    cfg.mcpServers = kept;
+                    std::string csv;
+                    for (const auto& m : cfg.mcpServers) {
+                        csv += (csv.empty() ? "" : ",") + m.name + "|" + m.command;
+                    }
+                    dbi.setSetting("agent_mcp", csv);
+                    st.statusNote = "agent mcp: " + a.positional[2] + " removed";
+                } else {
+                    std::cout << "Usage: agent mcp add <name> <command> |"
+                                 " agent mcp list | agent mcp del <name>" << std::endl;
+                }
                 continue;
             }
             if (!a.positional.empty() && a.positional[0] == "reset") {
@@ -3964,7 +4102,49 @@ int cmdAsciiUi(const cli::Args& args) {
                 continue;
             }
             std::string prompt;
-            for (const auto& p : a.positional) prompt += (prompt.empty() ? "" : " ") + p;
+            size_t from = 0;
+            bool planRun = !a.positional.empty() && a.positional[0] == "plan";
+            if (planRun) from = 1;
+            for (size_t i = from; i < a.positional.size(); ++i) {
+                prompt += (prompt.empty() ? "" : " ") + a.positional[i];
+            }
+            if (planRun && prompt.empty()) {
+                std::cout << "Usage: agent plan <prompt>" << std::endl;
+                continue;
+            }
+            if (planRun) {
+                mkdir(".agent-plans", 0755);
+                std::time_t now = std::time(nullptr);
+                char ts[32];
+                std::strftime(ts, sizeof(ts), "%Y%m%d-%H%M%S",
+                              localtime(&now));
+                std::string planFile = std::string(".agent-plans/plan-") + ts
+                                     + ".md";
+                agenttools::Config planCfg = cfg;
+                planCfg.planMode = true;
+                planCfg.planFile = planFile;
+                std::vector<agenttools::Message> planHist;
+                agenttools::Result pr = agenttools::run(
+                    planCfg, prompt, planHist, confirm, ask, log);
+                std::cout << (pr.ok ? pr.text : "[agent error] " + pr.error)
+                          << std::endl;
+                if (!pr.ok) continue;
+                std::cout << "plan: " << planFile << " — execute now? [y/N] "
+                          << std::flush;
+                std::string ans;
+                std::getline(std::cin, ans);
+                if (ans == "y" || ans == "Y") {
+                    std::string execPrompt =
+                        "Execute the approved plan. First read " + planFile
+                        + " and then carry out the steps in it.";
+                    agenttools::Result res = agenttools::run(
+                        cfg, execPrompt, agentHistory, confirm, ask, log);
+                    if (!res.ok) std::cout << "[agent error] " << res.error
+                                           << std::endl;
+                    else std::cout << res.text << std::endl;
+                }
+                continue;
+            }
             agenttools::Result res =
                 agenttools::run(cfg, prompt, agentHistory, confirm, ask, log);
             if (!res.ok) {

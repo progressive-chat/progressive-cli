@@ -1,7 +1,8 @@
 #pragma once
 
 // The local coding-agent engine (opencode/codex-style): an LLM loop with
-// filesystem + shell tools, plan tracking and configurable trust levels.
+// filesystem + shell tools, plan tracking, configurable trust levels,
+// permission glob rules, subagents, sessions and a sandboxed shell.
 // Both providers (OpenAI-compatible and Anthropic) are supported with
 // native tool calls.
 
@@ -11,6 +12,17 @@
 
 namespace matrixcli { namespace agenttools {
 
+struct PermissionRule {
+    std::string tool;    // read | write | edit | shell | apply_patch | "*"
+    std::string glob;    // fnmatch pattern over the path (or the command)
+    std::string action;  // allow | ask | deny
+};
+
+struct McpServer {
+    std::string name;
+    std::string command;  // e.g. "npx -y @modelcontextprotocol/server-files ."
+};
+
 struct Config {
     std::string provider = "openai";        // "openai" | "anthropic"
     std::string endpoint;                   // base URL, e.g. https://api.openai.com
@@ -19,8 +31,13 @@ struct Config {
     std::string trust = "ask";              // allow | ask | deny
     std::vector<std::string> allowPrefixes; // shell prefixes that always run
     std::vector<std::string> denyPrefixes;  // shell prefixes that never run
+    std::vector<PermissionRule> rules;      // per-tool glob rules (last wins)
     std::string cwd;                        // working directory for the tools
     int maxIterations = 10;
+    int maxDepth = 3;                       // subagent nesting limit
+    std::string subagentType;               // "" | "explore" | "general" (subagents)
+    std::string sandbox = "off";            // "" | "bwrap"
+    std::vector<McpServer> mcpServers;
     // Plan mode: the agent only reads, plans and writes a plan file —
     // no writes to other files, no shell (the plan-approval flow).
     bool planMode = false;
@@ -63,6 +80,12 @@ Result run(const Config& cfg, const std::string& prompt,
 std::string executeTool(const Config& cfg, const std::string& name,
                         const std::string& argsJson,
                         const std::function<bool(const std::string&)>& confirm,
-                        const std::function<std::string(const std::string&)>& ask);
+                        const std::function<std::string(const std::string&)>& ask,
+                        const std::function<void(const std::string&)>& log,
+                        int depth = 0);
+
+// Session persistence: the history to/from a JSON file.
+void saveSession(const std::string& path, const std::vector<Message>& history);
+bool loadSession(const std::string& path, std::vector<Message>& history);
 
 }} // namespace matrixcli::agenttools

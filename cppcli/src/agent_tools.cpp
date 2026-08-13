@@ -6,9 +6,11 @@
 #include <algorithm>
 #include <chrono>
 #include <ctime>
+#include <fnmatch.h>
 #include <fstream>
 #include <glob.h>
 #include <map>
+#include <memory>
 #include <regex>
 #include <sstream>
 #include <unistd.h>
@@ -129,6 +131,16 @@ std::string toolSchemasJson() {
     schema("clock",
            "The current date and time (UTC).",
            json::object(), json::array());
+    schema("task",
+           "Launch a subagent to work independently and return its final "
+           "answer. Use for searches and non-mutating research "
+           "(subagent_type: explore) or for general delegation (general).",
+           {{"description", {{"type", "string"},
+                             {"description", "3-5 word description of the task"}}},
+            {"prompt", {{"type", "string"}}},
+            {"subagent_type", {{"type", "string"},
+                               {"enum", {"explore", "general"}}}}},
+           {"description", "prompt"});
     return out.dump();
 }
 
@@ -226,7 +238,7 @@ std::string applyPatch(const std::string& patchText) {
     std::string path;
     std::string oldText, newText, cur;
     std::string report;
-    bool collectingOld = true;  // Update mode: old vs new block
+    bool collectingOld = true;
     auto flush = [&]() -> std::string {
         if (mode == "Add") return writeFile(path, cur);
         if (mode == "Delete") {
@@ -236,7 +248,8 @@ std::string applyPatch(const std::string& patchText) {
             return "deleted " + path;
         }
         if (mode == "Update") {
-            if (!oldText.empty() && !oldText.back()) oldText.pop_back();
+            if (!oldText.empty() && oldText.back() == '\n') oldText.pop_back();
+            if (!newText.empty() && newText.back() == '\n') newText.pop_back();
             return editFile(path, oldText, newText, false);
         }
         return "";
@@ -268,7 +281,6 @@ std::string applyPatch(const std::string& patchText) {
             continue;
         } else if (line == "*** Begin Replacement") {
             collectingOld = false;
-            if (!newText.empty() && !newText.empty()) {}
         } else if (mode == "Update") {
             if (collectingOld) oldText += line + "\n";
             else newText += line + "\n";
@@ -334,14 +346,28 @@ std::string grepFiles(const std::string& pattern, const std::string& path) {
     return out.empty() ? "(no matches)" : out;
 }
 
-// The shell with an optional timeout: the `timeout` utility wraps the
-// command (popen alone cannot kill a stuck child).
+// The shell: an optional timeout via the `timeout` utility, an optional
+// bubblewrap sandbox (the filesystem read-only except the cwd).
 std::string shellCmd(const std::string& cmd, int timeoutSec,
-                     const std::string& workdir) {
+                     const std::string& workdir, const std::string& sandbox) {
     if (timeoutSec <= 0) timeoutSec = 60;
     if (timeoutSec > 600) timeoutSec = 600;
     std::string inner = cmd;
     if (!workdir.empty()) inner = "cd " + json(workdir).dump() + " && " + inner;
+    if (sandbox == "bwrap") {
+        // bubblewrap: the root read-only, the cwd read-write, a private
+        // tmp, the network blocked by default.
+        std::string root;
+        if (!workdir.empty()) root = workdir;
+        else {
+            char cwd[4096];
+            if (getcwd(cwd, sizeof(cwd))) root = cwd;
+        }
+        inner = "bwrap --ro-bind / / --bind " + json(root).dump() + " "
+              + json(root).dump()
+              + " --tmpfs /tmp --unshare-net --die-with-parent -- "
+              + inner;
+    }
     std::string wrapped = "timeout " + std::to_string(timeoutSec) + " sh -c "
                         + json(inner).dump() + " 2>&1";
     FILE* f = popen(wrapped.c_str(), "r");
@@ -382,9 +408,26 @@ std::string todoTool(const std::string& argsJson) {
     }
 }
 
-// The trust policy for the shell: deny > allow > level.
+// ---- the permission engine ----
+
 enum class Verdict { Allow, Ask, Deny };
 
+// The per-tool glob rules: the LAST matching rule wins (opencode-style).
+Verdict checkPermission(const Config& cfg, const std::string& tool,
+                        const std::string& subject) {
+    Verdict v = Verdict::Allow;  // the default: file tools are allowed
+    for (const auto& r : cfg.rules) {
+        if (r.tool != "*" && r.tool != tool) continue;
+        if (fnmatch(r.glob.c_str(), subject.c_str(), 0) != 0) continue;
+        v = r.action == "deny"   ? Verdict::Deny
+          : r.action == "ask"    ? Verdict::Ask
+                                 : Verdict::Allow;
+    }
+    return v;
+}
+
+// The trust policy for the shell: denyPrefixes > allowPrefixes > the
+// permission rules > the level.
 Verdict checkTrust(const Config& cfg, const std::string& cmd) {
     for (const auto& p : cfg.denyPrefixes) {
         if (cmd.rfind(p, 0) == 0) return Verdict::Deny;
@@ -392,10 +435,64 @@ Verdict checkTrust(const Config& cfg, const std::string& cmd) {
     for (const auto& p : cfg.allowPrefixes) {
         if (cmd.rfind(p, 0) == 0) return Verdict::Allow;
     }
+    Verdict rule = checkPermission(cfg, "shell", cmd);
+    if (rule != Verdict::Allow) return rule;
     if (cfg.trust == "allow") return Verdict::Allow;
     if (cfg.trust == "deny") return Verdict::Deny;
     return Verdict::Ask;
 }
+
+// ---- the MCP client (stdio JSON-RPC) ----
+
+struct McpConn {
+    FILE* f = nullptr;
+    std::string error;
+    int nextId = 2;
+
+    bool start(const McpServer& srv) {
+        f = popen(srv.command.c_str(), "r+");
+        if (!f) {
+            error = "cannot start MCP server: " + srv.command;
+            return false;
+        }
+        json init = {{"jsonrpc", "2.0"}, {"id", 1}, {"method", "initialize"},
+                     {"params",
+                      {{"protocolVersion", "2024-11-05"},
+                       {"capabilities", json::object()},
+                       {"clientInfo", {{"name", "matrixcli"}, {"version", "0.5.0"}}}}}};
+        json resp = rpc(init);
+        if (resp.value("error", json()).is_object()) {
+            error = "MCP initialize failed: " + resp["error"].dump();
+            return false;
+        }
+        return true;
+    }
+
+    json rpc(const json& req) {
+        std::string line = req.dump() + "\n";
+        if (!f || fwrite(line.data(), 1, line.size(), f) != line.size()) {
+            return json();
+        }
+        fflush(f);
+        char buf[65536];
+        std::string acc;
+        int guard = 0;
+        while (fgets(buf, sizeof(buf), f) && guard++ < 5000) {
+            acc += buf;
+            try {
+                json j = json::parse(acc);
+                return j;
+            } catch (...) {
+                continue;
+            }
+        }
+        return json();
+    }
+
+    ~McpConn() {
+        if (f) pclose(f);
+    }
+};
 
 // ---- the LLM adapters ----
 
@@ -407,9 +504,12 @@ std::string anthropicUrl(const Config& cfg) {
     return baseEndpoint(cfg) + "/v1/messages";
 }
 
-json openAiToolsParam() {
+json builtinToolsParam() {
+    return json::parse(toolSchemasJson());
+}
+
+json openAiToolsParam(const json& src) {
     json tools = json::array();
-    json src = json::parse(toolSchemasJson());
     for (const auto& t : src) {
         json j = {{"type", "function"},
                   {"function",
@@ -419,10 +519,6 @@ json openAiToolsParam() {
         tools.push_back(j);
     }
     return tools;
-}
-
-json anthropicToolsParam() {
-    return json::parse(toolSchemasJson());
 }
 
 void buildOpenAiMessages(const std::vector<Message>& history,
@@ -531,10 +627,63 @@ Message parseAnthropicResponse(const json& resp) {
 
 } // namespace
 
+// ---- session persistence ----
+
+void saveSession(const std::string& path, const std::vector<Message>& history) {
+    json arr = json::array();
+    for (const auto& m : history) {
+        json j = {{"role", m.role}, {"content", m.content}};
+        if (!m.calls.empty()) {
+            json tcs = json::array();
+            for (const auto& c : m.calls) {
+                tcs.push_back({{"id", c.id}, {"name", c.name}, {"args", c.args}});
+            }
+            j["calls"] = tcs;
+        }
+        if (!m.toolCallId.empty()) j["toolCallId"] = m.toolCallId;
+        if (!m.toolName.empty()) j["toolName"] = m.toolName;
+        arr.push_back(j);
+    }
+    std::ofstream f(path, std::ios::trunc);
+    f << arr.dump(2);
+}
+
+bool loadSession(const std::string& path, std::vector<Message>& history) {
+    std::ifstream f(path);
+    if (!f) return false;
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    json arr;
+    try {
+        arr = json::parse(ss.str());
+    } catch (...) {
+        return false;
+    }
+    history.clear();
+    for (const auto& j : arr) {
+        Message m;
+        m.role = j.value("role", "");
+        m.content = j.value("content", "");
+        for (const auto& c : j.value("calls", json::array())) {
+            ToolCall tc;
+            tc.id = c.value("id", "");
+            tc.name = c.value("name", "");
+            tc.args = c.value("args", "");
+            m.calls.push_back(tc);
+        }
+        m.toolCallId = j.value("toolCallId", "");
+        m.toolName = j.value("toolName", "");
+        history.push_back(m);
+    }
+    return true;
+}
+
 std::string executeTool(const Config& cfg, const std::string& name,
                         const std::string& argsJson,
                         const std::function<bool(const std::string&)>& confirm,
-                        const std::function<std::string(const std::string&)>& ask) {
+                        const std::function<std::string(const std::string&)>& ask,
+                        const std::function<void(const std::string&)>& log,
+                        int depth) {
     json args = json::object();
     if (!argsJson.empty()) {
         try {
@@ -560,22 +709,40 @@ std::string executeTool(const Config& cfg, const std::string& name,
         if (v == Verdict::Ask && confirm) {
             if (!confirm(cmd)) return "declined by the user: " + cmd;
         }
-        return shellCmd(cmd, i64("timeout", 60), str("workdir"));
+        return shellCmd(cmd, i64("timeout", 60), str("workdir"), cfg.sandbox);
     }
     if (name == "read_file") {
-        return readFile(str("path"), i64("offset", 1), i64("limit", 2000));
+        std::string p = str("path");
+        Verdict v = checkPermission(cfg, "read", p);
+        if (v == Verdict::Deny) return "denied by the permission rules: " + p;
+        if (v == Verdict::Ask && confirm) {
+            if (!confirm("read " + p)) return "declined by the user: " + p;
+        }
+        return readFile(p, i64("offset", 1), i64("limit", 2000));
     }
     if (name == "write_file") {
-        if (cfg.planMode && str("path") != cfg.planFile) {
+        std::string p = str("path");
+        if (cfg.planMode && p != cfg.planFile) {
             return "denied: plan mode — only the plan file may be written";
         }
-        return writeFile(str("path"), str("content"));
+        Verdict v = checkPermission(cfg, "write", p);
+        if (v == Verdict::Deny) return "denied by the permission rules: " + p;
+        if (v == Verdict::Ask && confirm) {
+            if (!confirm("write " + p)) return "declined by the user: " + p;
+        }
+        return writeFile(p, str("content"));
     }
     if (name == "edit_file") {
-        if (cfg.planMode && str("path") != cfg.planFile) {
+        std::string p = str("path");
+        if (cfg.planMode && p != cfg.planFile) {
             return "denied: plan mode — only the plan file may be edited";
         }
-        return editFile(str("path"), str("old"), str("new"),
+        Verdict v = checkPermission(cfg, "edit", p);
+        if (v == Verdict::Deny) return "denied by the permission rules: " + p;
+        if (v == Verdict::Ask && confirm) {
+            if (!confirm("edit " + p)) return "declined by the user: " + p;
+        }
+        return editFile(p, str("old"), str("new"),
                         args.value("replaceAll", false));
     }
     if (name == "apply_patch") {
@@ -598,6 +765,52 @@ std::string executeTool(const Config& cfg, const std::string& name,
         std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S UTC", &tm);
         return buf;
     }
+    if (cfg.subagentType == "explore" &&
+        (name == "shell" || name == "write_file" || name == "edit_file" ||
+         name == "apply_patch")) {
+        return "denied: the explore subagent is read-only";
+    }
+    if (name == "task") {
+        if (depth >= cfg.maxDepth) return "error: subagent depth limit reached";
+        std::string type = str("subagent_type");
+        if (type.empty()) type = "general";
+        if (log) log("[agent] subagent: " + str("description"));
+        Config sub = cfg;
+        sub.subagentType = type;
+        sub.maxIterations = std::max(3, cfg.maxIterations - 2);
+        std::vector<Message> hist;
+        // The subagent's system prompt (the run() hard-codes the default —
+        // the subagent only sees the role-scoped prompt through the first
+        // user message prefix).
+        std::string prompt = str("prompt");
+        Result r = run(sub, prompt, hist, confirm, ask, log);
+        return r.ok ? r.text : ("subagent error: " + r.error);
+        (void)depth;
+    }
+    // MCP tools: mcp__<server>__<tool>.
+    if (name.rfind("mcp__", 0) == 0) {
+        for (const auto& srv : cfg.mcpServers) {
+            std::string prefix = "mcp__" + srv.name + "__";
+            if (name.rfind(prefix, 0) != 0) continue;
+            std::string tool = name.substr(prefix.size());
+            McpConn conn;
+            if (!conn.start(srv)) return conn.error;
+            json call = {{"jsonrpc", "2.0"},
+                         {"id", conn.nextId++},
+                         {"method", "tools/call"},
+                         {"params",
+                          {{"name", tool},
+                           {"arguments", args.is_null() ? json::object() : args}}}};
+            json resp = conn.rpc(call);
+            if (resp.contains("error")) {
+                return "MCP error: " + resp["error"].dump();
+            }
+            return resp.value("result", json::object())
+                .value("content", json::array())
+                .dump();
+        }
+        return "unknown tool: " + name;
+    }
     return "unknown tool: " + name;
 }
 
@@ -611,13 +824,21 @@ Result run(const Config& cfg, const std::string& prompt,
         log("cannot chdir to " + cfg.cwd);
     }
     const std::string systemPrompt =
-        "You are a CLI coding agent running inside the progressive-cli "
-        "Matrix client. You help with the local filesystem and the shell. "
-        "Use the provided tools for anything that needs the computer. "
-        "Prefer small, verifiable steps; keep the todo tool updated for "
-        "multi-step work. Answer concisely in the user's language; only "
-        "use the tools when they are actually needed. The shell commands "
-        "are subject to the user's trust policy.";
+        cfg.subagentType == "explore"
+            ? "You are an explore subagent of the matrixcli coding agent. "
+              "You search and read the codebase and report findings. You "
+              "must NOT write, edit or run the shell — only read, glob, "
+              "grep, webfetch and search. Answer with a concise report."
+            : cfg.subagentType == "general"
+            ? "You are a general subagent of the matrixcli coding agent. "
+              "Work on the delegated task and return a concise report."
+            : "You are a CLI coding agent running inside the progressive-cli "
+              "Matrix client. You help with the local filesystem and the "
+              "shell. Use the provided tools for anything that needs the "
+              "computer. Prefer small, verifiable steps; keep the todo tool "
+              "updated for multi-step work. Answer concisely in the user's "
+              "language; only use the tools when they are actually needed. "
+              "The shell commands are subject to the user's trust policy.";
 
     history.push_back({"user", prompt, {}, "", ""});
 
@@ -627,6 +848,33 @@ Result run(const Config& cfg, const std::string& prompt,
     // Doom-loop protection: 3 identical consecutive tool calls in a row.
     std::string lastTool;
     int repeat = 0;
+
+    // Start the MCP servers once per run.
+    std::vector<std::unique_ptr<McpConn>> mcpConns;
+    json mcpSchemas = json::array();
+    for (const auto& srv : cfg.mcpServers) {
+        auto conn = std::make_unique<McpConn>();
+        if (!conn->start(srv)) {
+            if (log) log("[agent] MCP: " + conn->error);
+            continue;
+        }
+        json list = {{"jsonrpc", "2.0"}, {"id", conn->nextId++},
+                     {"method", "tools/list"}};
+        json resp = conn->rpc(list);
+        auto tools = resp.value("result", json::object())
+                         .value("tools", json::array());
+        for (const auto& t : tools) {
+            json j = {{"name", "mcp__" + srv.name + "__" + t.value("name", "")},
+                      {"description", t.value("description", "")},
+                      {"input_schema", t.value("inputSchema", json::object())}};
+            mcpSchemas.push_back(j);
+        }
+        if (log) log("[agent] MCP " + srv.name + ": " +
+                     std::to_string(tools.size()) + " tools");
+        mcpConns.push_back(std::move(conn));
+    }
+    json allSchemas = builtinToolsParam();
+    for (const auto& j : mcpSchemas) allSchemas.push_back(j);
 
     for (int iter = 0; iter < cfg.maxIterations; ++iter) {
         result.iterations = iter + 1;
@@ -638,7 +886,7 @@ Result run(const Config& cfg, const std::string& prompt,
             reqBody = {{"model", cfg.model},
                        {"system", systemPrompt},
                        {"messages", messages},
-                       {"tools", anthropicToolsParam()},
+                       {"tools", allSchemas},
                        {"max_tokens", 4096}};
             req.url = anthropicUrl(cfg);
             req.headers["x-api-key"] = cfg.key;
@@ -649,7 +897,7 @@ Result run(const Config& cfg, const std::string& prompt,
             buildOpenAiMessages(history, systemPrompt, messages);
             reqBody = {{"model", cfg.model},
                        {"messages", messages},
-                       {"tools", openAiToolsParam()}};
+                       {"tools", openAiToolsParam(allSchemas)}};
             req.url = openAiUrl(cfg);
             req.headers["authorization"] = "Bearer " + cfg.key;
             req.headers["content-type"] = "application/json";
@@ -700,7 +948,8 @@ Result run(const Config& cfg, const std::string& prompt,
                 repeat = 1;
             }
             if (log) log("[agent] tool: " + c.name + " " + c.args);
-            std::string out = executeTool(cfg, c.name, c.args, confirm, ask);
+            std::string out = executeTool(cfg, c.name, c.args, confirm, ask,
+                                          log, 0);
             history.push_back({"tool", out, {}, c.id, c.name});
             if (log) {
                 std::string preview = out.size() > 200 ? out.substr(0, 200) + "..."
