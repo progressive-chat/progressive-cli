@@ -11,6 +11,8 @@
 #include "../lib/database/db.hpp"
 #include "../lib/matrix/client.hpp"
 #include "../lib/util/logger.hpp"
+#include "agent_tools.hpp"
+#include <cstdlib>
 #include "cli/args.hpp"
 #include "pcore.hpp"
 #include "globals.hpp"
@@ -3743,6 +3745,143 @@ int cmdAsciiUi(const cli::Args& args) {
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
+
+        // ---- agent <prompt>: the local coding agent (opencode-style) ----
+        if (a.command == "agent") {
+            static std::vector<agenttools::Message> agentHistory;
+            static std::vector<std::string> agentPromptHistory;
+            agenttools::Config cfg;
+            cfg.provider = dbi.getSetting("agent_provider", "openai");
+            cfg.endpoint = dbi.getSetting("agent_endpoint", "");
+            cfg.model = dbi.getSetting("agent_model", "");
+            cfg.key = dbi.getSetting("agent_key", "");
+            cfg.trust = dbi.getSetting("agent_trust", "ask");
+            if (cfg.key.empty()) {
+                const char* env = cfg.provider == "anthropic"
+                                      ? std::getenv("ANTHROPIC_API_KEY")
+                                      : std::getenv("OPENAI_API_KEY");
+                if (env && *env) cfg.key = env;
+            }
+            if (cfg.model.empty()) {
+                cfg.model = cfg.provider == "anthropic"
+                                ? "claude-3-5-haiku-20241022" : "gpt-4o-mini";
+            }
+            {
+                auto loadCsv = [&](const std::string& key,
+                                   std::vector<std::string>& out) {
+                    std::string v = dbi.getSetting(key, "");
+                    std::string cur;
+                    for (char ch : v) {
+                        if (ch == ',') { if (!cur.empty()) out.push_back(cur); cur.clear(); }
+                        else cur += ch;
+                    }
+                    if (!cur.empty()) out.push_back(cur);
+                };
+                loadCsv("agent_allow", cfg.allowPrefixes);
+                loadCsv("agent_deny", cfg.denyPrefixes);
+            }
+            char cwdbuf[4096];
+            if (getcwd(cwdbuf, sizeof(cwdbuf))) cfg.cwd = cwdbuf;
+
+            // Subcommands: trust / allow / deny / config / reset.
+            if (!a.positional.empty() && a.positional[0] == "trust") {
+                std::string v = a.positional.size() >= 2 ? a.positional[1] : "";
+                if (v != "allow" && v != "ask" && v != "deny") {
+                    std::cout << "Usage: agent trust <allow|ask|deny>" << std::endl;
+                    continue;
+                }
+                dbi.setSetting("agent_trust", v);
+                st.statusNote = "agent trust: " + v;
+                continue;
+            }
+            if (!a.positional.empty() &&
+                (a.positional[0] == "allow" || a.positional[0] == "deny")) {
+                if (a.positional.size() < 2) {
+                    std::cout << "Usage: agent " << a.positional[0]
+                              << " <command-prefix>" << std::endl;
+                    continue;
+                }
+                auto& list = a.positional[0] == "allow" ? cfg.allowPrefixes
+                                                        : cfg.denyPrefixes;
+                list.push_back(a.positional[1]);
+                std::string csv;
+                for (const auto& p : list) csv += (csv.empty() ? "" : ",") + p;
+                dbi.setSetting(a.positional[0] == "allow" ? "agent_allow"
+                                                          : "agent_deny", csv);
+                st.statusNote = std::string("agent ") + a.positional[0] + ": "
+                              + a.positional[1];
+                continue;
+            }
+            if (!a.positional.empty() && a.positional[0] == "config") {
+                if (a.positional.size() < 3) {
+                    std::cout << "Usage: agent config provider|endpoint|model|key <value>"
+                              << std::endl;
+                    continue;
+                }
+                std::string k = a.positional[1];
+                std::string v = a.positional[2];
+                if (k == "provider") dbi.setSetting("agent_provider", v);
+                else if (k == "endpoint") dbi.setSetting("agent_endpoint", v);
+                else if (k == "model") dbi.setSetting("agent_model", v);
+                else if (k == "key") dbi.setSetting("agent_key", v);
+                else {
+                    std::cout << "agent config: provider|endpoint|model|key" << std::endl;
+                    continue;
+                }
+                st.statusNote = "agent " + k + " set";
+                continue;
+            }
+            if (!a.positional.empty() && a.positional[0] == "reset") {
+                agentHistory.clear();
+                st.statusNote = "agent history cleared";
+                continue;
+            }
+            if (cfg.key.empty()) {
+                std::cout << "No API key: set it with 'agent config key <key>',"
+                             " 'agent config provider openai|anthropic' or the"
+                             " OPENAI_API_KEY / ANTHROPIC_API_KEY env vars."
+                          << std::endl;
+                continue;
+            }
+            auto confirm = [&](const std::string& cmd) -> bool {
+                std::cout << "  run: " << cmd << " [y/N] " << std::flush;
+                std::string ans;
+                std::getline(std::cin, ans);
+                return ans == "y" || ans == "Y";
+            };
+            auto log = [](const std::string& l) { std::cout << l << std::endl; };
+            if (a.positional.empty()) {
+                std::cout << "agent (" << cfg.provider << ", " << cfg.model
+                          << ", trust: " << cfg.trust
+                          << "). Prompts below; 'exit' ends, 'reset' clears."
+                          << std::endl;
+                std::string line;
+                for (;;) {
+                    if (!readLineWithHistory(agentPromptHistory, "agent> ", line)) break;
+                    auto b = line.find_first_not_of(" \t");
+                    if (b == std::string::npos) continue;
+                    auto e = line.find_last_not_of(" \t");
+                    line = line.substr(b, e - b + 1);
+                    if (line == "exit" || line == "quit") break;
+                    if (line == "reset") { agentHistory.clear(); continue; }
+                    agenttools::Result res =
+                        agenttools::run(cfg, line, agentHistory, confirm, log);
+                    if (!res.ok) std::cout << "[agent error] " << res.error << std::endl;
+                    else std::cout << res.text << std::endl;
+                }
+                continue;
+            }
+            std::string prompt;
+            for (const auto& p : a.positional) prompt += (prompt.empty() ? "" : " ") + p;
+            agenttools::Result res =
+                agenttools::run(cfg, prompt, agentHistory, confirm, log);
+            if (!res.ok) {
+                std::cout << "[agent error] " << res.error << std::endl;
+            } else {
+                std::cout << res.text << std::endl;
+            }
+            continue;
+        }
         // ---- reply: send a reply to a message ----
         if (a.command == "reply") {
             // "reply 18:52 [bob] text" — the reference format (see below).
@@ -4166,6 +4305,12 @@ int cmdAsciiUi(const cli::Args& args) {
             std::cout << "  msgline   " << (st.msgNewline ? "newline (message below)"
                                                            : "inline (same line)")
                       << "  (msgline inline / msgline newline)" << std::endl;
+            std::cout << "  agent     "
+                      << dbi.getSetting("agent_provider", "openai") << " / "
+                      << dbi.getSetting("agent_model", "(default model)")
+                      << " / trust: " << dbi.getSetting("agent_trust", "ask")
+                      << "  (agent config <k> <v> / agent trust <allow|ask|deny>)"
+                      << std::endl;
             std::cout << "  names     " << (st.showNames ? "shown" : "hidden")
                       << "       (names on / names off)"
                       << "  [Element: show sender display names]" << std::endl;

@@ -8,6 +8,7 @@ set(SOURCES
     room_commands.cpp
     matrix_commands.cpp
     agent_commands.cpp
+    agent_tools.cpp
     proxy_commands.cpp
     ascii_ui.cpp
     cli/args.cpp
