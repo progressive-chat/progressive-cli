@@ -8,6 +8,7 @@
 #include "pcore.hpp"
 #include "globals.hpp"
 #include "../lib/database/db.hpp"
+#include "agent_tools.hpp"
 #include "core/http_client.hpp"
 #include <progressive/llm.hpp>
 #include <progressive/agent_executor.hpp>
@@ -411,9 +412,85 @@ int cmdTyping(const cli::Args& args) {
     return 0;
 }
 
+// ---- agent-code: the LOCAL coding agent (opencode-style) ----
+
+static int cmdAgentCode(const cli::Args& args) {
+    using namespace matrixcli::agenttools;
+    if (args.positional.empty()) {
+        std::cerr << "Usage: matrixcli agent-code <prompt> [--provider openai|anthropic]"
+                     " [--endpoint url] [--model m] [--key k]"
+                     " [--trust allow|ask|deny] [--verbose]" << std::endl;
+        return 1;
+    }
+    Config cfg;
+    db::Database dbi;
+    if (dbi.open("matrixcli.db")) {
+        cfg.provider = dbi.getSetting("agent_provider", "openai");
+        cfg.endpoint = dbi.getSetting("agent_endpoint", "");
+        cfg.model = dbi.getSetting("agent_model", "");
+        cfg.key = dbi.getSetting("agent_key", "");
+        cfg.trust = dbi.getSetting("agent_trust", "ask");
+        auto loadCsv = [&](const std::string& k, std::vector<std::string>& out) {
+            std::string v = dbi.getSetting(k, "");
+            std::string cur;
+            for (char ch : v) {
+                if (ch == ',') { if (!cur.empty()) out.push_back(cur); cur.clear(); }
+                else cur += ch;
+            }
+            if (!cur.empty()) out.push_back(cur);
+        };
+        loadCsv("agent_allow", cfg.allowPrefixes);
+        loadCsv("agent_deny", cfg.denyPrefixes);
+    }
+    if (args.options.count("provider")) cfg.provider = args.options.at("provider");
+    if (args.options.count("endpoint")) cfg.endpoint = args.options.at("endpoint");
+    if (args.options.count("model")) cfg.model = args.options.at("model");
+    if (args.options.count("key")) cfg.key = args.options.at("key");
+    if (args.options.count("trust")) cfg.trust = args.options.at("trust");
+    if (cfg.key.empty()) {
+        const char* env = cfg.provider == "anthropic"
+                              ? std::getenv("ANTHROPIC_API_KEY")
+                              : std::getenv("OPENAI_API_KEY");
+        if (env && *env) cfg.key = env;
+    }
+    if (cfg.model.empty()) {
+        cfg.model = cfg.provider == "anthropic" ? "claude-3-5-haiku-20241022"
+                                                : "gpt-4o-mini";
+    }
+    if (cfg.key.empty()) {
+        std::cerr << "Error: no API key — pass --key, save it in the settings"
+                     " (agent config key <k>), or export OPENAI_API_KEY/"
+                     "ANTHROPIC_API_KEY" << std::endl;
+        return 1;
+    }
+    char cwdbuf[4096];
+    if (getcwd(cwdbuf, sizeof(cwdbuf))) cfg.cwd = cwdbuf;
+    std::string prompt;
+    for (const auto& p : args.positional) prompt += (prompt.empty() ? "" : " ") + p;
+    bool verbose = args.options.count("verbose");
+    std::vector<Message> history;
+    Result res = run(cfg, prompt, history,
+        [&](const std::string& cmd) -> bool {
+            std::cout << "run: " << cmd << " [y/N] " << std::flush;
+            std::string ans;
+            std::getline(std::cin, ans);
+            return ans == "y" || ans == "Y";
+        },
+        [&](const std::string& l) {
+            if (verbose) std::cout << l << std::endl;
+        });
+    if (!res.ok) {
+        std::cerr << "agent error: " << res.error << std::endl;
+        return 1;
+    }
+    std::cout << res.text << std::endl;
+    return 0;
+}
+
 void registerAgentCommands() {
     auto& reg = CommandRegistry::instance();
     reg.registerCli("llm", cmdLlm, "LLM completion: llm <prompt> [--provider] [--token] [--model]");
     reg.registerCli("agent", cmdAgent, "Agentic loop with Matrix tools: agent <task> [--room X] [--token t]");
+    reg.registerCli("agent-code", cmdAgentCode, "Local coding agent: agent-code <prompt> [--provider] [--model] [--trust allow|ask|deny]");
     reg.registerCli("typing", cmdTyping, "Who is typing: typing <room>");
 }

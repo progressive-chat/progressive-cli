@@ -13,6 +13,7 @@
 #include "../lib/util/logger.hpp"
 #include "agent_tools.hpp"
 #include <cstdlib>
+#include <unistd.h>
 #include "cli/args.hpp"
 #include "pcore.hpp"
 #include "globals.hpp"
@@ -2605,6 +2606,59 @@ int cmdAsciiUi(const cli::Args& args) {
         try { st.threadsScroll = std::stoi(args.options.at("scroll-threads")); } catch (...) {}
     }
     std::cout << drawFrame(st) << std::flush;
+
+    // --agent <prompt>: run the local coding agent after the frame.
+    if (args.options.count("agent")) {
+        agenttools::Config cfg;
+        cfg.provider = dbi.getSetting("agent_provider", "openai");
+        cfg.endpoint = dbi.getSetting("agent_endpoint", "");
+        cfg.model = dbi.getSetting("agent_model", "");
+        cfg.key = dbi.getSetting("agent_key", "");
+        cfg.trust = dbi.getSetting("agent_trust", "ask");
+        {
+            auto loadCsv = [&](const std::string& key,
+                               std::vector<std::string>& out) {
+                std::string v = dbi.getSetting(key, "");
+                std::string cur;
+                for (char ch : v) {
+                    if (ch == ',') { if (!cur.empty()) out.push_back(cur); cur.clear(); }
+                    else cur += ch;
+                }
+                if (!cur.empty()) out.push_back(cur);
+            };
+            loadCsv("agent_allow", cfg.allowPrefixes);
+            loadCsv("agent_deny", cfg.denyPrefixes);
+        }
+        if (args.options.count("agent-provider")) cfg.provider = args.options.at("agent-provider");
+        if (args.options.count("agent-endpoint")) cfg.endpoint = args.options.at("agent-endpoint");
+        if (args.options.count("agent-model")) cfg.model = args.options.at("agent-model");
+        if (args.options.count("agent-key")) cfg.key = args.options.at("agent-key");
+        if (args.options.count("agent-trust")) cfg.trust = args.options.at("agent-trust");
+        if (cfg.key.empty()) {
+            const char* env = cfg.provider == "anthropic"
+                                  ? std::getenv("ANTHROPIC_API_KEY")
+                                  : std::getenv("OPENAI_API_KEY");
+            if (env && *env) cfg.key = env;
+        }
+        if (cfg.model.empty()) {
+            cfg.model = cfg.provider == "anthropic"
+                            ? "claude-3-5-haiku-20241022" : "gpt-4o-mini";
+        }
+        char cwdbuf[4096];
+        if (getcwd(cwdbuf, sizeof(cwdbuf))) cfg.cwd = cwdbuf;
+        std::vector<agenttools::Message> history;
+        agenttools::Result res = agenttools::run(cfg, args.options.at("agent"),
+            history,
+            [&](const std::string& cmd) -> bool {
+                std::cout << "run: " << cmd << " [y/N] " << std::flush;
+                std::string ans;
+                std::getline(std::cin, ans);
+                return ans == "y" || ans == "Y";
+            },
+            [](const std::string& l) { std::cout << l << std::endl; });
+        if (!res.ok) std::cout << "[agent error] " << res.error << std::endl;
+        else std::cout << res.text << std::endl;
+    }
 
     // Pure CLI / non-interactive mode: draw the frame once and exit
     // (pipe-friendly: matrixcli ui --static [room] | less).
