@@ -1,8 +1,9 @@
 #pragma once
 
 // The local coding-agent engine (opencode/codex-style): an LLM loop with
-// filesystem + shell tools and configurable trust levels. Both providers
-// (OpenAI-compatible and Anthropic) are supported with native tool calls.
+// filesystem + shell tools, plan tracking and configurable trust levels.
+// Both providers (OpenAI-compatible and Anthropic) are supported with
+// native tool calls.
 
 #include <functional>
 #include <string>
@@ -13,13 +14,17 @@ namespace matrixcli { namespace agenttools {
 struct Config {
     std::string provider = "openai";        // "openai" | "anthropic"
     std::string endpoint;                   // base URL, e.g. https://api.openai.com
-    std::string model;                      // gpt-4o-mini / claude-3-haiku-...
+    std::string model;                      // gpt-4o-mini / claude-3-5-haiku-...
     std::string key;
     std::string trust = "ask";              // allow | ask | deny
     std::vector<std::string> allowPrefixes; // shell prefixes that always run
     std::vector<std::string> denyPrefixes;  // shell prefixes that never run
     std::string cwd;                        // working directory for the tools
     int maxIterations = 10;
+    // Plan mode: the agent only reads, plans and writes a plan file —
+    // no writes to other files, no shell (the plan-approval flow).
+    bool planMode = false;
+    std::string planFile;                   // where the plan is written
 };
 
 struct ToolCall {
@@ -44,17 +49,20 @@ struct Result {
 };
 
 // One agentic run: the prompt is answered, tool calls are executed (the
-// shell honours the trust policy — the confirm callback is invoked for
-// "ask"; denyPrefixes win over allowPrefixes which win over the level).
+// shell honours the trust policy — `confirm` is invoked for "ask";
+// denyPrefixes win over allowPrefixes which win over the level). The
+// `ask` callback handles the question tool (JSON: {questions:[...]}).
 // `history` carries the conversation across calls (the interactive mode).
 Result run(const Config& cfg, const std::string& prompt,
            std::vector<Message>& history,
            const std::function<bool(const std::string& cmd)>& confirm,
+           const std::function<std::string(const std::string& questionsJson)>& ask,
            const std::function<void(const std::string&)>& log);
 
 // A single tool execution (used by run; exposed for testing).
 std::string executeTool(const Config& cfg, const std::string& name,
                         const std::string& argsJson,
-                        const std::function<bool(const std::string&)>& confirm);
+                        const std::function<bool(const std::string&)>& confirm,
+                        const std::function<std::string(const std::string&)>& ask);
 
 }} // namespace matrixcli::agenttools

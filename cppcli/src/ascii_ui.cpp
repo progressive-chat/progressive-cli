@@ -2655,6 +2655,25 @@ int cmdAsciiUi(const cli::Args& args) {
                 std::getline(std::cin, ans);
                 return ans == "y" || ans == "Y";
             },
+            [&](const std::string& questionsJson) -> std::string {
+                nlohmann::json qs;
+                try { qs = nlohmann::json::parse(questionsJson); }
+                catch (...) { return "error: bad questions JSON"; }
+                std::string out;
+                for (const auto& q : qs.value("questions", nlohmann::json::array())) {
+                    std::cout << "  Q: " << q.value("question", "?") << std::endl;
+                    auto opts = q.value("options", nlohmann::json::array());
+                    for (size_t i = 0; i < opts.size(); ++i) {
+                        std::cout << "    " << i + 1 << ") "
+                                  << opts[i].value("label", "") << std::endl;
+                    }
+                    std::cout << "  answer> " << std::flush;
+                    std::string ans;
+                    std::getline(std::cin, ans);
+                    out += "Q: " + q.value("question", "?") + "\nA: " + ans + "\n";
+                }
+                return out.empty() ? "(no questions answered)" : out;
+            },
             [](const std::string& l) { std::cout << l << std::endl; });
         if (!res.ok) std::cout << "[agent error] " << res.error << std::endl;
         else std::cout << res.text << std::endl;
@@ -3903,6 +3922,25 @@ int cmdAsciiUi(const cli::Args& args) {
                 std::getline(std::cin, ans);
                 return ans == "y" || ans == "Y";
             };
+            auto ask = [&](const std::string& questionsJson) -> std::string {
+                nlohmann::json qs;
+                try { qs = nlohmann::json::parse(questionsJson); }
+                catch (...) { return "error: bad questions JSON"; }
+                std::string out;
+                for (const auto& q : qs.value("questions", nlohmann::json::array())) {
+                    std::cout << "  Q: " << q.value("question", "?") << std::endl;
+                    auto opts = q.value("options", nlohmann::json::array());
+                    for (size_t i = 0; i < opts.size(); ++i) {
+                        std::cout << "    " << i + 1 << ") "
+                                  << opts[i].value("label", "") << std::endl;
+                    }
+                    std::cout << "  answer> " << std::flush;
+                    std::string ans;
+                    std::getline(std::cin, ans);
+                    out += "Q: " + q.value("question", "?") + "\nA: " + ans + "\n";
+                }
+                return out.empty() ? "(no questions answered)" : out;
+            };
             auto log = [](const std::string& l) { std::cout << l << std::endl; };
             if (a.positional.empty()) {
                 std::cout << "agent (" << cfg.provider << ", " << cfg.model
@@ -3919,7 +3957,7 @@ int cmdAsciiUi(const cli::Args& args) {
                     if (line == "exit" || line == "quit") break;
                     if (line == "reset") { agentHistory.clear(); continue; }
                     agenttools::Result res =
-                        agenttools::run(cfg, line, agentHistory, confirm, log);
+                        agenttools::run(cfg, line, agentHistory, confirm, ask, log);
                     if (!res.ok) std::cout << "[agent error] " << res.error << std::endl;
                     else std::cout << res.text << std::endl;
                 }
@@ -3928,7 +3966,7 @@ int cmdAsciiUi(const cli::Args& args) {
             std::string prompt;
             for (const auto& p : a.positional) prompt += (prompt.empty() ? "" : " ") + p;
             agenttools::Result res =
-                agenttools::run(cfg, prompt, agentHistory, confirm, log);
+                agenttools::run(cfg, prompt, agentHistory, confirm, ask, log);
             if (!res.ok) {
                 std::cout << "[agent error] " << res.error << std::endl;
             } else {

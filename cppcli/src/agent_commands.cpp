@@ -476,6 +476,25 @@ static int cmdAgentCode(const cli::Args& args) {
             std::getline(std::cin, ans);
             return ans == "y" || ans == "Y";
         },
+        [&](const std::string& questionsJson) -> std::string {
+            nlohmann::json qs;
+            try { qs = nlohmann::json::parse(questionsJson); }
+            catch (...) { return "error: bad questions JSON"; }
+            std::string out;
+            for (const auto& q : qs.value("questions", nlohmann::json::array())) {
+                std::cout << "  Q: " << q.value("question", "?") << std::endl;
+                auto opts = q.value("options", nlohmann::json::array());
+                for (size_t i = 0; i < opts.size(); ++i) {
+                    std::cout << "    " << i + 1 << ") "
+                              << opts[i].value("label", "") << std::endl;
+                }
+                std::cout << "  answer> " << std::flush;
+                std::string ans;
+                std::getline(std::cin, ans);
+                out += "Q: " + q.value("question", "?") + "\nA: " + ans + "\n";
+            }
+            return out.empty() ? "(no questions answered)" : out;
+        },
         [&](const std::string& l) {
             if (verbose) std::cout << l << std::endl;
         });
