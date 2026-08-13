@@ -2893,6 +2893,8 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
         if (args.options.count("right")) uiArgs.options["right"] = args.options.at("right");
         if (args.options.count("thread-root"))
             uiArgs.options["thread-root"] = args.options.at("thread-root");
+        if (args.options.count("thread"))
+            uiArgs.options["thread"] = args.options.at("thread");
         if (args.options.count("limit")) uiArgs.options["limit"] = args.options.at("limit");
         if (args.options.count("rows")) uiArgs.options["rows"] = args.options.at("rows");
         if (args.options.count("scroll")) uiArgs.options["scroll"] = args.options.at("scroll");

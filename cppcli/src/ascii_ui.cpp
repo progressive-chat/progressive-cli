@@ -924,6 +924,39 @@ void loadRoomIntoState(UiState& st, const std::string& query) {
 }
 
 // The thread rows of a room ("⤷ preview (N)") for the right panel.
+// Resolve a thread root: "3" = the N-th thread of the room (the list
+// order), otherwise the root id or a substring of it. Empty = not found.
+std::string resolveThreadRoot(db::Database* db, const std::string& roomId,
+                              const std::string& sel) {
+    if (!db || sel.empty()) return "";
+    auto evs = db->getEvents(roomId, 300);
+    std::vector<std::string> roots;
+    for (const auto& ev : evs) {
+        int rc = 0;
+        for (const auto& ev2 : evs) {
+            if (eventThreadRoot(ev2) == ev.event_id) rc++;
+        }
+        if (rc > 0) roots.push_back(ev.event_id);
+    }
+    bool isNum = !sel.empty() &&
+        std::all_of(sel.begin(), sel.end(),
+                    [](unsigned char c) { return std::isdigit(c); });
+    if (isNum) {
+        int n = std::atoi(sel.c_str());
+        if (n >= 1 && n <= static_cast<int>(roots.size())) {
+            return roots[static_cast<size_t>(n - 1)];
+        }
+        return "";
+    }
+    for (const auto& r : roots) {
+        if (r == sel) return r;
+    }
+    for (const auto& r : roots) {
+        if (r.find(sel) != std::string::npos) return r;
+    }
+    return "";
+}
+
 std::vector<std::string> roomThreadList(db::Database* db,
                                          const std::string& roomId, int clipW,
                                          bool showIds) {
@@ -1300,9 +1333,13 @@ std::string drawFrame(const UiState& st) {
     const char* PIPE = "\x1b[90m";  // dim grey for the panel pipes
     const char* X = "\x1b[0m";
     if (!st.mobile) {
+        const char* rightTitle = st.rightPanel == 2 ? "Thread"
+                                 : st.rightPanel == 1 ? "Threads"
+                                 : st.rightPanel == 3 ? "All threads"
+                                 : "Members";
         out += pad(leftHeader, static_cast<size_t>(leftW)) + PIPE + "|" + X
              + pad(headRoom, static_cast<size_t>(centerW)) + PIPE + "|" + X
-             + " Members\n";
+             + std::string(rightTitle) + "\n";
         out += PIPE + repeat('-', leftW) + "+" + repeat('-', centerW) + "+"
              + repeat('-', std::max(0, rightW - 1)) + X + "\n";
     }
@@ -2409,14 +2446,41 @@ int cmdAsciiUi(const cli::Args& args) {
         } else if (r == "list") {
             st.rightPanel = 1;
             st.threadRoomId = st.currentRoomId;
-        } else if (r == "thread" && args.options.count("thread-root")) {
+        } else if (r == "thread") {
+            std::string sel;
+            if (args.options.count("thread-root")) sel = args.options.at("thread-root");
+            else if (args.options.count("thread")) sel = args.options.at("thread");
             st.rightPanel = 2;
-            st.threadRootId = args.options.at("thread-root");
             st.threadRoomId = st.currentRoomId;
-            auto events = dbi.getEvents(st.currentRoomId, 300);
+            st.threadRootId = sel;
+            std::string root = resolveThreadRoot(st.db, st.currentRoomId, sel);
+            if (root.empty()) {
+                st.rightPanel = 0;
+                st.statusNote = "thread not found: " + sel;
+            } else {
+                st.threadRootId = root;
+                auto events = st.db->getEvents(st.currentRoomId, 300);
+                st.threadReplies.clear();
+                for (const auto& ev : events) {
+                    if (eventThreadRoot(ev) == root) st.threadReplies.push_back(ev);
+                }
+            }
+        }
+    }
+    // --thread <N|id>: the thread panel of the open room, no --right needed.
+    if (args.options.count("thread") && st.rightPanel != 2) {
+        std::string sel = args.options.at("thread");
+        std::string root = resolveThreadRoot(st.db, st.currentRoomId, sel);
+        if (root.empty()) {
+            st.statusNote = "thread not found: " + sel;
+        } else {
+            st.rightPanel = 2;
+            st.threadRoomId = st.currentRoomId;
+            st.threadRootId = root;
+            auto events = st.db->getEvents(st.currentRoomId, 300);
             st.threadReplies.clear();
             for (const auto& ev : events) {
-                if (eventThreadRoot(ev) == st.threadRootId) st.threadReplies.push_back(ev);
+                if (eventThreadRoot(ev) == root) st.threadReplies.push_back(ev);
             }
         }
     }
