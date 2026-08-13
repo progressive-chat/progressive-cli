@@ -90,7 +90,8 @@ int cpWidth(uint32_t cp) {
     // Misc symbols and dingbats (❤ ♪ ★ ⤷ ⭕ …) render ONE cell in the
     // phone terminal (glibc wcwidth agrees) — counting them 2 broke the
     // pipes. Only the real emoji blocks and CJK are wide.
-    if (cp == 0x1F451 || cp == 0x1F6E1) return 1;   // 👑 🛡 power badges are narrow
+    if (cp == 0x1F451) return 2;                     // 👑 renders wide on the phone
+    if (cp == 0x1F6E1) return 1;                     // 🛡 power badge is narrow
     if (cp == 0x1F5F3) return 1;                    // 🗳 ballot box is narrow too
     if (cp == 0x2B55) return 2;                     // ⭕ heavy circle renders wide
     if (cp >= 0x1F000 && cp <= 0x1FAFF) return 2;    // emoji blocks
