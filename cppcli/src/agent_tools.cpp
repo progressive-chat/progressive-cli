@@ -13,6 +13,7 @@
 #include <memory>
 #include <regex>
 #include <sstream>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace matrixcli { namespace agenttools {
@@ -131,6 +132,23 @@ std::string toolSchemasJson() {
     schema("clock",
            "The current date and time (UTC).",
            json::object(), json::array());
+    schema("memory",
+           "Manage the agent's memory files (persist across sessions in "
+           ".agent-memory/). Actions: list, read, create, edit (an exact "
+           "old-string replace that fails on duplicates), rename, delete.",
+           {{"action", {{"type", "string"},
+                        {"enum", {"list", "read", "create", "edit", "rename",
+                                  "delete"}}}},
+            {"name", {{"type", "string"}}},
+            {"content", {{"type", "string"}}},
+            {"old_string", {{"type", "string"}}},
+            {"new_string", {{"type", "string"}}},
+            {"new_name", {{"type", "string"}}}},
+           {"action"});
+    schema("search_sessions",
+           "Search the saved agent sessions for a keyword and return the "
+           "matching excerpts (the RAG over the conversation history).",
+           {{"query", {{"type", "string"}}}}, {"query"});
     schema("task",
            "Launch a subagent to work independently and return its final "
            "answer. Use for searches and non-mutating research "
@@ -406,6 +424,92 @@ std::string todoTool(const std::string& argsJson) {
     } catch (...) {
         return "error: bad todos JSON";
     }
+}
+
+// ---- the memory files + the session search (the agora tool catalog) ----
+
+std::string memoryTool(const std::string& argsJson) {
+    json args = json::object();
+    try {
+        args = json::parse(argsJson);
+    } catch (...) {
+        return "error: bad arguments JSON";
+    }
+    std::string action = args.value("action", "");
+    std::string name = args.value("name", "");
+    const std::string dir = ".agent-memory";
+    mkdir(dir.c_str(), 0755);
+    auto pathFor = [&](const std::string& n) { return dir + "/" + n + ".md"; };
+    if (action == "list") {
+        glob_t g{};
+        std::string out;
+        if (glob((dir + "/*.md").c_str(), 0, nullptr, &g) == 0) {
+            for (size_t i = 0; i < g.gl_pathc; ++i) {
+                std::string p = g.gl_pathv[i];
+                std::string n = p.substr(dir.size() + 1);
+                n = n.substr(0, n.size() - 3);  // drop .md
+                out += n + "\n";
+            }
+            globfree(&g);
+        }
+        return out.empty() ? "(no memory files)" : out;
+    }
+    if (name.empty()) return "error: the memory tool needs a name";
+    if (action == "read") return readFile(pathFor(name), 1, 2000);
+    if (action == "create") {
+        return writeFile(pathFor(name), args.value("content", ""));
+    }
+    if (action == "edit") {
+        return editFile(pathFor(name), args.value("old_string", ""),
+                        args.value("new_string", ""), false);
+    }
+    if (action == "rename") {
+        std::string nn = args.value("new_name", "");
+        if (nn.empty()) return "error: new_name required";
+        if (std::rename(pathFor(name).c_str(), pathFor(nn).c_str()) != 0) {
+            return "error: cannot rename " + name;
+        }
+        return "renamed " + name + " -> " + nn;
+    }
+    if (action == "delete") {
+        if (std::remove(pathFor(name).c_str()) != 0) {
+            return "error: cannot delete " + name;
+        }
+        return "deleted " + name;
+    }
+    return "error: unknown memory action " + action;
+}
+
+std::string searchSessions(const std::string& query) {
+    if (query.empty()) return "error: empty query";
+    glob_t g{};
+    std::string out;
+    int hits = 0;
+    if (glob(".agent-sessions/*.json", 0, nullptr, &g) != 0) {
+        globfree(&g);
+        return "(no saved sessions)";
+    }
+    for (size_t i = 0; i < g.gl_pathc && hits < 20; ++i) {
+        std::ifstream f(g.gl_pathv[i]);
+        if (!f) continue;
+        std::ostringstream ss;
+        ss << f.rdbuf();
+        std::string body = ss.str();
+        if (body.find(query) == std::string::npos) continue;
+        // Find the excerpt around the first hit.
+        size_t pos = body.find(query);
+        size_t a = pos > 120 ? pos - 120 : 0;
+        size_t b = std::min(body.size(), pos + query.size() + 160);
+        std::string excerpt = body.substr(a, b - a);
+        // Compact the JSON a bit.
+        for (char& ch : excerpt) {
+            if (ch == '\n') ch = ' ';
+        }
+        out += std::string(g.gl_pathv[i]) + ": ..." + excerpt + "...\n";
+        hits++;
+    }
+    globfree(&g);
+    return out.empty() ? "(no matches in the sessions)" : out;
 }
 
 // ---- the permission engine ----
@@ -757,6 +861,8 @@ std::string executeTool(const Config& cfg, const std::string& name,
         if (!ask) return "error: the question tool is not available";
         return ask(argsJson);
     }
+    if (name == "memory") return memoryTool(argsJson);
+    if (name == "search_sessions") return searchSessions(str("query"));
     if (name == "clock") {
         std::time_t t = std::time(nullptr);
         std::tm tm{};
@@ -844,6 +950,16 @@ Result run(const Config& cfg, const std::string& prompt,
 
     http::Client httpClient;
     httpClient.setTimeout(120);
+    if (!cfg.proxy.empty()) {
+        auto colon = cfg.proxy.rfind(':');
+        if (colon != std::string::npos) {
+            http::ProxyConfig pc;
+            pc.type = http::ProxyType::SOCKS5;
+            pc.host = cfg.proxy.substr(0, colon);
+            try { pc.port = std::stoi(cfg.proxy.substr(colon + 1)); } catch (...) {}
+            if (pc.enabled()) httpClient.setProxy(pc);
+        }
+    }
 
     // Doom-loop protection: 3 identical consecutive tool calls in a row.
     std::string lastTool;
@@ -906,7 +1022,20 @@ Result run(const Config& cfg, const std::string& prompt,
         req.body = reqBody.dump();
         if (log) log("[agent] iteration " + std::to_string(iter + 1)
                       + ": calling " + cfg.model + " ...");
-        http::Response resp = httpClient.doRequest(req);
+        http::Response resp;
+        int attempts = 0;
+        for (; attempts < 3; ++attempts) {
+            resp = httpClient.doRequest(req);
+            if (resp.ok()) break;
+            // The agora retry semantics: back off on rate limits and
+            // server errors, give up on the 4xx ones.
+            if (!resp.server_error() && resp.status_code != 429) break;
+            if (attempts < 2) {
+                if (log) log("[agent] retrying in " +
+                             std::to_string(1 << attempts) + "s ...");
+                sleep(1 << attempts);
+            }
+        }
         if (!resp.ok()) {
             result.error = "HTTP " + std::to_string(resp.status_code) + ": "
                          + (resp.body.size() > 300 ? resp.body.substr(0, 300)

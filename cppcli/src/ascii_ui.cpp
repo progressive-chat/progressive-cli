@@ -3873,6 +3873,7 @@ int cmdAsciiUi(const cli::Args& args) {
                     }
                 }
                 cfg.sandbox = dbi.getSetting("agent_sandbox", "off");
+                cfg.proxy = dbi.getSetting("agent_proxy", "");
             }
             char cwdbuf[4096];
             if (getcwd(cwdbuf, sizeof(cwdbuf))) cfg.cwd = cwdbuf;
@@ -3992,6 +3993,14 @@ int cmdAsciiUi(const cli::Args& args) {
                     }
                 }
                 st.statusNote = "history compacted";
+                continue;
+            }
+            if (!a.positional.empty() && a.positional[0] == "proxy") {
+                std::string v = a.positional.size() >= 2 ? a.positional[1] : "";
+                if (v == "off") v = "";
+                dbi.setSetting("agent_proxy", v);
+                st.statusNote = v.empty() ? "agent proxy: off"
+                                          : "agent proxy: " + v;
                 continue;
             }
             if (!a.positional.empty() && a.positional[0] == "sandbox") {

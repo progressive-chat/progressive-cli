@@ -36,6 +36,7 @@ struct Config {
     int maxIterations = 10;
     int maxDepth = 3;                       // subagent nesting limit
     std::string subagentType;               // "" | "explore" | "general" (subagents)
+    std::string proxy;                      // SOCKS5 proxy "host:port" (Tor) or ""
     std::string sandbox = "off";            // "" | "bwrap"
     std::vector<McpServer> mcpServers;
     // Plan mode: the agent only reads, plans and writes a plan file —
