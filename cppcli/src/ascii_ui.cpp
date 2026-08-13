@@ -634,6 +634,9 @@ struct UiState {
     bool showJoins = true;      // Element: show join/leave messages
     bool showLinks = true;      // Element: enable URL previews (the pills)
     bool clock12h = false;      // Element: 12/24-hour clock
+    bool timeRight = false;     // chat time at the right edge of the row
+    bool msgNewline = false;    // message on its own line under "HH:MM [nick] >"
+    std::unordered_set<std::string> nameColliders;  // same localpart → full mxid
     int leftPanelW = -1;        // -1 = default width, 0 = hidden
     int rightPanelW = -1;       // -1 = default width, 0 = hidden
     std::map<std::string, int> powerLevels;  // member -> power level
@@ -840,6 +843,16 @@ void loadRoomIntoState(UiState& st, const std::string& query) {
             }
         if (!ev.redacts.empty()) st.redactedIds.insert(ev.redacts);
     }
+    // Members whose localparts collide (two "@alice" from different
+    // servers) get the full mxid in the chat rows.
+    st.nameColliders.clear();
+    {
+        std::map<std::string, int> counts;
+        for (const auto& m : st.members) counts[senderShort(m)]++;
+        for (const auto& m : st.members) {
+            if (counts[senderShort(m)] > 1) st.nameColliders.insert(m);
+        }
+    }
     // Read receipts (approximation): a message is read by the members whose
     // own message comes AFTER it in the timeline.
     st.receipts.clear();
@@ -1044,11 +1057,27 @@ const char* userColorCode(const UiState& st, const std::string& sender) {
     return nullptr;
 }
 
+// The full @user:server id: real sessions carry it in the sender; the
+// demo stores it in the presence map under "@short:demo.local".
+std::string fullMxid(const UiState& st, const std::string& mem);
+
+// The display name for the chat rows — a custom nick, then the member's
+// displayname; members whose localparts collide (two "@alice" from
+// different servers) get the full mxid instead of the ambiguous short.
+std::string chatName(const UiState& st, const std::string& roomId,
+                     const std::string& sender) {
+    std::string nm = displayName(st, roomId, sender);
+    if (nm == senderShort(sender) && st.nameColliders.count(sender)) {
+        nm = fullMxid(st, sender);
+    }
+    return nm;
+}
+
 // The "[nick] " tag with the custom color applied, for chat rows.
 std::string senderTag(const UiState& st, const std::string& roomId,
                       const std::string& sender) {
     const char* uc = userColorCode(st, sender);
-    std::string nm = displayName(st, roomId, sender);
+    std::string nm = chatName(st, roomId, sender);
     return "[" + (uc ? std::string(uc) + nm + "\x1b[0m" : nm) + "] ";
 }
 
@@ -1364,7 +1393,7 @@ std::string drawFrame(const UiState& st) {
                 auto m = ev.content.find("membership");
                 if (m != ev.content.end() && m->is_string()) {
                     std::string ms = m->get<std::string>();
-                    std::string who = displayName(st, st.currentRoomId, ev.sender);
+                    std::string who = chatName(st, st.currentRoomId, ev.sender);
                     if (ms == "join") center = "[" + who + "] joined the room";
                     else if (ms == "leave") center = "[" + who + "] left the room";
                     else if (ms == "invite") {
@@ -1450,7 +1479,7 @@ std::string drawFrame(const UiState& st) {
             std::string rep = eventReplyTo(ev);
             if (center.empty() && !thr.empty()) {
                 std::string preview = eventPreview(st.db, st.currentRoomId, thr);
-                center = "[" + displayName(st, st.currentRoomId, ev.sender) + "] \u2937 " + body
+                center = "[" + chatName(st, st.currentRoomId, ev.sender) + "] \u2937 " + body
                        + "  (thread: " + (preview.empty() ? thr : preview) + ")";
             } else if (center.empty() && !rep.empty()) {
                 // Element-style ReplyChain: walk the m.in_reply_to chain
@@ -1468,7 +1497,7 @@ std::string drawFrame(const UiState& st) {
                     // any overflow.
                     int chainW = st.mobile ? W : centerW;
                     chain += std::string(lvl, ' ') + "> ["
-                           + displayName(st, st.currentRoomId, prev.sender)
+                           + chatName(st, st.currentRoomId, prev.sender)
                            + "] " + clip(preview, std::max(20, chainW)) + "\n";
                     auto rel = prev.content.find("m.relates_to");
                     if (rel == prev.content.end() || !rel->is_object()) break;
@@ -1478,19 +1507,14 @@ std::string drawFrame(const UiState& st) {
                     if (eid == ir->end() || !eid->is_string()) break;
                     cur = eid->get<std::string>();
                 }
-                center = "[" + displayName(st, st.currentRoomId, ev.sender) + "] " + body
+                center = "[" + chatName(st, st.currentRoomId, ev.sender) + "] " + body
                        + (chain.empty() ? "" : "\n" + chain);
             } else if (center.empty()) {
-                {
-                    const char* uc = userColorCode(st, ev.sender);
-                    std::string nm = displayName(st, st.currentRoomId, ev.sender);
-                    center = "[" + (uc ? std::string(uc) + nm + "\x1b[0m" : nm)
-                           + "] "
-                           + (st.showLinks
-                                  ? highlightUrls(renderPermalinks(
-                                        highlightMentions(body), st.rooms, st.db))
-                                  : highlightMentions(body));
-                }
+                center = senderTag(st, st.currentRoomId, ev.sender)
+                       + (st.showLinks
+                              ? highlightUrls(renderPermalinks(
+                                    highlightMentions(body), st.rooms, st.db))
+                              : highlightMentions(body));
                 int rc = 0;
                 for (const auto& ev2 : st.messages) {
                     if (eventThreadRoot(ev2) == ev.event_id) rc++;
@@ -1696,18 +1720,30 @@ std::string drawFrame(const UiState& st) {
                     std::snprintf(buf, sizeof(buf), "%02d:%02d",
                                   tm.tm_hour, tm.tm_min);
                 }
-                std::string first = buf + std::string(" ") + row;
+                std::string timeStr = buf;
+                std::string head, body;
+                if (st.msgNewline) {
+                    // "HH:MM [nick] >" on its own line, the message below
+                    // (WhatsApp-like) — only text rows have the "> " split.
+                    auto gt = row.find("> ");
+                    if (gt != std::string::npos) {
+                        head = row.substr(0, gt + 1);
+                        body = row.substr(gt + 2);
+                    } else {
+                        head = row;
+                    }
+                }
+                std::string prefix;
                 if (st.pinned.count(ev.event_id)) {
-                    first = (st.showEmoji ? "\xf0\x9f\x93\x8c " : "[pin] ") + first;
+                    prefix += (st.showEmoji ? "\xf0\x9f\x93\x8c " : "[pin] ");
                 }
                 if (ev.event_id == st.focusEvent) {
-                    first = "[7m â [0m" + first;
+                    prefix += "\x1b[7m \xe2\x97\x80 \x1b[0m";
                 }
+                std::string idSuffix;
                 if (st.showIds) {
                     std::string shortId = ev.event_id.substr(0, 10);
-                    if (!shortId.empty()) {
-                        first += "  \u2039" + shortId + "\u203a";
-                    }
+                    if (!shortId.empty()) idSuffix = "  \u2039" + shortId + "\u203a";
                 }
                 // Long messages wrap to the panel width (word-aware, ANSI
                 // safe); the continuation lines are indented under the
@@ -1716,12 +1752,46 @@ std::string drawFrame(const UiState& st) {
                 // indent, so indented lines never overflow the panel and
                 // words are never cut at the edge.
                 int wrapW = (st.mobile ? W : centerW) - 8;
-                std::vector<std::string> lines = wrapText(first, wrapW);
-                for (size_t li = 0; li < lines.size(); ++li) {
-                    if (li == 0) {
-                        centerRows.push_back(lines[0]);
+                if (st.msgNewline && !body.empty()) {
+                    std::string line0;
+                    if (st.timeRight) {
+                        std::string leftPart = prefix + head + idSuffix;
+                        int padN = wrapW + 8 - displayWidth(leftPart)
+                                 - displayWidth(timeStr);
+                        line0 = leftPart + std::string(std::max(0, padN), ' ')
+                              + timeStr;
                     } else {
-                        centerRows.push_back(std::string(8, ' ') + lines[li]);
+                        line0 = prefix + timeStr + " " + head + idSuffix;
+                    }
+                    centerRows.push_back(line0);
+                    auto bLines = wrapText(body, wrapW);
+                    for (const auto& bl : bLines) {
+                        centerRows.push_back(std::string(8, ' ') + bl);
+                    }
+                } else if (st.timeRight) {
+                    // Reserve the time at the first line's right edge.
+                    std::string inner = prefix + row + idSuffix;
+                    int reserve = displayWidth(timeStr) + 1;
+                    auto tLines = wrapText(inner, std::max(8, wrapW - reserve));
+                    for (size_t li = 0; li < tLines.size(); ++li) {
+                        if (li == 0) {
+                            int padN = wrapW + 8 - displayWidth(tLines[0])
+                                     - displayWidth(timeStr);
+                            centerRows.push_back(tLines[0]
+                                + std::string(std::max(0, padN), ' ') + timeStr);
+                        } else {
+                            centerRows.push_back(std::string(8, ' ') + tLines[li]);
+                        }
+                    }
+                } else {
+                    std::string first = prefix + timeStr + " " + row + idSuffix;
+                    std::vector<std::string> lines = wrapText(first, wrapW);
+                    for (size_t li = 0; li < lines.size(); ++li) {
+                        if (li == 0) {
+                            centerRows.push_back(lines[0]);
+                        } else {
+                            centerRows.push_back(std::string(8, ' ') + lines[li]);
+                        }
                     }
                 }
                 // Thread master messages: their full id on its own line
@@ -2210,6 +2280,8 @@ int cmdAsciiUi(const cli::Args& args) {
     st.showJoins = dbi.getSetting("joins") != "0";
     st.showLinks = dbi.getSetting("links") != "0";
     st.clock12h = dbi.getSetting("clock12h") == "1";
+    st.timeRight = dbi.getSetting("time_side") == "right";
+    st.msgNewline = dbi.getSetting("msg_line") == "newline";
     st.autoPanels = dbi.getSetting("panel_auto") != "0";
     try { st.membersMode = std::stoi(dbi.getSetting("members_mode", "0")); } catch (...) {}
     st.showThreadsBottom = dbi.getSetting("threads_bottom") != "0";
@@ -2315,6 +2387,12 @@ int cmdAsciiUi(const cli::Args& args) {
     // --right members|threads, --limit N.
     if (args.options.count("ids")) st.showIds = true;
     if (args.options.count("time-full") || args.options.count("sec")) st.showSeconds = true;
+    if (args.options.count("time-side")) {
+        st.timeRight = args.options.at("time-side") == "right";
+    }
+    if (args.options.count("msg-line")) {
+        st.msgNewline = args.options.at("msg-line") == "newline";
+    }
     if (args.options.count("no-emoji")) st.showEmoji = false;
     if (args.options.count("limit")) {
         try { st.limit = std::stoi(args.options.at("limit")); } catch (...) {}
@@ -3485,6 +3563,32 @@ int cmdAsciiUi(const cli::Args& args) {
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
+        // ---- timeside left|right: the chat time on the left or right ----
+        if (a.command == "timeside") {
+            std::string v = a.positional.empty() ? "" : a.positional[0];
+            if (v != "left" && v != "right") {
+                std::cout << "Usage: timeside left | timeside right" << std::endl;
+                continue;
+            }
+            st.timeRight = (v == "right");
+            dbi.setSetting("time_side", v);
+            st.statusNote = "time on the " + v;
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- msgline inline|newline: message next to or under the time ----
+        if (a.command == "msgline") {
+            std::string v = a.positional.empty() ? "" : a.positional[0];
+            if (v != "inline" && v != "newline") {
+                std::cout << "Usage: msgline inline | msgline newline" << std::endl;
+                continue;
+            }
+            st.msgNewline = (v == "newline");
+            dbi.setSetting("msg_line", v);
+            st.statusNote = "message " + v;
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
         // ---- reply: send a reply to a message ----
         if (a.command == "reply") {
             // "reply 18:52 [bob] text" — the reference format (see below).
@@ -3903,6 +4007,11 @@ int cmdAsciiUi(const cli::Args& args) {
             std::cout << "  clock     " << (st.clock12h ? "12h (AM/PM)" : "24h")
                       << "       (clock 12h / clock 24h)  [Element: 24-hour clock]"
                       << std::endl;
+            std::cout << "  timeside  " << (st.timeRight ? "right" : "left")
+                      << "      (timeside left / timeside right)" << std::endl;
+            std::cout << "  msgline   " << (st.msgNewline ? "newline (message below)"
+                                                           : "inline (same line)")
+                      << "  (msgline inline / msgline newline)" << std::endl;
             std::cout << "  names     " << (st.showNames ? "shown" : "hidden")
                       << "       (names on / names off)"
                       << "  [Element: show sender display names]" << std::endl;

@@ -135,6 +135,8 @@ void printUsage() {
               << "Options for ui / demo --ui (view flags, can be combined):\n"
               << "  --ids         show the event id (\u2039$abc\u203a) next to messages\n"
               << "  --time-full   message time with seconds (HH:MM:SS)\n"
+              << "  --time-side <left|right>  chat time on the left or right edge\n"
+              << "  --msg-line <inline|newline>  message on the same line or below\n"
               << "  --limit N     only the last N events of the room\n"
               << "  --right members|threads|list|thread  right panel mode\n"
               << "  --thread-root <id>  the thread to show (with --right thread)\n"

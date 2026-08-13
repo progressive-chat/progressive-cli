@@ -2600,6 +2600,7 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
         // real servers (matrix.org, element.io, mozilla.org).
         {
             struct { const char* sender; const char* name; } ext[] = {
+                {"@alice:matrix.org", "Alice"},
                 {"@mallory:matrix.org", "mallory"},
                 {"@trent:element.io", "trent"},
                 {"@wendy:mozilla.org", "wendy"},
@@ -2618,6 +2619,9 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
             }
         }
         ins("@alice", "The demo build is ready, testers welcome!");
+        // A second "alice" from another server — the chat shows the full
+        // mxid for both, so the two don't get confused.
+        ins("@alice:matrix.org", "Hello from matrix.org!");
         ins("@heidi", "Just joined! Hi everyone");
         ins("@bob", "Welcome @heidi! Check the pinned message.");
         ins("@ivan", "Anyone tried the new ui? https://github.com/progressive-chat/progressive-cli");
@@ -2899,6 +2903,8 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
         if (args.options.count("panel-auto")) uiArgs.options["panel-auto"] = args.options.at("panel-auto");
         if (args.options.count("members")) uiArgs.options["members"] = args.options.at("members");
         if (args.options.count("space")) uiArgs.options["space"] = args.options.at("space");
+        if (args.options.count("time-side")) uiArgs.options["time-side"] = args.options.at("time-side");
+        if (args.options.count("msg-line")) uiArgs.options["msg-line"] = args.options.at("msg-line");
         return matrixcli::cmdAsciiUi(uiArgs);
     }
 
