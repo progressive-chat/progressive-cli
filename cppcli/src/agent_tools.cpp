@@ -1134,6 +1134,151 @@ bool loadSession(const std::string& path, std::vector<Message>& history) {
     return true;
 }
 
+// ---- the standing goal (the hermes /goal + /subgoal) ----
+
+void saveGoal(const std::string& path, const GoalState& g) {
+    json j = {{"goal", g.goal},
+              {"contract", g.contract},
+              {"subgoals", g.subgoals},
+              {"gate", g.gateCommand},
+              {"max_turns", g.maxTurns},
+              {"paused", g.paused},
+              {"achieved", g.achieved},
+              {"turns_used", g.turnsUsed}};
+    std::ofstream f(path, std::ios::trunc);
+    f << j.dump(2);
+}
+
+bool loadGoal(const std::string& path, GoalState& g) {
+    std::ifstream f(path);
+    if (!f) return false;
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    json j;
+    try {
+        j = json::parse(ss.str());
+    } catch (...) {
+        return false;
+    }
+    g.goal = j.value("goal", "");
+    g.contract = j.value("contract", "");
+    g.subgoals.clear();
+    for (const auto& s : j.value("subgoals", json::array())) {
+        if (s.is_string()) g.subgoals.push_back(s.get<std::string>());
+    }
+    g.gateCommand = j.value("gate", "");
+    g.maxTurns = j.value("max_turns", 50);
+    g.paused = j.value("paused", false);
+    g.achieved = j.value("achieved", false);
+    g.turnsUsed = j.value("turns_used", 0);
+    return true;
+}
+
+// The continuation block appended to the system prompt when a goal is set.
+static std::string goalContinuationBlock(const GoalState& g) {
+    std::string out = "[Continuing toward your standing goal]\nGoal: "
+                    + g.goal + "\n\n";
+    if (!g.contract.empty()) {
+        out += "Completion contract:\n" + g.contract + "\n\n";
+    }
+    if (!g.subgoals.empty()) {
+        out += "Additional criteria the user added mid-loop:\n";
+        for (size_t i = 0; i < g.subgoals.size(); ++i) {
+            out += std::to_string(i + 1) + ". " + g.subgoals[i] + "\n";
+        }
+        out += "\n";
+    }
+    out += "Continue working toward the goal (and every additional "
+           "criterion). Take the next concrete step. Before claiming the "
+           "goal is done, satisfy the Verification criterion and show the "
+           "concrete evidence (command output, file contents, test result). "
+           "If you are blocked and need input from the user, say so clearly "
+           "and stop.";
+    return out;
+}
+
+// The contract template (the hermes draft_contract shape).
+std::string draftContract(const Config& cfg, const std::string& objective) {
+    if (cfg.key.empty()) return "";
+    std::vector<Message> hist;
+    hist.push_back({"user",
+                    "Draft a completion contract for this objective:\n"
+                    + objective +
+                    "\n\nReply with exactly these sections and nothing else:\n"
+                    "## Outcome\n<one sentence>\n## Verification\n<how to prove "
+                    "it with concrete evidence>\n## Constraints\n<must-not>\n"
+                    "## Boundaries\n<in scope / out of scope>\n## Stop when\n"
+                    "<when to stop and ask the user>",
+                    {}, "", ""});
+    Result r = run(cfg, "draft the contract", hist, nullptr, nullptr, nullptr,
+                   nullptr);
+    return r.ok ? r.text : "";
+}
+
+// The goal judge: the gates first, then the LLM verdict.
+std::string judgeGoal(const Config& cfg, const GoalState& goal,
+                      const std::vector<Message>& history,
+                      const std::function<void(const std::string&)>& log) {
+    // 1. The deterministic quality gates.
+    if (!goal.gateCommand.empty()) {
+        std::string gateOut = shellCmd(goal.gateCommand, 300, "", cfg.sandbox);
+        if (gateOut.find("[exit 0]") == std::string::npos &&
+            gateOut.find("(no output)") == std::string::npos &&
+            !gateOut.empty()) {
+            // A failed gate (the non-zero exit): its output becomes the
+            // feedback — the agent iterates against the evidence.
+            return "gate failed — keep working:\n" + gateOut.substr(0, 3000);
+        }
+    }
+    if (cfg.key.empty()) return "no API key — the judge needs the LLM";
+    // 2. The LLM verdict.
+    std::string recent;
+    int shown = 0;
+    for (auto it = history.rbegin(); it != history.rend() && shown < 4000;
+         ++it) {
+        if (!it->content.empty() && it->role != "tool") {
+            std::string part = it->content.substr(0, 4000 - shown);
+            recent = part + "\n" + recent;
+            shown += static_cast<int>(part.size());
+        }
+    }
+    std::vector<Message> judgeHist;
+    std::string prompt =
+        "You are the goal judge. The user's standing goal:\nGoal: "
+        + goal.goal + "\n\n";
+    if (!goal.contract.empty()) prompt += "Completion contract:\n"
+                                          + goal.contract + "\n\n";
+    if (!goal.subgoals.empty()) {
+        prompt += "Additional criteria:\n";
+        for (const auto& s : goal.subgoals) prompt += "- " + s + "\n";
+        prompt += "\n";
+    }
+    prompt += "The agent's latest work:\n" + recent +
+              "\n\nVerdict: is the goal (and every additional criterion) "
+              "achieved with concrete evidence? Reply with exactly one JSON "
+              "line: {\"done\": true|false, \"reason\": \"...\"}";
+    judgeHist.push_back({"user", prompt, {}, "", ""});
+    Result r = run(cfg, "judge the goal", judgeHist, nullptr, nullptr,
+                   [&](const std::string& l) { if (log) log(l); }, nullptr);
+    if (!r.ok) return "judge error: " + r.error;
+    // The tolerant verdict parse.
+    std::string text = r.text;
+    auto b = text.find('{');
+    auto e = text.rfind('}');
+    if (b != std::string::npos && e != std::string::npos && e > b) {
+        try {
+            json v = json::parse(text.substr(b, e - b + 1));
+            bool done = v.value("done", false);
+            std::string reason = v.value("reason", "");
+            if (done) {
+                return "goal achieved: " + reason;
+            }
+            return "not done yet — " + reason;
+        } catch (...) {}
+    }
+    return "judge: " + text.substr(0, 400);
+}
+
 std::string executeTool(const Config& cfg, const std::string& name,
                         const std::string& argsJson,
                         const std::function<int(const std::string&)>& confirm,
@@ -1422,6 +1567,10 @@ Result run(const Config& cfg, const std::string& prompt,
               "language; only use the tools when they are actually needed. "
               "The shell commands are subject to the user's trust policy.";
 
+    std::string effectiveSystem = systemPrompt;
+    if (!cfg.goal.goal.empty() && !cfg.goal.paused) {
+        effectiveSystem += "\n\n" + goalContinuationBlock(cfg.goal);
+    }
     history.push_back({"user", prompt, {}, "", ""});
 
     http::Client httpClient;
@@ -1503,7 +1652,7 @@ Result run(const Config& cfg, const std::string& prompt,
         http::Request req;
         if (cfg.provider == "anthropic") {
             json messages = json::array();
-            buildAnthropicMessages(history, systemPrompt, messages);
+            buildAnthropicMessages(history, effectiveSystem, messages);
             reqBody = {{"model", cfg.model},
                        {"system", systemPrompt},
                        {"messages", messages},
@@ -1515,7 +1664,7 @@ Result run(const Config& cfg, const std::string& prompt,
             req.headers["content-type"] = "application/json";
         } else {
             json messages = json::array();
-            buildOpenAiMessages(history, systemPrompt, messages);
+            buildOpenAiMessages(history, effectiveSystem, messages);
             reqBody = {{"model", cfg.model},
                        {"messages", messages},
                        {"tools", openAiToolsParam(allSchemas)}};

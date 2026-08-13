@@ -12,6 +12,9 @@
 
 namespace matrixcli { namespace agenttools {
 
+struct Config;
+struct Message;
+
 struct PermissionRule {
     std::string tool;    // read | write | edit | shell | apply_patch | "*"
     std::string glob;    // fnmatch pattern over the path (or the command)
@@ -22,6 +25,30 @@ struct McpServer {
     std::string name;
     std::string command;  // e.g. "npx -y @modelcontextprotocol/server-files ."
 };
+
+// The standing goal (the hermes /goal + /subgoal state).
+struct GoalState {
+    std::string goal;
+    std::string contract;              // the drafted completion contract
+    std::vector<std::string> subgoals; // the extra criteria (the /subgoal)
+    std::string gateCommand;           // the quality gate ("" = none)
+    int maxTurns = 50;
+    bool paused = false;
+    bool achieved = false;
+    int turnsUsed = 0;
+};
+
+void saveGoal(const std::string& path, const GoalState& g);
+bool loadGoal(const std::string& path, GoalState& g);
+
+// The goal judge: the deterministic gates first, then the LLM verdict.
+// Returns the human-readable judgement (or the error).
+std::string judgeGoal(const Config& cfg, const GoalState& goal,
+                      const std::vector<Message>& history,
+                      const std::function<void(const std::string&)>& log);
+
+// Draft the completion contract from a plain objective (one LLM call).
+std::string draftContract(const Config& cfg, const std::string& objective);
 
 struct Config {
     std::string provider = "openai";        // "openai" | "anthropic"
@@ -43,6 +70,7 @@ struct Config {
     // no writes to other files, no shell (the plan-approval flow).
     bool planMode = false;
     std::string planFile;                   // where the plan is written
+    GoalState goal;                         // the active standing goal
 };
 
 struct ToolCall {

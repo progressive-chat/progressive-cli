@@ -3878,6 +3878,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 }
                 cfg.sandbox = dbi.getSetting("agent_sandbox", "off");
                 cfg.proxy = dbi.getSetting("agent_proxy", "");
+                agenttools::loadGoal(".agent-goal.json", cfg.goal);
             }
             char cwdbuf[4096];
             if (getcwd(cwdbuf, sizeof(cwdbuf))) cfg.cwd = cwdbuf;
@@ -4224,6 +4225,134 @@ int cmdAsciiUi(const cli::Args& args) {
                 } else {
                     std::cout << "Usage: agent mcp add <name> <command> |"
                                  " agent mcp list | agent mcp del <name>" << std::endl;
+                }
+                continue;
+            }
+            if (!a.positional.empty() && a.positional[0] == "goal") {
+                // agent goal <text> | draft <objective> | show | status |
+                //        pause | resume | clear | gate <cmd> | check
+                std::string act = a.positional.size() >= 2 ? a.positional[1] : "";
+                if (act == "draft" && a.positional.size() >= 3) {
+                    std::string objective;
+                    for (size_t i = 2; i < a.positional.size(); ++i) {
+                        objective += (objective.empty() ? "" : " ") + a.positional[i];
+                    }
+                    cfg.goal.goal = objective;
+                    cfg.goal.contract = agenttools::draftContract(cfg, objective);
+                    cfg.goal.achieved = false;
+                    cfg.goal.paused = false;
+                    agenttools::saveGoal(".agent-goal.json", cfg.goal);
+                    st.statusNote = "goal set with the contract";
+                } else if (act == "show" || act == "status") {
+                    if (cfg.goal.goal.empty()) {
+                        std::cout << "  (no active goal)" << std::endl;
+                    } else {
+                        std::cout << "  goal: " << cfg.goal.goal
+                                  << (cfg.goal.paused ? " [paused]" : "")
+                                  << (cfg.goal.achieved ? " [achieved]" : "")
+                                  << std::endl;
+                        if (!cfg.goal.contract.empty()) {
+                            std::cout << "  contract:\n" << cfg.goal.contract
+                                      << std::endl;
+                        }
+                        if (!cfg.goal.subgoals.empty()) {
+                            std::cout << "  subgoals:" << std::endl;
+                            for (size_t i = 0; i < cfg.goal.subgoals.size(); ++i) {
+                                std::cout << "    " << i + 1 << ". "
+                                          << cfg.goal.subgoals[i] << std::endl;
+                            }
+                        }
+                        if (!cfg.goal.gateCommand.empty()) {
+                            std::cout << "  gate: " << cfg.goal.gateCommand
+                                      << std::endl;
+                        }
+                    }
+                } else if (act == "pause") {
+                    cfg.goal.paused = true;
+                    agenttools::saveGoal(".agent-goal.json", cfg.goal);
+                    st.statusNote = "goal paused";
+                } else if (act == "resume") {
+                    cfg.goal.paused = false;
+                    agenttools::saveGoal(".agent-goal.json", cfg.goal);
+                    st.statusNote = "goal resumed";
+                } else if (act == "clear") {
+                    cfg.goal = agenttools::GoalState();
+                    agenttools::saveGoal(".agent-goal.json", cfg.goal);
+                    st.statusNote = "goal cleared";
+                } else if (act == "gate" && a.positional.size() >= 3) {
+                    cfg.goal.gateCommand = a.positional[2];
+                    agenttools::saveGoal(".agent-goal.json", cfg.goal);
+                    st.statusNote = "goal gate: " + cfg.goal.gateCommand;
+                } else if (act == "check") {
+                    if (cfg.goal.goal.empty()) {
+                        std::cout << "  (no active goal)" << std::endl;
+                    } else {
+                        std::string verdict = agenttools::judgeGoal(
+                            cfg, cfg.goal, agentHistory, log);
+                        std::cout << "  " << verdict << std::endl;
+                        if (verdict.rfind("goal achieved", 0) == 0) {
+                            cfg.goal.achieved = true;
+                            agenttools::saveGoal(".agent-goal.json", cfg.goal);
+                        }
+                    }
+                } else if (a.positional.size() >= 2) {
+                    // The bare goal text.
+                    std::string text;
+                    for (size_t i = 1; i < a.positional.size(); ++i) {
+                        text += (text.empty() ? "" : " ") + a.positional[i];
+                    }
+                    cfg.goal.goal = text;
+                    cfg.goal.contract.clear();
+                    cfg.goal.achieved = false;
+                    cfg.goal.paused = false;
+                    agenttools::saveGoal(".agent-goal.json", cfg.goal);
+                    st.statusNote = "goal set";
+                } else {
+                    std::cout << "Usage: agent goal <text> | draft <objective> |"
+                                 " show | pause | resume | clear | gate <cmd> |"
+                                 " check" << std::endl;
+                }
+                continue;
+            }
+            if (!a.positional.empty() && a.positional[0] == "subgoal") {
+                std::string arg;
+                for (size_t i = 1; i < a.positional.size(); ++i) {
+                    arg += (arg.empty() ? "" : " ") + a.positional[i];
+                }
+                if (cfg.goal.goal.empty()) {
+                    std::cout << "  no active goal — set one with 'agent goal'"
+                              << std::endl;
+                    continue;
+                }
+                if (arg.empty()) {
+                    for (size_t i = 0; i < cfg.goal.subgoals.size(); ++i) {
+                        std::cout << "  " << i + 1 << ". "
+                                  << cfg.goal.subgoals[i] << std::endl;
+                    }
+                    if (cfg.goal.subgoals.empty()) {
+                        std::cout << "  (no subgoals)" << std::endl;
+                    }
+                } else if (arg == "clear") {
+                    cfg.goal.subgoals.clear();
+                    agenttools::saveGoal(".agent-goal.json", cfg.goal);
+                    st.statusNote = "subgoals cleared";
+                } else if (arg.rfind("remove ", 0) == 0) {
+                    try {
+                        int n = std::stoi(arg.substr(7));
+                        if (n < 1 || n > static_cast<int>(cfg.goal.subgoals.size())) {
+                            std::cout << "  no subgoal #" << n << std::endl;
+                        } else {
+                            cfg.goal.subgoals.erase(cfg.goal.subgoals.begin() + n - 1);
+                            agenttools::saveGoal(".agent-goal.json", cfg.goal);
+                            st.statusNote = "subgoal " + std::to_string(n) + " removed";
+                        }
+                    } catch (...) {
+                        std::cout << "Usage: agent subgoal remove <n>" << std::endl;
+                    }
+                } else {
+                    cfg.goal.subgoals.push_back(arg);
+                    agenttools::saveGoal(".agent-goal.json", cfg.goal);
+                    st.statusNote = "subgoal added";
                 }
                 continue;
             }
