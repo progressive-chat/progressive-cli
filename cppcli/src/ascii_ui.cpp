@@ -1095,8 +1095,8 @@ std::string memberRowStr(const UiState& st, const std::string& mem,
                   + " (" + mx + ")";
     auto pl = st.powerLevels.find(mem);
     if (pl != st.powerLevels.end()) {
-        if (pl->second >= 100) m = "\xf0\x9f\x91\x91 " + m;
-        else if (pl->second >= 50) m = "\xf0\x9f\x9b\xa1 " + m;
+        if (pl->second >= 100) m = "\xf0\x9f\x91\x91" + m;
+        else if (pl->second >= 50) m = "\xf0\x9f\x9b\xa1" + m;
     }
     return m;
 }
