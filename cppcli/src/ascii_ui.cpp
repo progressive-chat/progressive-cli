@@ -1847,16 +1847,20 @@ std::string drawFrame(const UiState& st) {
             }
         }
     } else if (st.rightPanel == 1) {
-        // The room's threads: the roots with their reply counts.
+        // The room's threads: the roots with their reply counts (the
+        // numbers select them: thread <room> <N>).
         auto evs = st.db->getEvents(st.threadRoomId, 300);
+        int idx = 0;
         for (const auto& ev : evs) {
             int rc = 0;
             for (const auto& ev2 : evs) {
                 if (eventThreadRoot(ev2) == ev.event_id) rc++;
             }
             if (rc > 0) {
-                rightRows.push_back("\u2937 " + clip(eventBody(ev), 24) + " (" +
+                rightRows.push_back(std::to_string(idx + 1) + " \u2937 "
+                                    + clip(eventBody(ev), 20) + " (" +
                                     std::to_string(rc) + ")");
+                idx++;
             }
         }
         if (rightRows.empty()) rightRows.push_back("(no threads in this room)");
@@ -2611,7 +2615,14 @@ int cmdAsciiUi(const cli::Args& args) {
                 std::cout << drawFrame(st) << std::flush;
                 continue;
             }
-            if (a.positional.size() < 2) {
+            auto isNum = [](const std::string& x) {
+                return !x.empty() &&
+                    std::all_of(x.begin(), x.end(),
+                                [](unsigned char c) { return std::isdigit(c); });
+            };
+            // "thread 2" alone: the N-th thread of the CURRENT room.
+            bool singleNum = a.positional.size() == 1 && isNum(a.positional[0]);
+            if (a.positional.size() < 2 && !singleNum) {
                 // The room's thread LIST in the right panel.
                 std::string q = a.positional.empty() ? st.currentRoomId : a.positional[0];
                 std::string tRoom = q;
@@ -2626,12 +2637,15 @@ int cmdAsciiUi(const cli::Args& args) {
                 }
                 st.rightPanel = 1;
                 st.threadRoomId = tRoom;
-                st.statusNote = "right panel: threads of " + tRoom;
+                st.statusNote = "right panel: threads of " + tRoom
+                              + " — thread <room> <N|id> opens one";
                 std::cout << drawFrame(st) << std::flush;
                 continue;
             }
-            // One thread in the right panel: root + replies.
-            std::string q = a.positional[0];
+            // One thread in the right panel: root + replies. The thread is
+            // picked by its NUMBER in the list (thread 2, thread <room> 3)
+            // or by the root id / a substring of it.
+            std::string q = singleNum ? st.currentRoomId : a.positional[0];
             std::string tRoom = q;
             for (const auto& r : st.rooms) {
                 std::string id = r.value("room_id", "");
@@ -2642,8 +2656,41 @@ int cmdAsciiUi(const cli::Args& args) {
                     break;
                 }
             }
-            std::string root = a.positional[1];
+            std::string sel = singleNum ? a.positional[0] : a.positional[1];
             auto events = st.db->getEvents(tRoom, 300);
+            std::vector<std::string> roots;
+            for (const auto& ev : events) {
+                int rc = 0;
+                for (const auto& ev2 : events) {
+                    if (eventThreadRoot(ev2) == ev.event_id) rc++;
+                }
+                if (rc > 0) roots.push_back(ev.event_id);
+            }
+            std::string root;
+            if (isNum(sel)) {
+                int n = std::atoi(sel.c_str());
+                if (n < 1 || n > static_cast<int>(roots.size())) {
+                    st.statusNote = "thread #" + sel + " not found ("
+                                  + std::to_string(roots.size()) + " threads)";
+                    std::cout << drawFrame(st) << std::flush;
+                    continue;
+                }
+                root = roots[static_cast<size_t>(n - 1)];
+            } else {
+                for (const auto& r : roots) {
+                    if (r == sel) { root = r; break; }
+                }
+                if (root.empty()) {
+                    for (const auto& r : roots) {
+                        if (r.find(sel) != std::string::npos) { root = r; break; }
+                    }
+                }
+                if (root.empty()) {
+                    st.statusNote = "thread root not found: " + sel;
+                    std::cout << drawFrame(st) << std::flush;
+                    continue;
+                }
+            }
             st.threadRootId = root;
             st.threadReplies.clear();
             for (const auto& ev : events) {
