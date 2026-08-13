@@ -3967,6 +3967,27 @@ int cmdAsciiUi(const cli::Args& args) {
                     } else {
                         std::cout << "no such session: " << name << std::endl;
                     }
+                } else if (act == "export" && !name.empty()) {
+                    std::string dest = a.positional.size() >= 4
+                                           ? a.positional[3] : name + ".json";
+                    agenttools::saveSession(dest, agentHistory);
+                    st.statusNote = "session exported to " + dest;
+                } else if (act == "import" && !name.empty()) {
+                    std::string src = name;
+                    if (agenttools::loadSession(src, agentHistory)) {
+                        std::string base = src;
+                        auto slash = base.rfind('/');
+                        if (slash != std::string::npos) base = base.substr(slash + 1);
+                        if (base.size() > 5 && base.substr(base.size() - 5) == ".json") {
+                            base = base.substr(0, base.size() - 5);
+                        }
+                        mkdir(dir.c_str(), 0755);
+                        agenttools::saveSession(dir + "/" + base + ".json",
+                                                agentHistory);
+                        st.statusNote = "session imported as " + base;
+                    } else {
+                        std::cout << "cannot import: " << src << std::endl;
+                    }
                 } else if (act == "list" || act.empty()) {
                     glob_t g{};
                     if (glob((dir + "/*.json").c_str(), 0, nullptr, &g) == 0) {

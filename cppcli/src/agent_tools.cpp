@@ -93,8 +93,12 @@ std::string toolSchemasJson() {
             {"path", {{"type", "string"}}}},
            {"pattern"});
     schema("webfetch",
-           "Fetch a URL and return its text content.",
-           {{"url", {{"type", "string"}}}}, {"url"});
+           "Fetch a URL and return its text content, capped at maxChars "
+           "(default 30000).",
+           {{"url", {{"type", "string"}}},
+            {"maxChars", {{"type", "integer"},
+                          {"description", "the max characters to return"}}}},
+           {"url"});
     schema("todo",
            "Track the plan: replaces the current task list. Exactly one "
            "task should be in_progress at a time.",
@@ -397,12 +401,17 @@ std::string shellCmd(const std::string& cmd, int timeoutSec,
     return truncateOut(out) + (rc != 0 ? "\n[exit " + std::to_string(rc) + "]" : "");
 }
 
-std::string webFetch(const std::string& url) {
+std::string webFetch(const std::string& url, int maxChars) {
     http::Client c;
     c.setTimeout(20);
     auto r = c.get(url);
     if (!r.ok()) return "error: HTTP " + std::to_string(r.status_code);
-    if (r.body.size() > 30000) r.body = r.body.substr(0, 30000) + "\n...(truncated)";
+    if (maxChars <= 0) maxChars = 30000;
+    if (maxChars > 500000) maxChars = 500000;
+    if (static_cast<int>(r.body.size()) > maxChars) {
+        r.body = r.body.substr(0, static_cast<size_t>(maxChars))
+               + "\n...(truncated)";
+    }
     return r.body;
 }
 
@@ -855,7 +864,7 @@ std::string executeTool(const Config& cfg, const std::string& name,
     }
     if (name == "glob") return globFiles(str("pattern"));
     if (name == "grep") return grepFiles(str("pattern"), str("path"));
-    if (name == "webfetch") return webFetch(str("url"));
+    if (name == "webfetch") return webFetch(str("url"), i64("maxChars", 30000));
     if (name == "todo") return todoTool(argsJson);
     if (name == "question") {
         if (!ask) return "error: the question tool is not available";
@@ -925,12 +934,14 @@ std::string executeTool(const Config& cfg, const std::string& name,
 struct SseAcc {
     Message msg;
     std::string buf;
+    std::string raw;   // the whole response (for the non-SSE JSON fallback)
     bool done = false;
 };
 
 void feedOpenAiSse(SseAcc& acc, const std::string& chunk,
                    const std::function<void(const std::string&)>& onToken) {
     acc.buf += chunk;
+    acc.raw += chunk;
     size_t pos;
     while ((pos = acc.buf.find('\n')) != std::string::npos) {
         std::string line = acc.buf.substr(0, pos);
@@ -978,6 +989,7 @@ void feedOpenAiSse(SseAcc& acc, const std::string& chunk,
 void feedAnthropicSse(SseAcc& acc, const std::string& chunk,
                       const std::function<void(const std::string&)>& onToken) {
     acc.buf += chunk;
+    acc.raw += chunk;
     size_t pos;
     while ((pos = acc.buf.find('\n')) != std::string::npos) {
         std::string line = acc.buf.substr(0, pos);
@@ -1153,6 +1165,20 @@ Result run(const Config& cfg, const std::string& prompt,
                 assistant = acc.msg;
                 haveAssistant = true;
                 result.streamed = true;
+            } else if (sresp.ok() && !acc.raw.empty()) {
+                // The provider answered with a plain JSON (not the SSE):
+                // parse the whole body instead of re-requesting.
+                try {
+                    json plain = json::parse(acc.raw);
+                    Message m2 = cfg.provider == "anthropic"
+                                     ? parseAnthropicResponse(plain)
+                                     : parseOpenAiResponse(plain);
+                    if (!m2.content.empty() || !m2.calls.empty()) {
+                        assistant = m2;
+                        haveAssistant = true;
+                        result.streamed = false;
+                    }
+                } catch (...) {}
             }
         }
         if (!haveAssistant) {
