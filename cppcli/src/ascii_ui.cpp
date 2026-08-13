@@ -1955,7 +1955,7 @@ std::string drawFrame(const UiState& st) {
                 int mn = std::min(static_cast<int>(st.members.size()), free - 1);
                 rightRows.push_back("----------");
                 for (int k = 0; k < mn; ++k) {
-                    rightRows.push_back(memberRowStr(st, st.members[k]));
+                    rightRows.push_back(memberRowStr(st, st.members[k], true));
                 }
             }
         }
