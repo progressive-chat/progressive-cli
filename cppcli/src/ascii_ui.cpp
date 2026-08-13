@@ -1902,20 +1902,63 @@ std::string drawFrame(const UiState& st) {
         }
         if (rightRows.empty()) rightRows.push_back("(no threads in this room)");
     } else if (st.rightPanel == 2) {
-        // One thread: the root + its replies (Element's thread panel).
+        // One thread: the root + its replies (Element's thread panel),
+        // wrapped to the panel width so long lines continue below.
+        auto pushWrapped = [&](const std::string& line) {
+            auto lines = wrapText(line, std::max(8, rightW - 1));
+            for (size_t li = 0; li < lines.size(); ++li) {
+                rightRows.push_back((li == 0 ? std::string()
+                                             : std::string(4, ' ')) + lines[li]);
+            }
+        };
         if (!st.threadRootId.empty()) {
             for (const auto& ev : st.messages) {
                 if (ev.event_id == st.threadRootId) {
-                    rightRows.push_back("[" + senderShort(ev.sender) + "] "
-                                        + clip(eventBody(ev), 30));
+                    pushWrapped("[" + senderShort(ev.sender) + "] "
+                                + eventBody(ev));
                 }
             }
             for (const auto& ev : st.threadReplies) {
-                rightRows.push_back("  \u2937 [" + senderShort(ev.sender) + "] "
-                                    + clip(eventBody(ev), 28));
+                pushWrapped("  \u2937 [" + senderShort(ev.sender) + "] "
+                            + eventBody(ev));
             }
         }
         if (rightRows.empty()) rightRows.push_back("(thread is empty)");
+        // A small thread leaves free rows: fill them with the OTHER
+        // threads and the members, so everything sits in one panel.
+        if (static_cast<int>(rightRows.size()) < rows) {
+            auto evs = st.db->getEvents(st.threadRoomId, 300);
+            std::vector<std::string> thr;
+            int idx = 0;
+            for (const auto& ev : evs) {
+                int rc = 0;
+                for (const auto& ev2 : evs) {
+                    if (eventThreadRoot(ev2) == ev.event_id) rc++;
+                }
+                if (rc > 0) {
+                    idx++;
+                    if (ev.event_id == st.threadRootId) continue;
+                    thr.push_back(std::to_string(idx) + " \u2937 "
+                                  + clip(eventBody(ev), 20) + " (" +
+                                  std::to_string(rc) + ")");
+                }
+            }
+            int free = rows - static_cast<int>(rightRows.size());
+            if (!thr.empty() && free > 3) {
+                int thrN = std::min(static_cast<int>(thr.size()),
+                                    std::max(1, free / 3));
+                rightRows.push_back("----------");
+                for (int k = 0; k < thrN; ++k) rightRows.push_back(thr[k]);
+                free = rows - static_cast<int>(rightRows.size());
+            }
+            if (free > 2 && !st.members.empty()) {
+                int mn = std::min(static_cast<int>(st.members.size()), free - 1);
+                rightRows.push_back("----------");
+                for (int k = 0; k < mn; ++k) {
+                    rightRows.push_back(memberRowStr(st, st.members[k]));
+                }
+            }
+        }
     } else if (st.rightPanel == 3) {
         // Threads across ALL rooms.
         for (const auto& r : st.rooms) {
