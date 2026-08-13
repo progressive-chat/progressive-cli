@@ -622,6 +622,7 @@ struct UiState {
     int mobileTab = 0;                   // 0=Rooms 1=Chat 2=People (bottom nav)
     int limitRows = 0;                   // settings "rows <n>": 0 = fit terminal
     std::map<std::string, std::string> presence; // member -> О/А/Ф letters
+    std::map<std::string, std::string> memberNames; // member -> displayname
     // Right panel mode: 0 = members, 1 = room thread list, 2 = one thread,
     // 3 = threads across all rooms (Element-style thread panel).
     bool showIds = false;       // show event ids next to the messages
@@ -806,6 +807,20 @@ void loadRoomIntoState(UiState& st, const std::string& query) {
     st.powerLevels.clear();
     st.eventsDefault = 0;
     st.redactedIds.clear();
+    st.memberNames.clear();
+    // Display names come from the member events — scan the whole history
+    // (the chat window may not reach the joins).
+    auto allEvs = st.db->getEvents(st.currentRoomId, 2000);
+    for (const auto& ev : allEvs) {
+        if (st.memberNames.count(ev.sender)) continue;  // newest wins
+        if (ev.type == "m.room.member" && ev.content.is_object()) {
+            auto dn = ev.content.find("displayname");
+            if (dn != ev.content.end() && dn->is_string() &&
+                !dn->get<std::string>().empty()) {
+                st.memberNames[ev.sender] = dn->get<std::string>();
+            }
+        }
+    }
     for (const auto& ev : st.messages) {
         if (std::find(st.members.begin(), st.members.end(), ev.sender) ==
             st.members.end()) {
@@ -1052,7 +1067,20 @@ std::string fullMxid(const UiState& st, const std::string& mem) {
 
 std::string memberRowStr(const UiState& st, const std::string& mem,
                          bool fullIds = false) {
-    std::string m = fullIds ? fullMxid(st, mem) : senderShort(mem);
+    std::string mx = fullIds ? fullMxid(st, mem) : senderShort(mem);
+    // The display name: a custom nick wins, then the member event's
+    // displayname, then the mxid localpart.
+    std::string nm = senderShort(mem);
+    auto rk = st.roomNicks.find(st.currentRoomId + "|" + mem);
+    if (rk != st.roomNicks.end() && !rk->second.empty()) {
+        nm = rk->second;
+    } else {
+        auto nit = st.memberNames.find(mem);
+        if (nit != st.memberNames.end() && !nit->second.empty()) nm = nit->second;
+    }
+    // A display name that differs from the mxid string is highlighted.
+    std::string namePart = nm;
+    if (nm != senderShort(mem)) namePart = "\x1b[34m" + nm + "\x1b[0m";
     std::string letter;
     auto pit = st.presence.find(mem);
     if (pit != st.presence.end() && !pit->second.empty()) {
@@ -1063,7 +1091,8 @@ std::string memberRowStr(const UiState& st, const std::string& mem,
     const char* pc = "\x1b[32m";
     if (letter == "A") pc = "\x1b[33m";
     else if (letter == "F") pc = "\x1b[31m";
-    m = std::string(pc) + "[" + letter + "]" + "\x1b[0m " + m;
+    std::string m = std::string(pc) + "[" + letter + "]" + "\x1b[0m " + namePart
+                  + " (" + mx + ")";
     auto pl = st.powerLevels.find(mem);
     if (pl != st.powerLevels.end()) {
         if (pl->second >= 100) m = "\xf0\x9f\x91\x91 " + m;

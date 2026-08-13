@@ -1594,6 +1594,21 @@ int cmdConfig(const matrixcli::cli::Args& args) {
 #endif
 }
 
+// A proper-looking display name for the demo members (Alice, Bob, ...) —
+// it differs from the mxid localpart, so the user list shows the
+// highlighted "Displayname (mxid)" form.
+static std::string demoName(const char* s) {
+    std::string n = s;
+    if (!n.empty() && n[0] == '@') {
+        auto colon = n.find(':');
+        if (colon != std::string::npos) n = n.substr(1, colon - 1);
+        else n = n.substr(1);
+    }
+    if (n == "you") return n;
+    if (!n.empty()) n[0] = std::toupper(static_cast<unsigned char>(n[0]));
+    return n;
+}
+
 // Populate the offline demo database (rooms + messages + reply chain).
 // Shared by `demo populate` and the interactive `demo` REPL.
 static int populateDemoData(matrixcli::db::Database& dbi) {
@@ -2185,8 +2200,15 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
             return out;
         };
         struct { const char* room; const char* sender; const char* ms; } mem[] = {
+            {"!general:demo.local", "@alice", "join"},
             {"!general:demo.local", "@bob", "join"},
+            {"!general:demo.local", "@carol", "join"},
             {"!general:demo.local", "@charlie", "join"},
+            {"!general:demo.local", "@dave", "join"},
+            {"!general:demo.local", "@erin", "join"},
+            {"!general:demo.local", "@frank", "join"},
+            {"!general:demo.local", "@grace", "join"},
+            {"!general:demo.local", "@you", "join"},
             {"!random:demo.local", "@bob", "join"},
             {"!dev:demo.local", "@bob", "leave"},
             {"!design:demo.local", "@carol", "join"},
@@ -2361,7 +2383,7 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
             ev.type = "m.room.member";
             nlohmann::json content;
             content["membership"] = m.ms;
-            content["displayname"] = shortName(m.sender);
+            content["displayname"] = demoName(m.sender);
             // Invites carry the invited user and a reason, shown in the
             // timeline ("alice invited you — reason").
             if (strcmp(m.ms, "invite") == 0) {
@@ -2569,7 +2591,7 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
             ev.room_id = "!general:demo.local"; ev.sender = nb;
             ev.type = "m.room.member";
             ev.content = {{"membership", "join"},
-                          {"displayname", std::string(nb + 1)}};
+                          {"displayname", demoName(nb)}};
             ev.origin_server_ts = gt;
             dbi.insertEvent(ev);
             gt -= 60000;
@@ -2587,7 +2609,9 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
                 ev.event_id = "$demo_" + std::to_string(gt);
                 ev.room_id = "!general:demo.local"; ev.sender = e.sender;
                 ev.type = "m.room.member";
-                ev.content = {{"membership", "join"}, {"displayname", e.name}};
+                ev.content = nlohmann::json::object();
+                ev.content["membership"] = "join";
+                ev.content["displayname"] = demoName(e.name);
                 ev.origin_server_ts = gt;
                 dbi.insertEvent(ev);
                 gt -= 60000;
