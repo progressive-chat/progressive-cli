@@ -9,6 +9,7 @@
 #include "globals.hpp"
 #include "../lib/database/db.hpp"
 #include "agent_tools.hpp"
+#include <sys/stat.h>
 #include "core/http_client.hpp"
 #include <progressive/llm.hpp>
 #include <progressive/agent_executor.hpp>
@@ -507,6 +508,8 @@ static int cmdAgentCode(const cli::Args& args) {
         return 1;
     }
     if (!res.streamed) std::cout << res.text << std::endl;
+    mkdir(".agent-sessions", 0755);
+    saveSession(".agent-sessions/last.json", history);
     return 0;
 }
 

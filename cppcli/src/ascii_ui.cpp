@@ -2719,7 +2719,9 @@ int cmdAsciiUi(const cli::Args& args) {
             [](const std::string& l) { std::cout << l << std::endl; },
             [](const std::string& t) { std::cout << t << std::flush; });
         if (!res.ok) std::cout << "[agent error] " << res.error << std::endl;
-        else std::cout << res.text << std::endl;
+        else if (!res.streamed) std::cout << res.text << std::endl;
+        mkdir(".agent-sessions", 0755);
+        agenttools::saveSession(".agent-sessions/last.json", history);
     }
 
     // Pure CLI / non-interactive mode: draw the frame once and exit
