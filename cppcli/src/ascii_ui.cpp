@@ -2204,7 +2204,9 @@ std::string drawFrame(const UiState& st) {
             // The last message preview, like Element's room list.
             std::string last = roomLastMsg(st.db, rid, st.rooms);
             if (!last.empty()) {
-                int avail = leftW - displayWidth(left) - 1;
+                // The preview leaves room for the last-message time at
+                // the row's end (the Element-style room list).
+                int avail = leftW - displayWidth(left) - 9;
                 if (avail >= 6) {
                     // Nickname in the normal color, the message dimmed.
                     auto colon = last.find(':');
@@ -2216,6 +2218,10 @@ std::string drawFrame(const UiState& st) {
                     left += " [90m· [0m" + who
                           + "[90m"
                           + highlightMentions(clip(what, std::max(2, avail - used)))
+                          + "[0m";
+                    left += " [90m"
+                          + roomLastTime(st.db, rid, st.showSeconds,
+                                         st.clock12h)
                           + "[0m";
                 }
             }
