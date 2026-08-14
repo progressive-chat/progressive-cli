@@ -1219,8 +1219,7 @@ std::string highlightCodeLine(const std::string& line, bool cFamily) {
 
 std::string renderMarkdownBody(const std::string& body) {
     std::string out;
-    // The inline decorations (the `code` and **bold**) on the non-code
-    // text; the fenced blocks get the per-line highlighting.
+    // The inline decorations: `code`, **bold**, and [text](url) links.
     auto inlineMd = [](const std::string& t) -> std::string {
         std::string r;
         size_t i = 0;
@@ -1243,19 +1242,87 @@ std::string renderMarkdownBody(const std::string& body) {
                     continue;
                 }
             }
+            if (t[i] == '[') {
+                // The [text](url) link: the blue text + the dim URL.
+                auto close = t.find("](", i + 1);
+                if (close != std::string::npos && close + 1 < t.size() &&
+                    t[close + 1] == '(') {
+                    auto end = t.find(')', close + 2);
+                    if (end != std::string::npos) {
+                        r += "\x1b[34m" + t.substr(i + 1, close - i - 1)
+                           + "\x1b[0m\x1b[90m("
+                           + t.substr(close + 2, end - close - 2)
+                           + ")\x1b[0m";
+                        i = end + 1;
+                        continue;
+                    }
+                }
+            }
             r += t[i];
             i++;
         }
         return r;
     };
+    // The per-line prefixes: the headers, the quotes, the bullets, the
+    // ordered items, the checkboxes.
+    auto linePrefix = [](const std::string& ln) -> std::string {
+        std::string t = ln;
+        size_t b = t.find_first_not_of(' ');
+        if (b == std::string::npos) return t;
+        std::string indent = t.substr(0, b);
+        std::string rest = t.substr(b);
+        if (rest.rfind("### ", 0) == 0) {
+            return indent + "\x1b[1m" + rest.substr(4) + "\x1b[0m";
+        }
+        if (rest.rfind("## ", 0) == 0) {
+            return indent + "\x1b[1m" + rest.substr(3) + "\x1b[0m";
+        }
+        if (rest.rfind("# ", 0) == 0) {
+            return indent + "\x1b[1m" + rest.substr(2) + "\x1b[0m";
+        }
+        if (rest.rfind("> ", 0) == 0) {
+            return indent + "\x1b[90m\u258f " + rest.substr(2) + "\x1b[0m";
+        }
+        if (rest.rfind("- [x] ", 0) == 0 || rest.rfind("- [X] ", 0) == 0) {
+            return indent + "\u2611 " + rest.substr(6);
+        }
+        if (rest.rfind("- [ ] ", 0) == 0) {
+            return indent + "\u2610 " + rest.substr(6);
+        }
+        if (rest.rfind("- ", 0) == 0 || rest.rfind("* ", 0) == 0 ||
+            rest.rfind("+ ", 0) == 0) {
+            return indent + "\u2022 " + rest.substr(2);
+        }
+        if (rest.size() > 2 && std::isdigit(
+                static_cast<unsigned char>(rest[0])) && rest[1] == '.' &&
+            rest[2] == ' ') {
+            return indent + "\x1b[1m" + rest.substr(0, 2) + "\x1b[0m "
+                 + rest.substr(3);
+        }
+        return t;
+    };
+    // Split into the fenced code blocks + the text lines.
     size_t i = 0;
+    auto renderTextLines = [&](const std::string& text) -> std::string {
+        std::string r;
+        std::istringstream ls(text);
+        std::string line;
+        bool first = true;
+        while (std::getline(ls, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (!first) r += "\n";
+            r += inlineMd(linePrefix(line));
+            first = false;
+        }
+        return r;
+    };
     while (i < body.size()) {
         auto fence = body.find("```", i);
         if (fence == std::string::npos) {
-            out += inlineMd(body.substr(i));
+            out += renderTextLines(body.substr(i));
             break;
         }
-        out += inlineMd(body.substr(i, fence - i));
+        out += renderTextLines(body.substr(i, fence - i));
         auto nl = body.find('\n', fence);
         std::string lang;
         if (nl != std::string::npos) lang = body.substr(fence + 3, nl - fence - 3);
