@@ -83,6 +83,9 @@ struct Config {
     std::string planFile;                   // where the plan is written
     GoalState goal;                         // the active standing goal
     std::string reasoning = "high";         // low | medium | high (the default max)
+    // The auto-compaction: when the history (the chars/4 estimate) passes
+    // this % of the model's context, the old turns get the LLM summary.
+    int compactThreshold = 60;              // 0 = off
 };
 
 // The built-in provider presets (the opencode-style list).

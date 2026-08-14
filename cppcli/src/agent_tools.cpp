@@ -12,6 +12,7 @@
 #include <glob.h>
 #include <map>
 #include <memory>
+#include <thread>
 #include <iomanip>
 #include <mutex>
 #include <unordered_set>
@@ -781,6 +782,52 @@ Message parseAnthropicResponse(const json& resp) {
         }
     }
     return m;
+}
+
+// The plain single LLM call (no tools) — used by the auto-compaction.
+static std::string llmSimple(const Config& cfg, const std::string& prompt) {
+    http::Client httpClient;
+    httpClient.setTimeout(120);
+    if (!cfg.proxy.empty()) {
+        auto colon = cfg.proxy.rfind(':');
+        if (colon != std::string::npos) {
+            http::ProxyConfig pc;
+            pc.type = http::ProxyType::SOCKS5;
+            pc.host = cfg.proxy.substr(0, colon);
+            try { pc.port = std::stoi(cfg.proxy.substr(colon + 1)); } catch (...) {}
+            if (pc.enabled()) httpClient.setProxy(pc);
+        }
+    }
+    json reqBody;
+    http::Request req;
+    json messages = json::array();
+    messages.push_back({{"role", "user"}, {"content", prompt}});
+    if (cfg.provider == "anthropic") {
+        reqBody = {{"model", cfg.model}, {"messages", messages},
+                   {"max_tokens", 1024}};
+        req.url = baseEndpoint(cfg) + "/v1/messages";
+        req.headers["x-api-key"] = cfg.key;
+        req.headers["anthropic-version"] = "2023-06-01";
+        req.headers["content-type"] = "application/json";
+    } else {
+        reqBody = {{"model", cfg.model}, {"messages", messages}};
+        req.url = baseEndpoint(cfg) + "/v1/chat/completions";
+        req.headers["authorization"] = "Bearer " + cfg.key;
+        req.headers["content-type"] = "application/json";
+    }
+    req.method = "POST";
+    req.body = reqBody.dump();
+    http::Response resp = httpClient.doRequest(req);
+    if (!resp.ok()) return "";
+    try {
+        json parsed = json::parse(resp.body);
+        Message m = cfg.provider == "anthropic"
+                        ? parseAnthropicResponse(parsed)
+                        : parseOpenAiResponse(parsed);
+        return m.content;
+    } catch (...) {
+        return "";
+    }
 }
 
 } // namespace
@@ -2116,7 +2163,7 @@ Result run(const Config& cfg, const std::string& prompt,
                 assistant = acc.msg;
                 haveAssistant = true;
                 result.streamed = true;
-            } else if (sresp.ok() && !acc.raw.empty() && acc.done) {
+            } else if (sresp.ok() && !acc.raw.empty()) {
                 // The provider answered with a plain JSON (not the SSE):
                 // parse the whole body instead of re-requesting.
                 try {
@@ -2175,7 +2222,64 @@ Result run(const Config& cfg, const std::string& prompt,
             return result;
         }
         history.push_back(assistant);
-        for (const auto& c : assistant.calls) {
+        // The auto-compaction: the history beyond the threshold gets the
+        // LLM summary before the next request.
+        if (cfg.compactThreshold > 0) {
+            int64_t chars = 0;
+            for (const auto& m : history) chars += m.content.size();
+            int ctx = contextSizeFor(cfg.model);
+            int64_t usedTokens = chars / 4;
+            if (ctx > 0 &&
+                usedTokens * 100 >= static_cast<int64_t>(ctx) *
+                                       cfg.compactThreshold) {
+                std::string oldText;
+                int keep = 6;
+                int n = static_cast<int>(history.size());
+                for (int i = 0; i < n - keep && i < n; ++i) {
+                    if (!history[static_cast<size_t>(i)].content.empty()) {
+                        oldText += history[static_cast<size_t>(i)].role + ": "
+                                 + history[static_cast<size_t>(i)]
+                                       .content.substr(0, 1500) + "\n";
+                    }
+                }
+                if (log) log("[agent] auto-compacting ...");
+                std::string summary = llmSimple(
+                    cfg,
+                    "Summarise this conversation so far into a few dense "
+                    "lines (the key decisions, the state, the open "
+                    "questions):\n\n" + oldText);
+                std::vector<Message> tail(
+                    history.end() - std::min<int>(keep, n), history.end());
+                history.clear();
+                if (!summary.empty()) {
+                    history.push_back({"user",
+                                       "[CONTEXT SUMMARY]: " + summary,
+                                       {}, "", ""});
+                }
+                for (auto& m : tail) history.push_back(m);
+            }
+        }
+        auto isReadOnly = [](const std::string& n) {
+            return n == "read_file" || n == "glob" || n == "grep" ||
+                   n == "webfetch" || n == "clock" || n == "search_sessions" ||
+                   n == "skill" || n == "lsp";
+        };
+        // The read-only calls run in parallel, the mutating ones
+        // sequentially (in the order).
+        std::vector<std::string> results(assistant.calls.size());
+        std::vector<std::thread> workers;
+        for (size_t ci = 0; ci < assistant.calls.size(); ++ci) {
+            if (isReadOnly(assistant.calls[ci].name)) {
+                workers.emplace_back([&, ci]() {
+                    results[ci] = executeTool(cfg, assistant.calls[ci].name,
+                                              assistant.calls[ci].args,
+                                              verdictConfirm, ask, log, 0);
+                });
+            }
+        }
+        for (auto& w : workers) w.join();
+        for (size_t ci = 0; ci < assistant.calls.size(); ++ci) {
+            const auto& c = assistant.calls[static_cast<size_t>(ci)];
             // The doom-loop check: the same tool+args three times in a
             // row is a stuck agent — fail the call so the model moves on.
             std::string key = c.name + " " + c.args;
@@ -2198,8 +2302,9 @@ Result run(const Config& cfg, const std::string& prompt,
                         + nlohmann::json::parse(c.args).value("command", ""));
                 } catch (...) {}
             }
-            std::string out = executeTool(cfg, c.name, c.args,
-                                          verdictConfirm, ask, log, 0);
+            std::string out = isReadOnly(c.name)
+                ? results[static_cast<size_t>(ci)]
+                : executeTool(cfg, c.name, c.args, verdictConfirm, ask, log, 0);
             history.push_back({"tool", out, {}, c.id, c.name});
             if (log) {
                 std::string preview = out.size() > 200 ? out.substr(0, 200) + "..."
