@@ -2109,12 +2109,14 @@ Result run(const Config& cfg, const std::string& prompt,
                 result.error = "interrupted (Esc)";
                 return result;
             }
-            if (sresp.ok() && (acc.done || !acc.msg.content.empty() ||
-                               !acc.msg.calls.empty())) {
+            if (sresp.ok() && acc.done &&
+                (!acc.msg.content.empty() || !acc.msg.calls.empty())) {
+                // Only the COMPLETE stream (the [DONE] seen) counts; a cut
+                // stream falls back to the plain request below.
                 assistant = acc.msg;
                 haveAssistant = true;
                 result.streamed = true;
-            } else if (sresp.ok() && !acc.raw.empty()) {
+            } else if (sresp.ok() && !acc.raw.empty() && acc.done) {
                 // The provider answered with a plain JSON (not the SSE):
                 // parse the whole body instead of re-requesting.
                 try {
