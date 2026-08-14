@@ -83,7 +83,8 @@ public:
     Response streamPost(const std::string& url,
                         const std::string& body,
                         const std::map<std::string, std::string>& headers,
-                        const std::function<void(const std::string& chunk)>& onChunk);
+                        const std::function<void(const std::string& chunk)>& onChunk,
+                        const std::function<bool()>& abort = {});
 
 private:
     struct Impl;

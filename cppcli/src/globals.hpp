@@ -25,5 +25,7 @@ extern std::vector<std::string> g_notifyKeywords;
 // Set false by the SIGINT/SIGTERM handler; long-running commands (verify,
 // serve loops) must poll it and bail out promptly so Ctrl+C always works.
 extern std::atomic<bool> g_interrupted;
+// Esc during an agent run: stop the agent, keep the program alive.
+extern std::atomic<bool> g_agentInterrupt;
 
 } // namespace matrixcli

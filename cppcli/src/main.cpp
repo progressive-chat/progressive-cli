@@ -50,6 +50,7 @@ std::atomic<bool> g_running{true};
 // Global bridge instances (defined here, declared in globals.hpp)
 namespace matrixcli {
     std::atomic<bool> g_interrupted{true};
+    std::atomic<bool> g_agentInterrupt{false};
     tdlib::TdBridge g_tdlib;
     lemmy::LemmyClient g_lemmy;
     deltachat::DcBridge g_dc;

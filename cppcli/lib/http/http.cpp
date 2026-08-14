@@ -651,7 +651,8 @@ Response Client::doRequest(const Request& req) {
 Response Client::streamPost(const std::string& url,
                             const std::string& body,
                             const std::map<std::string, std::string>& headers,
-                            const std::function<void(const std::string&)>& onChunk) {
+                            const std::function<void(const std::string&)>& onChunk,
+                            const std::function<bool()>& abort) {
     Response resp;
 
     std::string host;
@@ -762,6 +763,7 @@ Response Client::streamPost(const std::string& url,
     char buf[8192];
     int idle = timeout > 0 ? timeout : 30;
     auto readSome = [&](std::string& into) -> bool {
+        if (abort && abort()) return false;
         int sock_fd = ssl ? SSL_get_fd(ssl) : sock;
         struct pollfd pfd{sock_fd, POLLIN, 0};
         int pret = poll(&pfd, 1, idle * 1000);

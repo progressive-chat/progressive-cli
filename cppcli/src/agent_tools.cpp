@@ -1390,6 +1390,9 @@ std::string executeTool(const Config& cfg, const std::string& name,
         if (!matrixcli::g_interrupted.load()) {
             return "interrupted (Ctrl+C)";
         }
+        if (matrixcli::g_agentInterrupt.load()) {
+            return "interrupted (Esc)";
+        }
         if (isDangerousCommand(cmd)) {
             return "hardline block: dangerous command refused — " + cmd;
         }
@@ -1736,6 +1739,10 @@ Result run(const Config& cfg, const std::string& prompt,
             result.error = "interrupted (Ctrl+C)";
             return result;
         }
+        if (matrixcli::g_agentInterrupt.load()) {
+            result.error = "interrupted (Esc)";
+            return result;
+        }
         json reqBody;
         http::Request req;
         if (cfg.provider == "anthropic") {
@@ -1782,9 +1789,17 @@ Result run(const Config& cfg, const std::string& prompt,
                     } else {
                         feedOpenAiSse(acc, chunk, onToken);
                     }
+                },
+                [&]() {
+                    return matrixcli::g_agentInterrupt.load() ||
+                           !matrixcli::g_interrupted.load();
                 });
             if (!matrixcli::g_interrupted.load()) {
                 result.error = "interrupted (Ctrl+C)";
+                return result;
+            }
+            if (matrixcli::g_agentInterrupt.load()) {
+                result.error = "interrupted (Esc)";
                 return result;
             }
             if (sresp.ok() && (acc.done || !acc.msg.content.empty() ||

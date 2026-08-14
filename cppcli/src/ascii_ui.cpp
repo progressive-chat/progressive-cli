@@ -14,6 +14,8 @@
 #include "agent_tools.hpp"
 #include <cstdlib>
 #include <glob.h>
+#include <poll.h>
+#include <thread>
 #include <sys/stat.h>
 #include <unistd.h>
 #include "cli/args.hpp"
@@ -4013,6 +4015,27 @@ int cmdAsciiUi(const cli::Args& args) {
                 return out.empty() ? "(no questions answered)" : out;
             };
             auto log = [](const std::string& l) { std::cout << l << std::endl; };
+            // The Esc watcher: a background thread polls the terminal for
+            // the 0x1b byte while the agent runs — Esc stops the agent,
+            // the program stays alive (the Ctrl+C exits as usual).
+            auto startEscWatcher = []() -> std::shared_ptr<std::thread> {
+                return std::make_shared<std::thread>([]() {
+                    struct pollfd pfd{STDIN_FILENO, POLLIN, 0};
+                    while (!matrixcli::g_agentInterrupt.load() &&
+                           matrixcli::g_interrupted.load()) {
+                        int pr = poll(&pfd, 1, 50);
+                        if (pr <= 0) continue;
+                        unsigned char c = 0;
+                        if (read(STDIN_FILENO, &c, 1) == 1 && c == 0x1b) {
+                            matrixcli::g_agentInterrupt = true;
+                        }
+                    }
+                });
+            };
+            auto stopEscWatcher = [](std::shared_ptr<std::thread>& t) {
+                if (t && t->joinable()) t->join();
+                matrixcli::g_agentInterrupt = false;
+            };
             if (!a.positional.empty() && a.positional[0] == "permit") {
                 // agent permit <tool> <glob> <allow|ask|deny>
                 if (a.positional.size() < 4) {
@@ -4207,6 +4230,7 @@ int cmdAsciiUi(const cli::Args& args) {
                         any = true;
                         std::cout << "== cron " << j.id << ": " << j.prompt
                                   << std::endl;
+                        auto escW4 = startEscWatcher();
                         agenttools::Result res = agenttools::run(
                             cfg, j.prompt, agentHistory, confirm, ask, log,
                             [](const std::string& t) {
@@ -4215,6 +4239,7 @@ int cmdAsciiUi(const cli::Args& args) {
                         std::cout << (res.ok ? res.text
                                              : "[agent error] " + res.error)
                                   << std::endl;
+                        stopEscWatcher(escW4);
                         j.nextRun = agenttools::nextRunFromSpec(j.spec, now);
                         if (j.nextRun < 0) j.nextRun = now + 86400;
                     }
@@ -4462,6 +4487,7 @@ int cmdAsciiUi(const cli::Args& args) {
                     line = line.substr(b, e - b + 1);
                     if (line == "exit" || line == "quit") break;
                     if (line == "reset") { agentHistory.clear(); continue; }
+                    auto escW2 = startEscWatcher();
                     agenttools::Result res =
                         agenttools::run(cfg, line, agentHistory, confirm, ask, log,
                               [](const std::string& t) {
@@ -4469,6 +4495,7 @@ int cmdAsciiUi(const cli::Args& args) {
                               });
                     if (!res.ok) std::cout << "[agent error] " << res.error << std::endl;
                     else if (!res.streamed) std::cout << res.text << std::endl;
+                    stopEscWatcher(escW2);
                 }
                 continue;
             }
@@ -4495,10 +4522,12 @@ int cmdAsciiUi(const cli::Args& args) {
                 planCfg.planMode = true;
                 planCfg.planFile = planFile;
                 std::vector<agenttools::Message> planHist;
+                auto escW3 = startEscWatcher();
                 agenttools::Result pr = agenttools::run(
                     planCfg, prompt, planHist, confirm, ask, log);
                 std::cout << (pr.ok ? pr.text : "[agent error] " + pr.error)
                           << std::endl;
+                stopEscWatcher(escW3);
                 if (!pr.ok) continue;
                 std::cout << "plan: " << planFile << " — execute now? [y/N] "
                           << std::flush;
@@ -4508,14 +4537,17 @@ int cmdAsciiUi(const cli::Args& args) {
                     std::string execPrompt =
                         "Execute the approved plan. First read " + planFile
                         + " and then carry out the steps in it.";
+                    auto escW5 = startEscWatcher();
                     agenttools::Result res = agenttools::run(
                         cfg, execPrompt, agentHistory, confirm, ask, log);
                     if (!res.ok) std::cout << "[agent error] " << res.error
                                            << std::endl;
-                    else std::cout << res.text << std::endl;
+                    else if (!res.streamed) std::cout << res.text << std::endl;
+                    stopEscWatcher(escW5);
                 }
                 continue;
             }
+            auto escW = startEscWatcher();
             agenttools::Result res =
                 agenttools::run(cfg, prompt, agentHistory, confirm, ask, log,
                               [](const std::string& t) {
@@ -4528,6 +4560,7 @@ int cmdAsciiUi(const cli::Args& args) {
             }
             mkdir(".agent-sessions", 0755);
             agenttools::saveSession(".agent-sessions/last.json", agentHistory);
+            stopEscWatcher(escW);
             continue;
         }
         // ---- reply: send a reply to a message ----
