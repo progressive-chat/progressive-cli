@@ -12,6 +12,8 @@
 #include <glob.h>
 #include <map>
 #include <memory>
+#include <iomanip>
+#include <mutex>
 #include <unordered_set>
 #include <regex>
 #include <sstream>
@@ -138,6 +140,10 @@ std::string toolSchemasJson() {
     schema("clock",
            "The current date and time (UTC).",
            json::object(), json::array());
+    schema("skill",
+           "Load a skill file (.agent-skills/<name>.md) into the context "
+           "and return its content.",
+           {{"name", {{"type", "string"}}}}, {"name"});
     schema("memory",
            "Manage the agent's memory files (persist across sessions in "
            ".agent-memory/). Actions: list, read, create, edit (an exact "
@@ -769,6 +775,90 @@ Message parseAnthropicResponse(const json& resp) {
 }
 
 } // namespace
+
+// ---- the provider presets + the usage accounting ----
+
+std::vector<ProviderPreset> providerPresets() {
+    return {
+        {"openai", "openai", "https://api.openai.com", "gpt-4o-mini"},
+        {"anthropic", "anthropic", "https://api.anthropic.com",
+         "claude-3-5-haiku-20241022"},
+        {"ollama", "openai", "http://localhost:11434", "llama3.2"},
+        {"lmstudio", "openai", "http://localhost:1234", "local-model"},
+        {"deepseek", "openai", "https://api.deepseek.com", "deepseek-chat"},
+        {"qwen", "openai", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+         "qwen-plus"},
+        {"openrouter", "openai", "https://openrouter.ai/api/v1",
+         "openai/gpt-4o-mini"},
+        {"groq", "openai", "https://api.groq.com/openai/v1",
+         "llama-3.3-70b-versatile"},
+        {"fireworks", "openai", "https://api.fireworks.ai/inference/v1",
+         "accounts/fireworks/models/llama-v3p1-8b-instruct"},
+    };
+}
+
+bool applyProviderPreset(Config& cfg, const std::string& name) {
+    for (const auto& p : providerPresets()) {
+        if (p.name == name) {
+            cfg.provider = p.provider;
+            cfg.endpoint = p.endpoint;
+            cfg.model = p.model;
+            return true;
+        }
+    }
+    return false;
+}
+
+static double pricePerM(const std::string& model, bool output) {
+    if (model.find("gpt-4o-mini") != std::string::npos) return output ? 0.60 : 0.15;
+    if (model.find("gpt-4o") != std::string::npos) return output ? 10.0 : 2.5;
+    if (model.find("gpt-4.1") != std::string::npos) return output ? 8.0 : 2.0;
+    if (model.find("o3") != std::string::npos || model.find("o4") != std::string::npos)
+        return output ? 12.0 : 2.0;
+    if (model.find("claude-3-5-haiku") != std::string::npos)
+        return output ? 4.0 : 0.8;
+    if (model.find("claude-3-5-sonnet") != std::string::npos ||
+        model.find("claude-3-7") != std::string::npos)
+        return output ? 15.0 : 3.0;
+    if (model.find("claude-3-opus") != std::string::npos)
+        return output ? 75.0 : 15.0;
+    if (model.find("claude-3-haiku") != std::string::npos)
+        return output ? 1.25 : 0.25;
+    if (model.find("deepseek") != std::string::npos) return output ? 1.1 : 0.27;
+    if (model.find("llama") != std::string::npos ||
+        model.find("qwen") != std::string::npos)
+        return 0.0;
+    return -1.0;
+}
+
+static std::mutex g_usageMutex;
+static int64_t g_inTokens = 0;
+static int64_t g_outTokens = 0;
+static std::string g_lastModel;
+
+void agentAddUsage(int inputTokens, int outputTokens, const std::string& model) {
+    std::lock_guard<std::mutex> lk(g_usageMutex);
+    g_inTokens += inputTokens;
+    g_outTokens += outputTokens;
+    if (!model.empty()) g_lastModel = model;
+}
+
+std::string agentUsageLine() {
+    std::lock_guard<std::mutex> lk(g_usageMutex);
+    double inM = static_cast<double>(g_inTokens) / 1000000.0;
+    double outM = static_cast<double>(g_outTokens) / 1000000.0;
+    double inP = pricePerM(g_lastModel, false);
+    double outP = pricePerM(g_lastModel, true);
+    std::ostringstream ss;
+    ss << g_inTokens << " in / " << g_outTokens << " out tokens";
+    if (inP >= 0) {
+        double cost = inM * inP + outM * outP;
+        ss << " · $" << std::fixed << std::setprecision(3) << cost;
+    } else {
+        ss << " · price unknown";
+    }
+    return ss.str();
+}
 
 std::vector<std::pair<std::string, std::string>> agentTodos() {
     return g_todos;
@@ -1465,6 +1555,14 @@ std::string executeTool(const Config& cfg, const std::string& name,
     if (name == "memory") return memoryTool(argsJson);
     if (name == "notes") return notesTool(argsJson);
     if (name == "search_sessions") return searchSessions(str("query"));
+    if (name == "skill") {
+        std::string sn = str("name");
+        if (sn.empty()) return "error: the skill name is required";
+        if (sn.find('/') != std::string::npos || sn.find("..") != std::string::npos) {
+            return "error: bad skill name";
+        }
+        return readFile(".agent-skills/" + sn + ".md", 1, 2000);
+    }
     if (name == "clock") {
         std::time_t t = std::time(nullptr);
         std::tm tm{};
@@ -1757,6 +1855,12 @@ Result run(const Config& cfg, const std::string& prompt,
                        {"messages", messages},
                        {"tools", allSchemas},
                        {"max_tokens", 4096}};
+            if (!cfg.reasoning.empty()) {
+                int budget = cfg.reasoning == "low" ? 1024
+                           : cfg.reasoning == "medium" ? 2048 : 4096;
+                reqBody["thinking"] = {{"type", "enabled"},
+                                       {"budget_tokens", budget}};
+            }
             req.url = anthropicUrl(cfg);
             req.headers["x-api-key"] = cfg.key;
             req.headers["anthropic-version"] = "2023-06-01";
@@ -1767,6 +1871,9 @@ Result run(const Config& cfg, const std::string& prompt,
             reqBody = {{"model", cfg.model},
                        {"messages", messages},
                        {"tools", openAiToolsParam(allSchemas)}};
+            if (!cfg.reasoning.empty()) {
+                reqBody["reasoning_effort"] = cfg.reasoning;
+            }
             req.url = openAiUrl(cfg);
             req.headers["authorization"] = "Bearer " + cfg.key;
             req.headers["content-type"] = "application/json";
@@ -1859,6 +1966,8 @@ Result run(const Config& cfg, const std::string& prompt,
             assistant = cfg.provider == "anthropic"
                             ? parseAnthropicResponse(parsed)
                             : parseOpenAiResponse(parsed);
+            agentAddUsage(static_cast<int>(req.body.size() / 4),
+                          static_cast<int>(resp.body.size() / 4), cfg.model);
         }
         if (assistant.calls.empty()) {
             history.push_back(assistant);

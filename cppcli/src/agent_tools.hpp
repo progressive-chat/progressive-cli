@@ -78,7 +78,22 @@ struct Config {
     bool planMode = false;
     std::string planFile;                   // where the plan is written
     GoalState goal;                         // the active standing goal
+    std::string reasoning = "high";         // low | medium | high (the default max)
 };
+
+// The built-in provider presets (the opencode-style list).
+struct ProviderPreset {
+    std::string name;
+    std::string provider;
+    std::string endpoint;
+    std::string model;
+};
+std::vector<ProviderPreset> providerPresets();
+bool applyProviderPreset(Config& cfg, const std::string& name);
+
+// The rough token accounting (chars/4) + the model price tables.
+void agentAddUsage(int inputTokens, int outputTokens, const std::string& model);
+std::string agentUsageLine();
 
 struct ToolCall {
     std::string id;

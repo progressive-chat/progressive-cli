@@ -415,12 +415,17 @@ std::string eventPreview(db::Database* db, const std::string& roomId,
 // The time of the last event in a room, for the room-list rows: today's
 // events show HH:MM (HH:MM:SS with the "time full" setting), older ones
 // show the date as MM-DD (Element Classic style).
+// The newest actual MESSAGE of a room (the shared preview/timestamp
+// source); defined below, used by the roomLastTime first.
+static const matrix::Event* roomLastEvent(db::Database* db,
+                                          const std::string& roomId);
+
 std::string roomLastTime(db::Database* db, const std::string& roomId,
                           bool seconds, bool clock12h) {
     if (!db) return "";
-    auto evs = db->getEvents(roomId, 1);
-    if (evs.empty()) return "";
-    std::time_t t = static_cast<std::time_t>(evs.front().origin_server_ts / 1000);
+    const matrix::Event* lastEv = roomLastEvent(db, roomId);
+    if (!lastEv) return "";
+    std::time_t t = static_cast<std::time_t>(lastEv->origin_server_ts / 1000);
     std::tm tm{};
     localtime_r(&t, &tm);
     std::time_t nowT = std::time(nullptr);
@@ -548,20 +553,25 @@ std::string highlightUrls(const std::string& text) {
 // Element's room list. Message events only; joins/lefts show a short
 // summary; rooms with nothing at all get an empty string. Permalinks in
 // the body render as pills, so a linked message's sender is visible too.
+// The newest actual MESSAGE of a room — pins/state events (the newest
+// entries) must not swallow the preview NOR the timestamp.
+static const matrix::Event* roomLastEvent(db::Database* db,
+                                          const std::string& roomId) {
+    if (!db) return nullptr;
+    auto evs = db->getEvents(roomId, 30);
+    for (const auto& e : evs) {
+        if (e.type == "m.room.message" || e.type == "m.sticker") return &e;
+    }
+    return evs.empty() ? nullptr : &evs.front();
+}
+
 std::string roomLastMsg(db::Database* db, const std::string& roomId,
                         const std::vector<nlohmann::json>& rooms) {
     if (!db) return "";
-    auto evs = db->getEvents(roomId, 30);
-    if (evs.empty()) return "";
+    const matrix::Event* found = roomLastEvent(db, roomId);
+    if (!found) return "";
     // The newest MESSAGE — pins/state events (the newest entries) must not
     // swallow the preview.
-    const matrix::Event* found = &evs.front();
-    for (const auto& e : evs) {
-        if (e.type == "m.room.message" || e.type == "m.sticker") {
-            found = &e;
-            break;
-        }
-    }
     const matrix::Event& ev = *found;
     std::string preview;
     if (ev.type == "m.room.message" || ev.type == "m.sticker") {
