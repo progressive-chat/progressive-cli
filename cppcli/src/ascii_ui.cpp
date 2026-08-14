@@ -4230,7 +4230,16 @@ int cmdAsciiUi(const cli::Args& args) {
                 }
                 std::string k = a.positional[1];
                 std::string v = a.positional[2];
-                if (k == "provider") { dbi.setSetting("agent_provider", v); cfg.provider = v; }
+                if (k == "provider") {
+                    if (agenttools::applyProviderPreset(cfg, v)) {
+                        dbi.setSetting("agent_provider", cfg.provider);
+                        dbi.setSetting("agent_endpoint", cfg.endpoint);
+                        dbi.setSetting("agent_model", cfg.model);
+                    } else {
+                        dbi.setSetting("agent_provider", v);
+                        cfg.provider = v;
+                    }
+                }
                 else if (k == "endpoint") { dbi.setSetting("agent_endpoint", v); cfg.endpoint = v; }
                 else if (k == "model") { dbi.setSetting("agent_model", v); cfg.model = v; }
                 else if (k == "key") { dbi.setSetting("agent_key", v); cfg.key = v; }
@@ -4504,6 +4513,47 @@ int cmdAsciiUi(const cli::Args& args) {
                 } else {
                     std::cout << "Usage: agent cron add <spec> <prompt> |"
                                  " list | remove <id> | check" << std::endl;
+                }
+                continue;
+            }
+            if (!a.positional.empty() && a.positional[0] == "usage") {
+                std::cout << "  " << agenttools::agentUsageLine() << std::endl;
+                continue;
+            }
+            if (!a.positional.empty() && a.positional[0] == "providers") {
+                for (const auto& p : agenttools::providerPresets()) {
+                    std::cout << "  " << p.name << "  →  " << p.provider
+                              << " " << p.endpoint << " / " << p.model
+                              << std::endl;
+                }
+                std::cout << "  (agent config provider <name> applies one)"
+                          << std::endl;
+                continue;
+            }
+            if (!a.positional.empty() && a.positional[0] == "reasoning") {
+                std::string v = a.positional.size() >= 2 ? a.positional[1] : "";
+                if (v != "low" && v != "medium" && v != "high") {
+                    std::cout << "Usage: agent reasoning low|medium|high"
+                              << std::endl;
+                    continue;
+                }
+                cfg.reasoning = v;
+                agenttools::saveAgentConfig(cfg);
+                st.statusNote = "reasoning: " + v;
+                continue;
+            }
+            if (!a.positional.empty() && a.positional[0] == "skills") {
+                glob_t g{};
+                std::string dir = ".agent-skills";
+                mkdir(dir.c_str(), 0755);
+                if (glob((dir + "/*.md").c_str(), 0, nullptr, &g) == 0) {
+                    for (size_t i = 0; i < g.gl_pathc; ++i) {
+                        std::cout << "  " << g.gl_pathv[i] << std::endl;
+                    }
+                    globfree(&g);
+                } else {
+                    std::cout << "  (no skills yet — the agent can create"
+                                 " .agent-skills/<name>.md files)" << std::endl;
                 }
                 continue;
             }
