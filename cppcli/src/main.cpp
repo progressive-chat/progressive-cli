@@ -18,6 +18,7 @@
 #include <simdjson.h>
 #include "globals.hpp"
 #include "pcore.hpp"
+#include "agent_tools.hpp"
 #include "ascii_ui.hpp"
 #include "core/crash_handler.hpp"
 #include "server/server.hpp"
@@ -3281,6 +3282,47 @@ int cmdTUI(const matrixcli::cli::Args& args) {
                             std::vector<std::string> answers(parts.begin() + 1, parts.end());
                             try { client.sendPoll(roomId, question, answers); } catch (...) {}
                         }
+                    }
+                } else if (cmd == "agent") {
+                    // The coding agent in the TUI: the run in a background
+                    // thread, the progress + the answer land in the chat.
+                    std::string prompt = args;
+                    std::string roomId = chat.activeRoomId();
+                    if (roomId.empty()) roomId = "!agent:demo.local";
+                    static std::atomic<bool> agentBusy{false};
+                    if (agentBusy.exchange(true)) {
+                        chat.setConnectionStatus("agent busy — wait or Esc");
+                        agentBusy = false;
+                    } else {
+                        chat.setConnectionStatus("agent running: "
+                                                 + prompt.substr(0, 30) + "...");
+                        std::thread([&, prompt, roomId]() {
+                            agenttools::Config cfg;
+                            agenttools::loadAgentConfig(cfg);
+                            if (cfg.key.empty()) {
+                                const char* env = cfg.provider == "anthropic"
+                                    ? std::getenv("ANTHROPIC_API_KEY")
+                                    : std::getenv("OPENAI_API_KEY");
+                                if (env && *env) cfg.key = env;
+                            }
+                            std::vector<agenttools::Message> hist;
+                            agenttools::Result res = agenttools::run(
+                                cfg, prompt, hist, nullptr, nullptr,
+                                [&](const std::string& l) {
+                                    tui::MessageInfo mi;
+                                    mi.sender = "@agent";
+                                    mi.body = l;
+                                    chat.addMessage(roomId, mi);
+                                },
+                                nullptr);
+                            tui::MessageInfo mi;
+                            mi.sender = "@agent";
+                            mi.body = res.ok ? res.text
+                                             : "[agent error] " + res.error;
+                            chat.addMessage(roomId, mi);
+                            chat.setConnectionStatus("agent done");
+                            agentBusy = false;
+                        }).detach();
                     }
                 } else if (cmd == "shrug") {
                     std::string roomId = chat.activeRoomId();
