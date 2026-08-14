@@ -147,6 +147,9 @@ std::string executeTool(const Config& cfg, const std::string& name,
                         const std::function<void(const std::string&)>& log,
                         int depth = 0);
 
+// The current todo list (the todowrite tool state).
+std::vector<std::pair<std::string, std::string>> agentTodos();
+
 // Session persistence: the history to/from a JSON file.
 void saveSession(const std::string& path, const std::vector<Message>& history);
 bool loadSession(const std::string& path, std::vector<Message>& history);

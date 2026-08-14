@@ -770,6 +770,10 @@ Message parseAnthropicResponse(const json& resp) {
 
 } // namespace
 
+std::vector<std::pair<std::string, std::string>> agentTodos() {
+    return g_todos;
+}
+
 // ---- the notes (the hermes MEMORY.md / USER.md) ----
 
 static std::vector<std::string> splitEntries(const std::string& s) {

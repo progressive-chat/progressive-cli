@@ -1995,6 +1995,17 @@ std::string drawFrame(const UiState& st) {
         agenttools::loadSession(".agent-sessions/last.json", hist);
         agenttools::GoalState goal;
         agenttools::loadGoal(".agent-goal.json", goal);
+        {
+            // The current model + provider always visible here.
+            agenttools::Config acfg;
+            agenttools::loadAgentConfig(acfg);
+            rightRows.push_back("[1m" + acfg.provider + " / "
+                                + acfg.model + "[0m");
+        }
+        for (const auto& [stt, content] : agenttools::agentTodos()) {
+            rightRows.push_back((stt == "in_progress" ? "→ " :
+                                 stt == "completed" ? "✓ " : "· ") + content);
+        }
         if (!goal.goal.empty()) {
             rightRows.push_back(clip("goal: " + goal.goal, rightW - 1));
             for (const auto& sg : goal.subgoals) {
