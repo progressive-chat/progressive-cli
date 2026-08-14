@@ -2476,6 +2476,7 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
     // unique per room — no two rooms share the same last message.
     {
         struct { const char* room; const char* sender; const char* body; } fresh[] = {
+            {"!general:demo.local", "@bob", "Markdown demo: **bold text**, *italic*, `inline code`, and a link https://matrix.org\n\n- first bullet\n- second bullet\n\n```cpp\n#include <iostream>\n\nint main() {\n    // a highlighted comment\n    const char* s = \"hello markdown\";\n    std::cout << s << std::endl;\n    return 0;\n}\n```"},
             {"!general:demo.local", "@bob", "The maintainers dropped fresh links in this room."},
             {"!dev:demo.local", "@dave", "We is discussing a few thoughts in this room."},
             {"!random:demo.local", "@grace", "The team keeps sharing fresh links in this room."},

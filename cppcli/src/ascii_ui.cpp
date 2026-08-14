@@ -210,6 +210,13 @@ std::vector<std::string> wrapText(const std::string& s, int width) {
             continue;
         }
         if (c == ' ' || c == '\n') {
+            if (c == ' ' && cur.empty()) {
+                // The leading spaces of a line (the code indentation)
+                // ride with the first word.
+                word += ' ';
+                i++;
+                continue;
+            }
             flushWord();
             if (c == '\n') {
                 // No empty rows from double newlines (\n\n in quoted
@@ -576,7 +583,9 @@ std::string roomLastMsg(db::Database* db, const std::string& roomId,
     std::string preview;
     if (ev.type == "m.room.message" || ev.type == "m.sticker") {
         std::string body = eventBody(ev);
-        std::string mt = ev.content.value("msgtype", "");
+        std::string mt;
+        auto mtIt = ev.content.find("msgtype");
+        if (mtIt != ev.content.end() && mtIt->is_string()) mt = mtIt->get<std::string>();
         if (mt == "m.file") preview = "📄 " + body;
         else if (mt == "m.audio") preview = "🎵 " + body;
         else if (mt == "m.image") preview = "🖼 " + body;
@@ -1123,6 +1132,157 @@ std::string chatName(const UiState& st, const std::string& roomId,
     return nm;
 }
 
+// ---- the source highlighter + the minimal markdown ----
+
+static const std::unordered_set<std::string>& cppKeywords() {
+    static const std::unordered_set<std::string> kw = {
+        "alignas","alignof","and","asm","auto","bool","break","case","catch",
+        "char","class","concept","const","constexpr","consteval","constinit",
+        "continue","co_await","co_return","co_yield","decltype","default",
+        "delete","do","double","dynamic_cast","else","enum","explicit",
+        "export","extern","false","float","for","friend","goto","if","inline",
+        "int","long","mutable","namespace","new","noexcept","nullptr",
+        "operator","or","private","protected","public","register",
+        "reinterpret_cast","requires","return","short","signed","sizeof",
+        "static","static_assert","static_cast","struct","switch","template",
+        "this","thread_local","throw","true","try","typedef","typeid",
+        "typename","union","unsigned","using","virtual","void","volatile",
+        "wchar_t","while","xor","and_eq","bitand","bitor","compl","not",
+        "not_eq","or_eq","xor_eq","include","define","ifdef","ifndef",
+        "endif","pragma","elif","undef","error","warning","elifdef",
+        "elifndef","override","final","nullptr_t","std",
+    };
+    return kw;
+}
+
+std::string highlightCodeLine(const std::string& line, bool cFamily) {
+    std::string out;
+    size_t i = 0;
+    while (i < line.size()) {
+        char c = line[i];
+        if (cFamily && c == '#' &&
+            (i == 0 || line[i - 1] == ' ' || line[i - 1] == '\t')) {
+            out += "\x1b[33m" + line.substr(i) + "\x1b[0m";
+            break;
+        }
+        if (c == '/' && i + 1 < line.size() && line[i + 1] == '/') {
+            out += "\x1b[90m" + line.substr(i) + "\x1b[0m";
+            break;
+        }
+        if (c == '/' && i + 1 < line.size() && line[i + 1] == '*') {
+            auto end = line.find("*/", i + 2);
+            size_t e = end == std::string::npos ? line.size() : end + 2;
+            out += "\x1b[90m" + line.substr(i, e - i) + "\x1b[0m";
+            i = e;
+            continue;
+        }
+        if (c == '"' || c == '\'') {
+            char q = c;
+            size_t j = i + 1;
+            while (j < line.size() && line[j] != q) {
+                if (line[j] == '\\') j++;
+                j++;
+            }
+            if (j < line.size()) j++;
+            out += "\x1b[32m" + line.substr(i, j - i) + "\x1b[0m";
+            i = j;
+            continue;
+        }
+        if (std::isdigit(static_cast<unsigned char>(c))) {
+            size_t j = i;
+            while (j < line.size() &&
+                   (std::isalnum(static_cast<unsigned char>(line[j])) ||
+                    line[j] == '.' || line[j] == '_')) j++;
+            out += "\x1b[36m" + line.substr(i, j - i) + "\x1b[0m";
+            i = j;
+            continue;
+        }
+        if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') {
+            size_t j = i;
+            while (j < line.size() &&
+                   (std::isalnum(static_cast<unsigned char>(line[j])) ||
+                    line[j] == '_')) j++;
+            std::string w = line.substr(i, j - i);
+            if (cFamily && cppKeywords().count(w)) {
+                out += "\x1b[35m" + w + "\x1b[0m";
+            } else {
+                out += w;
+            }
+            i = j;
+            continue;
+        }
+        out += c;
+        i++;
+    }
+    return out;
+}
+
+std::string renderMarkdownBody(const std::string& body) {
+    std::string out;
+    // The inline decorations (the `code` and **bold**) on the non-code
+    // text; the fenced blocks get the per-line highlighting.
+    auto inlineMd = [](const std::string& t) -> std::string {
+        std::string r;
+        size_t i = 0;
+        while (i < t.size()) {
+            if (t[i] == '`') {
+                auto end = t.find('`', i + 1);
+                if (end != std::string::npos) {
+                    r += "\x1b[36m" + t.substr(i + 1, end - i - 1)
+                       + "\x1b[0m";
+                    i = end + 1;
+                    continue;
+                }
+            }
+            if (t[i] == '*' && i + 1 < t.size() && t[i + 1] == '*') {
+                auto end = t.find("**", i + 2);
+                if (end != std::string::npos) {
+                    r += "\x1b[1m" + t.substr(i + 2, end - i - 2)
+                       + "\x1b[0m";
+                    i = end + 2;
+                    continue;
+                }
+            }
+            r += t[i];
+            i++;
+        }
+        return r;
+    };
+    size_t i = 0;
+    while (i < body.size()) {
+        auto fence = body.find("```", i);
+        if (fence == std::string::npos) {
+            out += inlineMd(body.substr(i));
+            break;
+        }
+        out += inlineMd(body.substr(i, fence - i));
+        auto nl = body.find('\n', fence);
+        std::string lang;
+        if (nl != std::string::npos) lang = body.substr(fence + 3, nl - fence - 3);
+        auto start = nl == std::string::npos ? fence + 3 : nl + 1;
+        auto end = body.find("```", start);
+        if (end == std::string::npos) {
+            out += body.substr(fence);
+            break;
+        }
+        std::string code = body.substr(start, end - start);
+        bool cFamily = lang == "cpp" || lang == "c++" || lang == "cxx" ||
+                       lang == "cc" || lang == "c" || lang == "h" ||
+                       lang == "hpp" || lang == "cpp26" || lang == "c++26";
+        std::istringstream ls(code);
+        std::string line;
+        bool first = true;
+        while (std::getline(ls, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (!first) out += "\n";
+            out += highlightCodeLine(line, cFamily);
+            first = false;
+        }
+        i = end + 3;
+    }
+    return out;
+}
+
 // The "[nick] " tag with the custom color applied, for chat rows.
 std::string senderTag(const UiState& st, const std::string& roomId,
                       const std::string& sender) {
@@ -1568,8 +1728,10 @@ std::string drawFrame(const UiState& st) {
                 center = senderTag(st, st.currentRoomId, ev.sender)
                        + (st.showLinks
                               ? highlightUrls(renderPermalinks(
-                                    highlightMentions(body), st.rooms, st.db))
-                              : highlightMentions(body));
+                                    highlightMentions(
+                                        renderMarkdownBody(body)),
+                                    st.rooms, st.db))
+                              : highlightMentions(renderMarkdownBody(body)));
                 int rc = 0;
                 for (const auto& ev2 : st.messages) {
                     if (eventThreadRoot(ev2) == ev.event_id) rc++;
