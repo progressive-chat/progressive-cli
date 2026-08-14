@@ -144,6 +144,15 @@ std::string toolSchemasJson() {
            "Load a skill file (.agent-skills/<name>.md) into the context "
            "and return its content.",
            {{"name", {{"type", "string"}}}}, {"name"});
+    schema("lsp",
+           "Query the language server (clangd): hover (the type/signature "
+           "at a position) or definition (where a symbol is declared).",
+           {{"operation", {{"type", "string"},
+                           {"enum", {"hover", "definition"}}}},
+            {"path", {{"type", "string"}}},
+            {"line", {{"type", "integer"}}},
+            {"character", {{"type", "integer"}}}},
+           {"operation", "path", "line", "character"});
     schema("memory",
            "Manage the agent's memory files (persist across sessions in "
            ".agent-memory/). Actions: list, read, create, edit (an exact "
@@ -809,6 +818,20 @@ bool applyProviderPreset(Config& cfg, const std::string& name) {
     return false;
 }
 
+static int contextSizeFor(const std::string& model) {
+    if (model.find("claude-3-5") != std::string::npos ||
+        model.find("claude-3-7") != std::string::npos ||
+        model.find("claude-3-opus") != std::string::npos ||
+        model.find("o3") != std::string::npos || model.find("o4") != std::string::npos)
+        return 200000;
+    if (model.find("gpt-4") != std::string::npos) return 128000;
+    if (model.find("deepseek") != std::string::npos) return 64000;
+    if (model.find("llama") != std::string::npos) return 128000;
+    if (model.find("qwen") != std::string::npos) return 32000;
+    if (model.find("claude") != std::string::npos) return 200000;
+    return 128000;
+}
+
 static double pricePerM(const std::string& model, bool output) {
     if (model.find("gpt-4o-mini") != std::string::npos) return output ? 0.60 : 0.15;
     if (model.find("gpt-4o") != std::string::npos) return output ? 10.0 : 2.5;
@@ -851,6 +874,12 @@ std::string agentUsageLine() {
     double outP = pricePerM(g_lastModel, true);
     std::ostringstream ss;
     ss << g_inTokens << " in / " << g_outTokens << " out tokens";
+    // The % of the context window (the rough chars/4 estimate).
+    int ctx = contextSizeFor(g_lastModel);
+    double used = static_cast<double>(g_inTokens + g_outTokens);
+    ss << " · " << std::fixed << std::setprecision(1)
+       << (ctx > 0 ? used * 100.0 / ctx : 0.0) << "% of the "
+       << ctx / 1000 << "k context";
     if (inP >= 0) {
         double cost = inM * inP + outM * outP;
         ss << " · $" << std::fixed << std::setprecision(3) << cost;
@@ -858,6 +887,169 @@ std::string agentUsageLine() {
         ss << " · price unknown";
     }
     return ss.str();
+}
+
+int undoLastTurns(std::vector<Message>& history, int n) {
+    if (n < 1) n = 1;
+    int userSeen = 0;
+    int cut = static_cast<int>(history.size());
+    for (int i = static_cast<int>(history.size()) - 1; i >= 0; --i) {
+        if (history[static_cast<size_t>(i)].role == "user") {
+            if (++userSeen >= n) { cut = i; break; }
+        }
+    }
+    if (userSeen < n) cut = 0;
+    int removed = static_cast<int>(history.size()) - cut;
+    if (cut < static_cast<int>(history.size())) {
+        history.resize(static_cast<size_t>(cut));
+    }
+    return removed;
+}
+
+// ---- the LSP client (the clangd via the Content-Length framing) ----
+
+struct LspConn {
+    FILE* f = nullptr;
+    int nextId = 1;
+    std::string root;
+
+    bool start(const std::string& cmd) {
+        f = popen(cmd.c_str(), "r+");
+        if (!f) return false;
+        json init = {{"jsonrpc", "2.0"}, {"id", nextId++}, {"method", "initialize"},
+                     {"params",
+                      {{"processId", static_cast<int>(getpid())},
+                       {"rootUri", "file://" + root},
+                       {"capabilities", json::object()},
+                       {"workspaceFolders",
+                        json::array({{{"uri", "file://" + root}, {"name", "root"}}})}}}};
+        json resp = rpc(init);
+        if (!resp.contains("result")) return false;
+        notify({"jsonrpc", "2.0"}, "initialized", json::object());
+        return true;
+    }
+
+    bool notify(const json& base, const std::string& method,
+                const json& params) {
+        json n = base;
+        n["method"] = method;
+        n["params"] = params;
+        std::string body = n.dump();
+        std::string framed = "Content-Length: " + std::to_string(body.size())
+                           + "\r\n\r\n" + body;
+        if (!f || fwrite(framed.data(), 1, framed.size(), f) != framed.size()) {
+            return false;
+        }
+        fflush(f);
+        return true;
+    }
+
+    json rpc(const json& req) {
+        std::string body = req.dump();
+        std::string framed = "Content-Length: " + std::to_string(body.size())
+                           + "\r\n\r\n" + body;
+        if (!f || fwrite(framed.data(), 1, framed.size(), f) != framed.size()) {
+            return json();
+        }
+        fflush(f);
+        // Read one framed response.
+        char buf[65536];
+        std::string acc;
+        while (fgets(buf, sizeof(buf), f)) {
+            acc += buf;
+            auto hdrEnd = acc.find("\r\n\r\n");
+            if (hdrEnd == std::string::npos) continue;
+            auto cl = acc.find("Content-Length:");
+            if (cl == std::string::npos) continue;
+            int len = std::atoi(acc.c_str() + cl + 15);
+            size_t bodyStart = hdrEnd + 4;
+            while (acc.size() < bodyStart + static_cast<size_t>(len)) {
+                if (!fgets(buf, sizeof(buf), f)) return json();
+                acc += buf;
+            }
+            try {
+                return json::parse(acc.substr(bodyStart,
+                                              static_cast<size_t>(len)));
+            } catch (...) {
+                return json();
+            }
+        }
+        return json();
+    }
+
+    ~LspConn() {
+        if (f) pclose(f);
+    }
+};
+
+static std::string lspQuery(const Config& cfg, const std::string& operation,
+                            const std::string& path, int line, int character);
+
+std::string lspQueryPublic(const Config& cfg, const std::string& operation,
+                           const std::string& path, int line, int character) {
+    return lspQuery(cfg, operation, path, line, character);
+}
+
+static std::string lspQuery(const Config& cfg, const std::string& operation,
+                            const std::string& path, int line, int character) {
+    if (path.empty()) return "error: the path is required";
+    char cwd[4096];
+    if (!getcwd(cwd, sizeof(cwd))) return "error: getcwd failed";
+    std::string abs = path;
+    if (abs[0] != '/') abs = std::string(cwd) + "/" + abs;
+    LspConn conn;
+    conn.root = cwd;
+    std::string cmd = "clangd --background-index=0 --limit-results=5";
+    if (!conn.start(cmd)) {
+        return "error: clangd is not available (install clangd for the LSP)";
+    }
+    std::string uri = "file://" + abs;
+    json req = {{"jsonrpc", "2.0"}, {"id", conn.nextId++},
+                {"method", "textDocument/" + operation},
+                {"params",
+                 {{"textDocument", {{"uri", uri}}},
+                  {"position",
+                   {{"line", std::max(0, line - 1)},
+                    {"character", std::max(0, character - 1)}}}}}};
+    json resp = conn.rpc(req);
+    if (!resp.contains("result") || resp["result"].is_null()) {
+        return "(no result from the language server)";
+    }
+    if (operation == "hover") {
+        json contents = resp["result"].value("contents", json());
+        std::string text;
+        if (contents.is_string()) {
+            text = contents.get<std::string>();
+        } else if (contents.is_object() && contents.contains("value")) {
+            text = contents["value"].get<std::string>();
+        } else if (contents.is_array() && !contents.empty()) {
+            text = contents[0].dump();
+        }
+        // Strip the markdown a bit for the terminal.
+        std::string out;
+        bool inCode = false;
+        for (size_t i = 0; i < text.size(); ++i) {
+            if (text[i] == '`') { inCode = !inCode; continue; }
+            if (!inCode && (text[i] == '*' || text[i] == '#')) continue;
+            out += text[i];
+        }
+        return out.empty() ? "(no hover info)" : out;
+    }
+    if (operation == "definition") {
+        json res = resp["result"];
+        json loc = res.is_array() && !res.empty() ? res[0] : res;
+        std::string tUri = loc.value("uri", "");
+        int ln = loc.value("range", json::object())
+                     .value("start", json::object())
+                     .value("line", 0);
+        int ch = loc.value("range", json::object())
+                     .value("start", json::object())
+                     .value("character", 0);
+        std::string where = tUri;
+        if (where.rfind("file://", 0) == 0) where = where.substr(7);
+        return where + ":" + std::to_string(ln + 1) + ":" + std::to_string(ch + 1);
+    }
+    return "(unsupported operation)";
 }
 
 std::vector<std::pair<std::string, std::string>> agentTodos() {
@@ -1555,6 +1747,10 @@ std::string executeTool(const Config& cfg, const std::string& name,
     if (name == "memory") return memoryTool(argsJson);
     if (name == "notes") return notesTool(argsJson);
     if (name == "search_sessions") return searchSessions(str("query"));
+    if (name == "lsp") {
+        return lspQuery(cfg, str("operation"), str("path"), i64("line", 1),
+                        i64("character", 1));
+    }
     if (name == "skill") {
         std::string sn = str("name");
         if (sn.empty()) return "error: the skill name is required";
@@ -1994,6 +2190,12 @@ Result run(const Config& cfg, const std::string& prompt,
                 repeat = 1;
             }
             if (log) log("[agent] tool: " + c.name + " " + c.args);
+            if (c.name == "shell" && log) {
+                try {
+                    log("[agent] ⚙ running: "
+                        + nlohmann::json::parse(c.args).value("command", ""));
+                } catch (...) {}
+            }
             std::string out = executeTool(cfg, c.name, c.args,
                                           verdictConfirm, ask, log, 0);
             history.push_back({"tool", out, {}, c.id, c.name});

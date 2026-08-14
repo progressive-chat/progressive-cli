@@ -48,6 +48,10 @@ std::string agentConfigPath();
 bool loadAgentConfig(Config& cfg);
 void saveAgentConfig(const Config& cfg);
 
+// The LSP query (the clangd): hover or definition at a position.
+std::string lspQueryPublic(const Config& cfg, const std::string& operation,
+                           const std::string& path, int line, int character);
+
 // The goal judge: the deterministic gates first, then the LLM verdict.
 // Returns the human-readable judgement (or the error).
 std::string judgeGoal(const Config& cfg, const GoalState& goal,
@@ -161,6 +165,10 @@ std::string executeTool(const Config& cfg, const std::string& name,
                         const std::function<std::string(const std::string&)>& ask,
                         const std::function<void(const std::string&)>& log,
                         int depth = 0);
+
+// Undo the last N user turns (the codex rewind): removes the user
+// message and everything after it. Returns the number removed.
+int undoLastTurns(std::vector<Message>& history, int n);
 
 // The current todo list (the todowrite tool state).
 std::vector<std::pair<std::string, std::string>> agentTodos();

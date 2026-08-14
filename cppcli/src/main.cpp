@@ -3129,7 +3129,12 @@ int cmdTUI(const matrixcli::cli::Args& args) {
             dbi.saveAccount(sacc);
 
             tui::ChatView chat;
-            chat.setStatus("Connected as " + sacc.user_id);
+            {
+                char cwdBuf[4096];
+                std::string cwd = getcwd(cwdBuf, sizeof(cwdBuf))
+                                      ? cwdBuf : std::string(".");
+                chat.setStatus("Connected as " + sacc.user_id + " · " + cwd);
+            }
             chat.setConnectionStatus(demoMode ? "demo (offline)" : "online");
 
             // Load TUI config

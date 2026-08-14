@@ -2241,6 +2241,15 @@ std::string drawFrame(const UiState& st) {
             rightRows.push_back("[1m" + acfg.provider + " / "
                                 + acfg.model + "[0m");
         }
+        {
+            std::ifstream tf(".agent-sessions/last.title");
+            if (tf) {
+                std::ostringstream tss;
+                tss << tf.rdbuf();
+                std::string title = tss.str();
+                if (!title.empty()) rightRows.push_back(title);
+            }
+        }
         for (const auto& [stt, content] : agenttools::agentTodos()) {
             rightRows.push_back((stt == "in_progress" ? "→ " :
                                  stt == "completed" ? "✓ " : "· ") + content);
@@ -4325,6 +4334,55 @@ int cmdAsciiUi(const cli::Args& args) {
                               + a.positional[2] + " " + act;
                 continue;
             }
+            if (!a.positional.empty() && a.positional[0] == "sessions") {
+                // The named sessions = the ASCII tabs: switch between
+                // the independent agent conversations.
+                std::string act = a.positional.size() >= 2 ? a.positional[1] : "";
+                static std::string activeName;   // "" = the main history
+                if (act == "new" && a.positional.size() >= 3) {
+                    activeName = a.positional[2];
+                    std::vector<agenttools::Message> fresh;
+                    agenttools::saveSession(".agent-sessions/session-"
+                                            + activeName + ".json", fresh);
+                    st.statusNote = "session: " + activeName;
+                } else if (act == "switch" && a.positional.size() >= 3) {
+                    // Save the current one, load the target.
+                    if (!activeName.empty()) {
+                        agenttools::saveSession(".agent-sessions/session-"
+                                                + activeName + ".json",
+                                                agentHistory);
+                    }
+                    activeName = a.positional[2];
+                    agentHistory.clear();
+                    agenttools::loadSession(".agent-sessions/session-"
+                                            + activeName + ".json",
+                                            agentHistory);
+                    st.statusNote = "session: " + activeName;
+                } else if (act == "list" || act.empty()) {
+                    glob_t g{};
+                    if (glob(".agent-sessions/session-*.json", 0, nullptr, &g) == 0) {
+                        for (size_t i = 0; i < g.gl_pathc; ++i) {
+                            std::string p = g.gl_pathv[i];
+                            auto a = p.find("session-");
+                            auto b = p.rfind(".json");
+                            std::string nm = p.substr(a + 8,
+                                                      b == std::string::npos
+                                                          ? std::string::npos
+                                                          : b - a - 8);
+                            std::cout << (nm == activeName ? "  * " : "    ")
+                                      << nm << std::endl;
+                        }
+                        globfree(&g);
+                    } else {
+                        std::cout << "  (no sessions — 'agent sessions new <name>')"
+                                  << std::endl;
+                    }
+                } else {
+                    std::cout << "Usage: agent sessions new|switch|list [name]"
+                              << std::endl;
+                }
+                continue;
+            }
             if (!a.positional.empty() && a.positional[0] == "session") {
                 // agent session save|load|list [name]
                 std::string act = a.positional.size() >= 2 ? a.positional[1] : "";
@@ -4514,6 +4572,117 @@ int cmdAsciiUi(const cli::Args& args) {
                     std::cout << "Usage: agent cron add <spec> <prompt> |"
                                  " list | remove <id> | check" << std::endl;
                 }
+                continue;
+            }
+            if (!a.positional.empty() && a.positional[0] == "undo") {
+                int n = 1;
+                if (a.positional.size() >= 2) {
+                    try { n = std::stoi(a.positional[1]); } catch (...) {}
+                }
+                int removed = agenttools::undoLastTurns(agentHistory, n);
+                st.statusNote = "undo: removed " + std::to_string(removed)
+                              + " messages";
+                continue;
+            }
+            if (!a.positional.empty() && a.positional[0] == "edit") {
+                // agent edit [N] <text> — replace the Nth user message
+                // (the last by default) and drop everything after it.
+                int n = 0;
+                size_t from = 1;
+                if (a.positional.size() >= 2 &&
+                    std::isdigit(static_cast<unsigned char>(a.positional[1][0]))) {
+                    try {
+                        n = std::stoi(a.positional[1]);
+                        from = 2;
+                    } catch (...) {
+                        from = 1;
+                    }
+                }
+                std::string text;
+                for (size_t i = from; i < a.positional.size(); ++i) {
+                    text += (text.empty() ? "" : " ") + a.positional[i];
+                }
+                if (text.empty()) {
+                    std::cout << "Usage: agent edit [N] <new text>" << std::endl;
+                    continue;
+                }
+                int userSeen = 0;
+                int target = -1;
+                for (int i = static_cast<int>(agentHistory.size()) - 1; i >= 0; --i) {
+                    if (agentHistory[static_cast<size_t>(i)].role == "user") {
+                        if (++userSeen >= (n == 0 ? 1 : n)) { target = i; break; }
+                    }
+                }
+                if (target < 0) {
+                    st.statusNote = "no user message to edit";
+                    continue;
+                }
+                agentHistory.resize(static_cast<size_t>(target + 1));
+                agentHistory[static_cast<size_t>(target)].content = text;
+                st.statusNote = "edited — the last answer is dropped";
+                continue;
+            }
+            if (!a.positional.empty() && a.positional[0] == "title") {
+                if (cfg.key.empty()) {
+                    std::cout << "no API key — the title needs the LLM"
+                              << std::endl;
+                    continue;
+                }
+                std::vector<agenttools::Message> tHist;
+                for (const auto& m : agentHistory) {
+                    if (!m.content.empty() && m.role != "tool") {
+                        tHist.push_back({m.role, m.content.substr(0, 300),
+                                         {}, "", ""});
+                    }
+                }
+                tHist.push_back({"user",
+                                 "Generate a short title (3-5 words, no quotes) "
+                                 "for this conversation.", {}, "", ""});
+                agenttools::Result tr = agenttools::run(
+                    cfg, "name the conversation", tHist, nullptr, nullptr, log,
+                    nullptr);
+                std::string title = tr.ok ? tr.text : "";
+                auto b = title.find_first_not_of(" \"\n");
+                if (b == std::string::npos) b = 0;
+                auto e = title.find_last_not_of(" \"\n");
+                title = title.substr(b, e == std::string::npos
+                                            ? std::string::npos : e - b + 1);
+                if (!title.empty()) {
+                    std::ofstream tf(".agent-sessions/last.title",
+                                     std::ios::trunc);
+                    tf << title;
+                }
+                st.statusNote = "title: " + title;
+                continue;
+            }
+            if (!a.positional.empty() && a.positional[0] == "lsp") {
+                // agent lsp hover|def <file>:<line>:<col>
+                if (a.positional.size() < 3) {
+                    std::cout << "Usage: agent lsp hover|def <file>:<line>:<col>"
+                              << std::endl;
+                    continue;
+                }
+                std::string op = a.positional[1];
+                if (op == "def") op = "definition";
+                std::string spec = a.positional[2];
+                std::string path = spec;
+                int line = 1, col = 1;
+                auto c1 = spec.rfind(':');
+                auto c2 = spec.rfind(':', c1 - 1);
+                if (c1 != std::string::npos && c2 != std::string::npos) {
+                    path = spec.substr(0, c2);
+                    line = std::atoi(spec.c_str() + c2 + 1);
+                    col = std::atoi(spec.c_str() + c1 + 1);
+                } else if (c1 != std::string::npos) {
+                    path = spec.substr(0, c1);
+                    line = std::atoi(spec.c_str() + c1 + 1);
+                }
+                if (op != "hover" && op != "definition") {
+                    std::cout << "the operation must be hover|def" << std::endl;
+                    continue;
+                }
+                std::cout << agenttools::lspQueryPublic(cfg, op, path, line,
+                                                        col) << std::endl;
                 continue;
             }
             if (!a.positional.empty() && a.positional[0] == "usage") {
@@ -4807,6 +4976,37 @@ int cmdAsciiUi(const cli::Args& args) {
             }
             std::string prompt;
             size_t from = 0;
+            auto expandMentions = [](const std::string& in) -> std::string {
+                // The @path mentions insert the file content (truncated).
+                std::string out;
+                size_t i = 0;
+                while (i < in.size()) {
+                    if (in[i] == '@' && (i == 0 || in[i - 1] == ' ')) {
+                        size_t j = i + 1;
+                        while (j < in.size() && !std::isspace(
+                                    static_cast<unsigned char>(in[j]))) j++;
+                        std::string path = in.substr(i + 1, j - i);
+                        std::ifstream f(path, std::ios::binary);
+                        if (f) {
+                            std::ostringstream ss;
+                            ss << f.rdbuf();
+                            std::string body = ss.str();
+                            if (body.size() > 4000) {
+                                body = body.substr(0, 4000) + "\n...(truncated)";
+                            }
+                            out += "\n--- " + path + " ---\n" + body
+                                 + "\n--- end " + path + " ---\n";
+                        } else {
+                            out += "@" + path;
+                        }
+                        i = j;
+                        continue;
+                    }
+                    out += in[i];
+                    i++;
+                }
+                return out;
+            };
             bool planRun = !a.positional.empty() && a.positional[0] == "plan";
             if (planRun) from = 1;
             for (size_t i = from; i < a.positional.size(); ++i) {
@@ -4816,6 +5016,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 std::cout << "Usage: agent plan <prompt>" << std::endl;
                 continue;
             }
+            prompt = expandMentions(prompt);
             if (planRun) {
                 mkdir(".agent-plans", 0755);
                 std::time_t now = std::time(nullptr);
