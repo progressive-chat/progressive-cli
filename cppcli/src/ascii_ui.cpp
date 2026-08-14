@@ -2673,13 +2673,13 @@ int cmdAsciiUi(const cli::Args& args) {
         if (args.options.count("agent-model")) cfg.model = args.options.at("agent-model");
         if (args.options.count("agent-key")) cfg.key = args.options.at("agent-key");
         if (args.options.count("agent-trust")) cfg.trust = args.options.at("agent-trust");
+        if (args.options.count("agent-proxy")) cfg.proxy = args.options.at("agent-proxy");
         if (cfg.key.empty()) {
             const char* env = cfg.provider == "anthropic"
                                   ? std::getenv("ANTHROPIC_API_KEY")
                                   : std::getenv("OPENAI_API_KEY");
             if (env && *env) cfg.key = env;
         }
-        agenttools::loadAgentConfig(cfg);
         if (cfg.model.empty()) {
             cfg.model = cfg.provider == "anthropic"
                             ? "claude-3-5-haiku-20241022" : "gpt-4o-mini";

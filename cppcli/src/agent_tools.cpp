@@ -1,4 +1,5 @@
 #include "agent_tools.hpp"
+#include "globals.hpp"
 
 #include "../lib/http/http.hpp"
 #include "../lib/json/json.hpp"
@@ -1386,6 +1387,9 @@ std::string executeTool(const Config& cfg, const std::string& name,
                    "file, no shell is run yet";
         }
         // The hardline patterns deny even under trust allow / YOLO.
+        if (!matrixcli::g_interrupted.load()) {
+            return "interrupted (Ctrl+C)";
+        }
         if (isDangerousCommand(cmd)) {
             return "hardline block: dangerous command refused — " + cmd;
         }
@@ -1728,6 +1732,10 @@ Result run(const Config& cfg, const std::string& prompt,
                            "(run 'agent resume' to continue)";
             return result;
         }
+        if (!matrixcli::g_interrupted.load()) {
+            result.error = "interrupted (Ctrl+C)";
+            return result;
+        }
         json reqBody;
         http::Request req;
         if (cfg.provider == "anthropic") {
@@ -1775,6 +1783,10 @@ Result run(const Config& cfg, const std::string& prompt,
                         feedOpenAiSse(acc, chunk, onToken);
                     }
                 });
+            if (!matrixcli::g_interrupted.load()) {
+                result.error = "interrupted (Ctrl+C)";
+                return result;
+            }
             if (sresp.ok() && (acc.done || !acc.msg.content.empty() ||
                                !acc.msg.calls.empty())) {
                 assistant = acc.msg;

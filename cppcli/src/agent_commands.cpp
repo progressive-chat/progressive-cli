@@ -443,6 +443,8 @@ static int cmdAgentCode(const cli::Args& args) {
         loadCsv("agent_allow", cfg.allowPrefixes);
         loadCsv("agent_deny", cfg.denyPrefixes);
     }
+    // The config file first, the CLI flags win over it.
+    agenttools::loadAgentConfig(cfg);
     if (args.options.count("provider")) cfg.provider = args.options.at("provider");
     if (args.options.count("endpoint")) cfg.endpoint = args.options.at("endpoint");
     if (args.options.count("model")) cfg.model = args.options.at("model");
@@ -454,7 +456,6 @@ static int cmdAgentCode(const cli::Args& args) {
                               : std::getenv("OPENAI_API_KEY");
         if (env && *env) cfg.key = env;
     }
-    agenttools::loadAgentConfig(cfg);
     if (cfg.model.empty()) {
         cfg.model = cfg.provider == "anthropic" ? "claude-3-5-haiku-20241022"
                                                 : "gpt-4o-mini";
