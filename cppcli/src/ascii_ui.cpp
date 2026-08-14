@@ -1341,6 +1341,7 @@ std::string drawFrame(const UiState& st) {
         const char* rightTitle = st.rightPanel == 2 ? "Thread"
                                  : st.rightPanel == 1 ? "Threads"
                                  : st.rightPanel == 3 ? "All threads"
+                                 : st.rightPanel == 4 ? "Agent"
                                  : "Members";
         out += pad(leftHeader, static_cast<size_t>(leftW)) + PIPE + "|" + X
              + pad(headRoom, static_cast<size_t>(centerW)) + PIPE + "|" + X
@@ -1985,6 +1986,40 @@ std::string drawFrame(const UiState& st) {
             }
         }
         if (rightRows.empty()) rightRows.push_back("(no threads anywhere)");
+    } else if (st.rightPanel == 4) {
+        // The agent activity: the standing goal + the last conversation
+        // (the auto-saved session). The static --right agent re-reads it.
+        std::vector<agenttools::Message> hist;
+        agenttools::loadSession(".agent-sessions/last.json", hist);
+        agenttools::GoalState goal;
+        agenttools::loadGoal(".agent-goal.json", goal);
+        if (!goal.goal.empty()) {
+            rightRows.push_back(clip("goal: " + goal.goal, rightW - 1));
+            for (const auto& sg : goal.subgoals) {
+                rightRows.push_back(clip("  ▸ " + sg, rightW - 1));
+            }
+            rightRows.push_back("----------");
+        }
+        auto pushWrapped = [&](const std::string& line) {
+            auto lines = wrapText(line, std::max(8, rightW - 1));
+            for (size_t li = 0; li < lines.size(); ++li) {
+                rightRows.push_back((li == 0 ? std::string()
+                                             : std::string(2, ' ')) + lines[li]);
+            }
+        };
+        int n = static_cast<int>(hist.size());
+        int shown = 0;
+        for (int i = std::max(0, n - 24); i < n && shown < 24; ++i, ++shown) {
+            const auto& m = hist[static_cast<size_t>(i)];
+            if (m.role == "user") {
+                pushWrapped("▸ " + m.content);
+            } else if (m.role == "assistant") {
+                pushWrapped("◂ " + m.content);
+            } else if (m.role == "tool") {
+                pushWrapped("  · " + m.toolName + " → " + m.content);
+            }
+        }
+        if (rightRows.empty()) rightRows.push_back("(no agent activity yet)");
     }
     // Smartphone mode: the rooms list, the chat and the members become one
     // long stacked stream (section separators between them) — the phone
@@ -2491,6 +2526,8 @@ int cmdAsciiUi(const cli::Args& args) {
         std::string r = args.options.at("right");
         if (r == "threads") {
             st.rightPanel = 3;
+        } else if (r == "agent") {
+            st.rightPanel = 4;
         } else if (r == "list") {
             st.rightPanel = 1;
             st.threadRoomId = st.currentRoomId;
@@ -3828,7 +3865,14 @@ int cmdAsciiUi(const cli::Args& args) {
         // ---- agent <prompt>: the local coding agent (opencode-style) ----
         if (a.command == "agent") {
             static std::vector<agenttools::Message> agentHistory;
+            static bool agentHistoryLoaded = false;
             static std::vector<std::string> agentPromptHistory;
+            if (!agentHistoryLoaded) {
+                // Resume the previous conversation (the auto-saved one).
+                agenttools::loadSession(".agent-sessions/last.json",
+                                        agentHistory);
+                agentHistoryLoaded = true;
+            }
             agenttools::Config cfg;
             cfg.provider = dbi.getSetting("agent_provider", "openai");
             cfg.endpoint = dbi.getSetting("agent_endpoint", "");
@@ -4356,6 +4400,26 @@ int cmdAsciiUi(const cli::Args& args) {
                 }
                 continue;
             }
+            if (!a.positional.empty() && a.positional[0] == "log") {
+                // agent log [N] — the last messages of the conversation.
+                int n = 10;
+                if (a.positional.size() >= 2) {
+                    try { n = std::stoi(a.positional[1]); } catch (...) {}
+                }
+                int start = std::max(0, static_cast<int>(agentHistory.size()) - n);
+                for (int i = start; i < static_cast<int>(agentHistory.size()); ++i) {
+                    const auto& m = agentHistory[static_cast<size_t>(i)];
+                    std::string tag = m.role == "user" ? "user "
+                                    : m.role == "assistant" ? "agent"
+                                    : "tool ";
+                    std::string body = m.content.empty() && !m.calls.empty()
+                                           ? "(tool calls: " +
+                                                 m.calls[0].name + ")"
+                                           : m.content;
+                    std::cout << "  [" << tag << "] " << body << std::endl;
+                }
+                continue;
+            }
             if (!a.positional.empty() && a.positional[0] == "reset") {
                 agentHistory.clear();
                 st.statusNote = "agent history cleared";
@@ -4446,6 +4510,8 @@ int cmdAsciiUi(const cli::Args& args) {
             } else if (!res.streamed) {
                 std::cout << res.text << std::endl;
             }
+            mkdir(".agent-sessions", 0755);
+            agenttools::saveSession(".agent-sessions/last.json", agentHistory);
             continue;
         }
         // ---- reply: send a reply to a message ----
