@@ -2679,6 +2679,7 @@ int cmdAsciiUi(const cli::Args& args) {
                                   : std::getenv("OPENAI_API_KEY");
             if (env && *env) cfg.key = env;
         }
+        agenttools::loadAgentConfig(cfg);
         if (cfg.model.empty()) {
             cfg.model = cfg.provider == "anthropic"
                             ? "claude-3-5-haiku-20241022" : "gpt-4o-mini";
@@ -3925,6 +3926,8 @@ int cmdAsciiUi(const cli::Args& args) {
                 cfg.sandbox = dbi.getSetting("agent_sandbox", "off");
                 cfg.proxy = dbi.getSetting("agent_proxy", "");
                 agenttools::loadGoal(".agent-goal.json", cfg.goal);
+                // The single config file is the source of truth.
+                agenttools::loadAgentConfig(cfg);
             }
             char cwdbuf[4096];
             if (getcwd(cwdbuf, sizeof(cwdbuf))) cfg.cwd = cwdbuf;
@@ -3937,6 +3940,8 @@ int cmdAsciiUi(const cli::Args& args) {
                     continue;
                 }
                 dbi.setSetting("agent_trust", v);
+            cfg.trust = v;
+            agenttools::saveAgentConfig(cfg);
                 st.statusNote = "agent trust: " + v;
                 continue;
             }
@@ -3954,6 +3959,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 for (const auto& p : list) csv += (csv.empty() ? "" : ",") + p;
                 dbi.setSetting(a.positional[0] == "allow" ? "agent_allow"
                                                           : "agent_deny", csv);
+                agenttools::saveAgentConfig(cfg);
                 st.statusNote = std::string("agent ") + a.positional[0] + ": "
                               + a.positional[1];
                 continue;
@@ -3966,15 +3972,16 @@ int cmdAsciiUi(const cli::Args& args) {
                 }
                 std::string k = a.positional[1];
                 std::string v = a.positional[2];
-                if (k == "provider") dbi.setSetting("agent_provider", v);
-                else if (k == "endpoint") dbi.setSetting("agent_endpoint", v);
-                else if (k == "model") dbi.setSetting("agent_model", v);
-                else if (k == "key") dbi.setSetting("agent_key", v);
+                if (k == "provider") { dbi.setSetting("agent_provider", v); cfg.provider = v; }
+                else if (k == "endpoint") { dbi.setSetting("agent_endpoint", v); cfg.endpoint = v; }
+                else if (k == "model") { dbi.setSetting("agent_model", v); cfg.model = v; }
+                else if (k == "key") { dbi.setSetting("agent_key", v); cfg.key = v; }
                 else {
                     std::cout << "agent config: provider|endpoint|model|key" << std::endl;
                     continue;
                 }
                 st.statusNote = "agent " + k + " set";
+                agenttools::saveAgentConfig(cfg);
                 continue;
             }
             auto confirm = [&](const std::string& cmd) -> int {
@@ -4025,6 +4032,7 @@ int cmdAsciiUi(const cli::Args& args) {
                          + "|" + r.action;
                 }
                 dbi.setSetting("agent_rules", csv);
+                agenttools::saveAgentConfig(cfg);
                 st.statusNote = "agent permit: " + a.positional[1] + " "
                               + a.positional[2] + " " + act;
                 continue;
@@ -4222,6 +4230,8 @@ int cmdAsciiUi(const cli::Args& args) {
                 std::string v = a.positional.size() >= 2 ? a.positional[1] : "";
                 if (v == "off") v = "";
                 dbi.setSetting("agent_proxy", v);
+            cfg.proxy = v;
+            agenttools::saveAgentConfig(cfg);
                 st.statusNote = v.empty() ? "agent proxy: off"
                                           : "agent proxy: " + v;
                 continue;
@@ -4233,6 +4243,8 @@ int cmdAsciiUi(const cli::Args& args) {
                     continue;
                 }
                 dbi.setSetting("agent_sandbox", v);
+            cfg.sandbox = v;
+            agenttools::saveAgentConfig(cfg);
                 st.statusNote = "agent sandbox: " + v;
                 continue;
             }
@@ -4255,6 +4267,7 @@ int cmdAsciiUi(const cli::Args& args) {
                         csv += (csv.empty() ? "" : ",") + m.name + "|" + m.command;
                     }
                     dbi.setSetting("agent_mcp", csv);
+                    agenttools::saveAgentConfig(cfg);
                     st.statusNote = "agent mcp: " + a.positional[2] + " added";
                 } else if (act == "del" && a.positional.size() >= 3) {
                     std::vector<agenttools::McpServer> kept;
@@ -4267,6 +4280,7 @@ int cmdAsciiUi(const cli::Args& args) {
                         csv += (csv.empty() ? "" : ",") + m.name + "|" + m.command;
                     }
                     dbi.setSetting("agent_mcp", csv);
+                    agenttools::saveAgentConfig(cfg);
                     st.statusNote = "agent mcp: " + a.positional[2] + " removed";
                 } else {
                     std::cout << "Usage: agent mcp add <name> <command> |"

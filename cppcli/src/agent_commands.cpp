@@ -454,6 +454,7 @@ static int cmdAgentCode(const cli::Args& args) {
                               : std::getenv("OPENAI_API_KEY");
         if (env && *env) cfg.key = env;
     }
+    agenttools::loadAgentConfig(cfg);
     if (cfg.model.empty()) {
         cfg.model = cfg.provider == "anthropic" ? "claude-3-5-haiku-20241022"
                                                 : "gpt-4o-mini";

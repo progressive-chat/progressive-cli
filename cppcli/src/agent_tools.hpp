@@ -41,6 +41,13 @@ struct GoalState {
 void saveGoal(const std::string& path, const GoalState& g);
 bool loadGoal(const std::string& path, GoalState& g);
 
+// The single config location: $XDG_CONFIG_HOME/matrixcli/agent.json
+// (or ~/.config/matrixcli/agent.json). The proxy, the API key and the
+// trust settings live here — one file, chmod 600, DB-independent.
+std::string agentConfigPath();
+bool loadAgentConfig(Config& cfg);
+void saveAgentConfig(const Config& cfg);
+
 // The goal judge: the deterministic gates first, then the LLM verdict.
 // Returns the human-readable judgement (or the error).
 std::string judgeGoal(const Config& cfg, const GoalState& goal,

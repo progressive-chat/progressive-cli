@@ -1134,6 +1134,86 @@ bool loadSession(const std::string& path, std::vector<Message>& history) {
     return true;
 }
 
+// ---- the single agent config file ----
+
+std::string agentConfigPath() {
+    const char* xdg = std::getenv("XDG_CONFIG_HOME");
+    std::string base = xdg && *xdg ? std::string(xdg)
+                                   : std::string(std::getenv("HOME") ? std::getenv("HOME") : ".") + "/.config";
+    return base + "/matrixcli/agent.json";
+}
+
+bool loadAgentConfig(Config& cfg) {
+    std::ifstream f(agentConfigPath());
+    if (!f) return false;
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    json j;
+    try {
+        j = json::parse(ss.str());
+    } catch (...) {
+        return false;
+    }
+    cfg.provider = j.value("provider", cfg.provider);
+    cfg.endpoint = j.value("endpoint", cfg.endpoint);
+    cfg.model = j.value("model", cfg.model);
+    cfg.key = j.value("key", cfg.key);
+    cfg.trust = j.value("trust", cfg.trust);
+    cfg.proxy = j.value("proxy", cfg.proxy);
+    cfg.sandbox = j.value("sandbox", cfg.sandbox);
+    cfg.allowPrefixes.clear();
+    for (const auto& v : j.value("allow", json::array())) {
+        if (v.is_string()) cfg.allowPrefixes.push_back(v.get<std::string>());
+    }
+    cfg.denyPrefixes.clear();
+    for (const auto& v : j.value("deny", json::array())) {
+        if (v.is_string()) cfg.denyPrefixes.push_back(v.get<std::string>());
+    }
+    cfg.rules.clear();
+    for (const auto& v : j.value("rules", json::array())) {
+        cfg.rules.push_back({v.value("tool", ""), v.value("glob", ""),
+                             v.value("action", "")});
+    }
+    cfg.mcpServers.clear();
+    for (const auto& v : j.value("mcp", json::array())) {
+        cfg.mcpServers.push_back({v.value("name", ""), v.value("command", "")});
+    }
+    return true;
+}
+
+void saveAgentConfig(const Config& cfg) {
+    json j = {{"provider", cfg.provider},
+              {"endpoint", cfg.endpoint},
+              {"model", cfg.model},
+              {"key", cfg.key},
+              {"trust", cfg.trust},
+              {"proxy", cfg.proxy},
+              {"sandbox", cfg.sandbox},
+              {"allow", cfg.allowPrefixes},
+              {"deny", cfg.denyPrefixes},
+              {"mcp", json::array()}};
+    json rules = json::array();
+    for (const auto& r : cfg.rules) {
+        rules.push_back({{"tool", r.tool}, {"glob", r.glob},
+                         {"action", r.action}});
+    }
+    j["rules"] = rules;
+    json mcp = json::array();
+    for (const auto& m : cfg.mcpServers) {
+        mcp.push_back({{"name", m.name}, {"command", m.command}});
+    }
+    j["mcp"] = mcp;
+    std::string path = agentConfigPath();
+    auto slash = path.rfind('/');
+    if (slash != std::string::npos) {
+        mkdir(path.substr(0, slash).c_str(), 0700);
+    }
+    std::ofstream f(path, std::ios::trunc);
+    f << j.dump(2);
+    f.close();
+    ::chmod(path.c_str(), 0600);  // the API key lives here
+}
+
 // ---- the standing goal (the hermes /goal + /subgoal) ----
 
 void saveGoal(const std::string& path, const GoalState& g) {
