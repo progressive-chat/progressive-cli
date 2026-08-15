@@ -70,6 +70,14 @@ void signalHandler(int) {
     matrixcli::g_interrupted = false;
 }
 
+// The SAS verification core (defined in e2ee_commands.cpp) — shared by the
+// CLI `verify` command and the TUI /verify slash.
+extern int runSasVerification(const std::string& targetUser,
+                              const std::string& targetDevice,
+                              int timeoutSec, bool autoConfirm,
+                              const std::function<void(const std::string&)>& log,
+                              const std::function<bool()>& confirm);
+
 // The login-screen connection choice (direct/tor/i2p/yggdrasil/custom):
 // applies to the TUI client now, persists into config.json and sets the
 // core's global proxy for every subsequent process.
@@ -3348,6 +3356,11 @@ int cmdTUI(const matrixcli::cli::Args& args) {
                 }).detach();
             };
 
+            // The SAS confirmation flags (shared by /verify, /verify-confirm
+            // and /verify-cancel).
+            std::atomic<bool> sasConfirm{false};
+            std::atomic<bool> sasCancel{false};
+
             chat.setCommandHandler([&](const std::string& cmd, const std::string& args) {
                 if (cmd == "me" || cmd == "emote") {
                     std::string roomId = chat.activeRoomId();
@@ -3436,6 +3449,55 @@ int cmdTUI(const matrixcli::cli::Args& args) {
                                 + " — /receipts on|off");
                         }
                     }
+                } else if (cmd == "verify") {
+                    // /verify <@user:server> <deviceId> — the SAS device
+                    // verification in the chat: the emojis land here, the
+                    // match is confirmed with /verify-confirm (cancelled
+                    // with /verify-cancel). Uses the ecore session (run
+                    // 'matrixcli login' once for the crypto identity).
+                    std::istringstream ss(args);
+                    std::string user, device;
+                    ss >> user >> device;
+                    if (user.empty() || device.empty()) {
+                        chat.setConnectionStatus("usage: /verify <@user:server> <deviceId>");
+                    } else {
+                        sasConfirm = false;
+                        sasCancel = false;
+                        std::string roomId = chat.activeRoomId();
+                        if (roomId.empty()) roomId = "!agent:demo.local";
+                        chat.setConnectionStatus("verifying " + user + "/"
+                                                 + device + " — /verify-confirm | /verify-cancel");
+                        std::thread([&, user, device, roomId]() {
+                            auto post = [&](const std::string& s) {
+                                tui::MessageInfo mi;
+                                mi.sender = "@verify";
+                                mi.is_notice = true;
+                                mi.body = s;
+                                chat.addMessage(roomId, mi);
+                            };
+                            const int rc = runSasVerification(
+                                user, device, 180, false, post,
+                                [&]() -> bool {
+                                    // Wait for the user's /verify-confirm
+                                    // (or the cancel).
+                                    for (int i = 0; i < 1200; i++) {
+                                        if (sasCancel.load()) return false;
+                                        if (sasConfirm.load()) return true;
+                                        usleep(100000);
+                                    }
+                                    return false;
+                                });
+                            post(rc == 0 ? "\u2713 verification done"
+                                         : "verification failed or cancelled");
+                            chat.setConnectionStatus("verification finished");
+                        }).detach();
+                    }
+                } else if (cmd == "verify-confirm") {
+                    sasConfirm = true;
+                    chat.setConnectionStatus("confirmation accepted — sending the MAC");
+                } else if (cmd == "verify-cancel") {
+                    sasCancel = true;
+                    chat.setConnectionStatus("cancellation requested");
                 } else if (cmd == "online") {
                     client.setPresence("online");
                 } else if (cmd == "away") {

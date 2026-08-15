@@ -228,35 +228,23 @@ int cmdSsss(const cli::Args& args) {
 
 // SAS device verification (interactive). Requires the sync loop (to-device
 // events) — started for the duration of the verification.
-int cmdVerify(const cli::Args& args) {
-    if (!pcore::requireSession()) return 1;
-    if (args.positional.empty()) {
-        std::cerr << "Usage: matrixcli verify <@user:server> --device <deviceId> [--confirm] [--timeout s] [--json]" << std::endl;
-        return 1;
-    }
-
+// The SAS verification core — shared by the CLI `verify` command and the
+// TUI `/verify` slash. The progress lines go to `log`, the emoji match is
+// decided by `confirm()` (true = match).
+int runSasVerification(const std::string& targetUser,
+                       const std::string& targetDevice,
+                       int timeoutSec, bool autoConfirm,
+                       const std::function<void(const std::string&)>& log,
+                       const std::function<bool()>& confirm) {
     auto& core = pcore::core();
     auto acct = core.client->account();
-    std::string targetUser = args.positional[0];
-    std::string targetDevice = args.options.count("device") ? args.options.at("device") : "";
-    bool autoConfirm = args.options.count("confirm");
-    bool json_out = args.options.count("json");
-    int timeoutSec = 120;
-    if (args.options.count("timeout")) {
-        try { timeoutSec = std::stoi(args.options.at("timeout")); } catch (...) {}
-    }
-
-    if (targetDevice.empty()) {
-        std::cerr << "Error: --device <deviceId> required" << std::endl;
-        return 1;
-    }
 
     // E2EE init (olm account + device keys + crypto context) — sendOlmToDevice
     // needs ctxHomeserver_/ctxToken_ set by initializeE2EE; without it every
     // verification reply falls back to PLAIN to-device, which Element rejects.
     std::string e2ee_note = pcore::bootstrap();
     if (!e2ee_note.empty()) {
-        std::cerr << "Warning: " << e2ee_note << std::endl;
+        log("Warning: " + e2ee_note);
         return 1;
     }
 
@@ -282,16 +270,15 @@ int cmdVerify(const cli::Args& args) {
         }
     }
     if (!txn) {
-        std::cerr << "Verify failed: could not start the verification transaction" << std::endl;
+        log("Verify failed: could not start the verification transaction");
         pcore::stopSync();
         return 1;
     }
     std::string txnId = txn->transactionId;
     auto& vm = core.sync->verificationManager();
 
-    std::cout << "Verification started with " << targetUser << "/" << targetDevice
-              << " (txn " << txnId.substr(0, 8) << "...) — waiting for the other device..."
-              << std::endl;
+    log("Verification started with " + targetUser + "/" + targetDevice
+        + " (txn " + txnId.substr(0, 8) + "...) — waiting for the other device...");
 
     auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeoutSec);
     bool confirmed = false;
@@ -299,40 +286,37 @@ int cmdVerify(const cli::Args& args) {
 
     while (matrixcli::g_interrupted.load() && std::chrono::steady_clock::now() < deadline) {
         auto* t = vm.findTransaction(txnId);
-        if (!t) { std::cerr << "Verify failed: transaction gone" << std::endl; break; }
+        if (!t) { log("Verify failed: transaction gone"); break; }
 
         if (t->state == progressive::desktop::VerificationState::Cancelled) {
-            std::cerr << "Verification cancelled by the other side ("
-                      << progressive::desktop::cancelCodeToString(
-                             t->cancelCode.value_or(progressive::desktop::CancelCode::Other)) << ")" << std::endl;
+            log("Verification cancelled by the other side ("
+                + progressive::desktop::cancelCodeToString(
+                    t->cancelCode.value_or(progressive::desktop::CancelCode::Other)) + ")");
             break;
         }
-        if (t->state == progressive::desktop::VerificationState::KeyReceived && !confirmed) {
+        auto showEmojis = [&](const char* note) {
             auto emojis = vm.computeEmojis(*t);
-            if (!emojis.empty()) {
-                std::cout << "\nCompare these emojis on both devices:\n";
-                for (auto& e : emojis) {
-                    std::cout << "  " << e.emoji << "  " << e.description << "\n";
-                }
-                std::cout << std::endl;
+            if (emojis.empty()) return;
+            std::string block = std::string("\n") + note + "\n";
+            for (auto& e : emojis) {
+                block += "  " + e.emoji + "  " + e.description + "\n";
             }
+            log(block);
+        };
+        if (t->state == progressive::desktop::VerificationState::KeyReceived && !confirmed) {
+            showEmojis("Compare these emojis on both devices:");
             if (autoConfirm) {
                 confirmed = true;
                 controller.confirmMatch(txnId);
-                std::cout << "Emojis confirmed (--confirm) — sending MAC..." << std::endl;
+                log("Emojis confirmed (--confirm) — sending MAC...");
+            } else if (confirm && confirm()) {
+                confirmed = true;
+                controller.confirmMatch(txnId);
+                log("Emojis match confirmed — sending MAC...");
             } else {
-                std::cout << "Do the emojis match? [y/N]: " << std::flush;
-                std::string answer;
-                std::getline(std::cin, answer);
-                if (answer == "y" || answer == "Y" || answer == "yes" || answer == "YES") {
-                    confirmed = true;
-                    controller.confirmMatch(txnId);
-                    std::cout << "Emojis match confirmed — sending MAC..." << std::endl;
-                } else {
-                    controller.cancelVerification(txnId, "m.user");
-                    std::cerr << "Verification cancelled (emojis don't match)" << std::endl;
-                    break;
-                }
+                controller.cancelVerification(txnId, "m.user");
+                log("Verification cancelled (emojis don't match)");
+                break;
             }
         }
         // The other side may confirm FIRST (--confirm / fast client) — its MAC
@@ -340,44 +324,25 @@ int cmdVerify(const cli::Args& args) {
         // MacReceived the same: show emojis, confirm, send OUR MAC, then the
         // peer's Done (or ours) completes the flow.
         if (t->state == progressive::desktop::VerificationState::MacReceived && !confirmed) {
-            auto emojis = vm.computeEmojis(*t);
-            if (!emojis.empty()) {
-                std::cout << "\nCompare these emojis on both devices (peer already confirmed):\n";
-                for (auto& e : emojis) {
-                    std::cout << "  " << e.emoji << "  " << e.description << "\n";
-                }
-                std::cout << std::endl;
-            }
+            showEmojis("Compare these emojis on both devices (peer already confirmed):");
             if (autoConfirm) {
                 confirmed = true;
                 controller.confirmMatch(txnId);
-                std::cout << "Emojis confirmed (--confirm) — sending MAC..." << std::endl;
+                log("Emojis confirmed (--confirm) — sending MAC...");
+            } else if (confirm && confirm()) {
+                confirmed = true;
+                controller.confirmMatch(txnId);
+                log("Emojis match confirmed — sending MAC...");
             } else {
-                std::cout << "Do the emojis match? [y/N]: " << std::flush;
-                std::string answer;
-                std::getline(std::cin, answer);
-                if (answer == "y" || answer == "Y" || answer == "yes" || answer == "YES") {
-                    confirmed = true;
-                    controller.confirmMatch(txnId);
-                    std::cout << "Emojis match confirmed — sending MAC..." << std::endl;
-                } else {
-                    controller.cancelVerification(txnId, "m.user");
-                    std::cerr << "Verification cancelled (emojis don't match)" << std::endl;
-                    break;
-                }
+                controller.cancelVerification(txnId, "m.user");
+                log("Verification cancelled (emojis don't match)");
+                break;
             }
         }
         if (t->state == progressive::desktop::VerificationState::Done) {
             core.store->saveVerifiedDevice(targetUser, targetDevice);
-            if (json_out) {
-                nlohmann::json j;
-                j["ok"] = true;
-                j["user_id"] = targetUser;
-                j["device_id"] = targetDevice;
-                std::cout << j.dump() << std::endl;
-            } else {
-                std::cout << ANSI_GREEN "\n  ✓ Device verified: " << targetUser << "/" << targetDevice << ANSI_RESET << std::endl;
-            }
+            log(std::string(ANSI_GREEN "\n  ✓ Device verified: ") + targetUser
+                + "/" + targetDevice + ANSI_RESET);
             rc = 0;
             break;
         }
@@ -386,14 +351,59 @@ int cmdVerify(const cli::Args& args) {
 
     if (rc != 0 && !confirmed) {
         if (!matrixcli::g_interrupted.load()) {
-            std::cerr << "Verification interrupted (Ctrl+C)" << std::endl;
+            log("Verification interrupted (Ctrl+C)");
             controller.cancelVerification(txnId, "m.user");
         } else {
-            std::cerr << "Verification timed out after " << timeoutSec << "s" << std::endl;
+            log("Verification timed out after " + std::to_string(timeoutSec) + "s");
             controller.cancelVerification(txnId, "m.timeout");
         }
     }
     pcore::stopSync();
+    return rc;
+}
+
+int cmdVerify(const cli::Args& args) {
+    if (!pcore::requireSession()) return 1;
+    if (args.positional.empty()) {
+        std::cerr << "Usage: matrixcli verify <@user:server> --device <deviceId> [--confirm] [--timeout s] [--json]" << std::endl;
+        return 1;
+    }
+    const std::string targetUser = args.positional[0];
+    const std::string targetDevice =
+        args.options.count("device") ? args.options.at("device") : "";
+    const bool autoConfirm = args.options.count("confirm");
+    const bool jsonOut = args.options.count("json");
+    int timeoutSec = 120;
+    if (args.options.count("timeout")) {
+        try { timeoutSec = std::stoi(args.options.at("timeout")); } catch (...) {}
+    }
+    if (targetDevice.empty()) {
+        std::cerr << "Error: --device <deviceId> required" << std::endl;
+        return 1;
+    }
+
+    // The CLI presentation: the progress on stdout, the emoji match on
+    // the terminal (the JSON mode keeps the final record on stdout).
+    const int rc = runSasVerification(
+        targetUser, targetDevice, timeoutSec, autoConfirm,
+        [jsonOut](const std::string& line) {
+            if (!jsonOut) std::cout << line << std::endl;
+        },
+        [jsonOut]() -> bool {
+            if (jsonOut) return false;  // no TTY: let it fail/time out
+            std::cout << "Do the emojis match? [y/N]: " << std::flush;
+            std::string answer;
+            std::getline(std::cin, answer);
+            return answer == "y" || answer == "Y" || answer == "yes"
+                || answer == "YES";
+        });
+    if (jsonOut) {
+        nlohmann::json j;
+        j["ok"] = rc == 0;
+        j["user_id"] = targetUser;
+        j["device_id"] = targetDevice;
+        std::cout << j.dump() << std::endl;
+    }
     return rc;
 }
 
