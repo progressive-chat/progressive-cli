@@ -25,6 +25,7 @@ struct MessageInfo {
     bool is_notice = false;
     bool is_emote = false;
     std::string reaction;
+    int receipts = 0;        // the users who read up to here (✔ N)
     bool is_highlight = false;
     bool is_edited = false;
     bool is_redacted = false;
@@ -63,6 +64,10 @@ public:
                      const std::string& thread_root = "");
     void addMessage(const std::string& room_id, const MessageInfo& msg);
     void setTypingUsers(const std::string& room_id, const std::vector<std::string>& users);
+
+    // The read-receipt count for one message (the m.receipt events).
+    void setReceipts(const std::string& room_id, const std::string& event_id,
+                     int count);
 
     // Interaction
     void setSendCallback(SendCallback cb) { _sendCb = std::move(cb); }

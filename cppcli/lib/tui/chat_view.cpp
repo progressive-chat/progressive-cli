@@ -39,6 +39,20 @@ void ChatView::setTypingUsers(const std::string& room_id, const std::vector<std:
     _needsRedraw = true;
 }
 
+void ChatView::setReceipts(const std::string& room_id, const std::string& event_id,
+                           int count) {
+    std::lock_guard<std::mutex> lock(_mutex);
+    auto it = _messages.find(room_id);
+    if (it == _messages.end()) return;
+    for (auto& m : it->second) {
+        if (m.event_id == event_id) {
+            m.receipts = count;
+            _needsRedraw = true;
+            return;
+        }
+    }
+}
+
 void ChatView::setMessages(const std::string& room_id, const std::vector<MessageInfo>& msgs,
                             const std::string& thread_root) {
     std::lock_guard<std::mutex> lock(_mutex);
@@ -394,6 +408,7 @@ void ChatView::drawMessages(Screen& screen, int x, int y, int w, int h) {
         else if (msg.is_notice) prefix = "[!] " + msg.sender + ": ";
         else if (msg.is_encrypted) prefix = msg.sender + ": [encrypted] ";
         if (!msg.reaction.empty()) suffix = "  " + msg.reaction;
+        if (msg.receipts > 0) suffix += "  \u2713 " + std::to_string(msg.receipts);
         if (msg.is_highlight) prefix = "★ " + prefix;
         if (msg.is_edited) suffix += " (edited)";
         if (msg.is_thread_root && msg.thread_reply_count > 0) suffix += " [" + std::to_string(msg.thread_reply_count) + " replies]";

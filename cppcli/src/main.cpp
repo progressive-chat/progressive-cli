@@ -4305,9 +4305,19 @@ int cmdTUI(const matrixcli::cli::Args& args) {
                     queueUrlPreview(client, chat, ev.room_id, mi.body);
                 }
 
+                // The read receipts: how many users read up to each event.
+                if (ev.type == "m.receipt" && ev.content.is_object()) {
+                    for (auto& [eventId, receipts] : ev.content.items()) {
+                        if (!receipts.is_object()) continue;
+                        auto mread = receipts.value("m.read", nlohmann::json::object());
+                        if (!mread.is_object()) continue;
+                        int count = 0;
+                        for (auto& [userId, ts] : mread.items()) (void)ts, count++;
+                        if (count > 0) chat.setReceipts(ev.room_id, eventId, count);
+                    }
+                }
                 // Redactions
-                if (ev.type == "m.room.redaction" && !ev.redacts.empty()) {
-                    tui::MessageInfo mi;
+                if (ev.type == "m.room.redaction" && !ev.redacts.empty()) {                    tui::MessageInfo mi;
                     mi.sender = ev.sender;
                     mi.body = "Message redacted";
 
