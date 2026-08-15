@@ -78,6 +78,38 @@ extern int runSasVerification(const std::string& targetUser,
                               const std::function<void(const std::string&)>& log,
                               const std::function<bool()>& confirm);
 
+// The async URL preview (the TUI parity): the first link in a message is
+// fetched in the background; the og:title lands as a notice under it.
+// Each URL is fetched once per run (the cache below).
+static void queueUrlPreview(matrixcli::matrix::Client& client, matrixcli::tui::ChatView& chat,
+                            const std::string& roomId, const std::string& body) {
+    static std::unordered_set<std::string> fetched;
+    static std::mutex fetchedMtx;
+    const auto httpPos = body.find("http");
+    if (httpPos == std::string::npos) return;
+    const auto endPos = body.find_first_of(" \t\n", httpPos);
+    const std::string url = body.substr(httpPos, endPos == std::string::npos
+                                                     ? std::string::npos
+                                                     : endPos - httpPos);
+    if (url.size() < 10) return;
+    {
+        std::lock_guard<std::mutex> lk(fetchedMtx);
+        if (!fetched.insert(url).second) return;
+    }
+    std::thread([&client, &chat, roomId, url]() {
+        try {
+            const nlohmann::json preview = client.getURLPreview(url);
+            const std::string title = preview.value("og:title", "");
+            if (title.empty()) return;
+            matrixcli::tui::MessageInfo mi;
+            mi.sender = "@preview";
+            mi.is_notice = true;
+            mi.body = "\U0001F517 " + title;
+            chat.addMessage(roomId, mi);
+        } catch (...) {}
+    }).detach();
+}
+
 // The login-screen connection choice (direct/tor/i2p/yggdrasil/custom):
 // applies to the TUI client now, persists into config.json and sets the
 // core's global proxy for every subsequent process.
@@ -4269,6 +4301,8 @@ int cmdTUI(const matrixcli::cli::Args& args) {
                     }
 
                     chat.addMessage(ev.room_id, mi);
+                    // The async link preview (the first URL in the body).
+                    queueUrlPreview(client, chat, ev.room_id, mi.body);
                 }
 
                 // Redactions
