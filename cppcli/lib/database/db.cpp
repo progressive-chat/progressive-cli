@@ -2,6 +2,9 @@
 #include "../util/logger.hpp"
 
 #include <sqlite3.h>
+#include <algorithm>
+#include <vector>
+#include <string>
 #include <stdexcept>
 
 namespace matrixcli { namespace db {
@@ -625,44 +628,44 @@ bool Database::markAllRead() {
     return true;
 }
 
+namespace {
+std::vector<std::string> splitCsv(const std::string& v) {
+    std::vector<std::string> out;
+    size_t start = 0;
+    for (size_t i = 0; i <= v.size(); ++i) {
+        if (i != v.size() && v[i] != ',') continue;
+        if (i > start) out.push_back(v.substr(start, i - start));
+        start = i + 1;
+    }
+    return out;
+}
+
+std::string joinCsv(const std::vector<std::string>& items) {
+    std::string out;
+    for (const auto& s : items) {
+        if (!out.empty()) out += ',';
+        out += s;
+    }
+    return out;
+}
+} // namespace
+
 bool Database::receiptsEnabled(const std::string& room_id) {
     if (room_id.empty()) return true;
-    std::string v = getSetting("receipts_off", "");
-    std::string cur;
-    for (char ch : v) {
-        if (ch == ',') {
-            if (cur == room_id) return false;
-            cur.clear();
-        } else cur += ch;
-    }
-    return cur != room_id;
+    const auto off = splitCsv(getSetting("receipts_off", ""));
+    return std::ranges::find(off, room_id) == off.end();
 }
 
 void Database::setReceiptsEnabled(const std::string& room_id, bool enabled) {
     if (room_id.empty()) return;
-    std::string v = getSetting("receipts_off", "");
-    std::string out, cur;
-    for (char ch : v) {
-        if (ch == ',') {
-            if (!cur.empty() && cur != room_id) { if (!out.empty()) out += ","; out += cur; }
-            cur.clear();
-        } else cur += ch;
-    }
-    if (!cur.empty() && cur != room_id) { if (!out.empty()) out += ","; out += cur; }
-    if (!enabled) { if (!out.empty()) out += ","; out += room_id; }
-    setSetting("receipts_off", out);
+    auto off = splitCsv(getSetting("receipts_off", ""));
+    std::erase(off, room_id);
+    if (!enabled) off.push_back(room_id);
+    setSetting("receipts_off", joinCsv(off));
 }
 
 std::vector<std::string> Database::receiptsOffRooms() {
-    std::vector<std::string> out;
-    std::string v = getSetting("receipts_off", "");
-    std::string cur;
-    for (char ch : v) {
-        if (ch == ',') { if (!cur.empty()) out.push_back(cur); cur.clear(); }
-        else cur += ch;
-    }
-    if (!cur.empty()) out.push_back(cur);
-    return out;
+    return splitCsv(getSetting("receipts_off", ""));
 }
 
 std::string Database::getReadMarker(const std::string& room_id) {

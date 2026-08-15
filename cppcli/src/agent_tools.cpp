@@ -421,8 +421,31 @@ std::string grepFiles(const std::string& pattern, const std::string& path) {
 
 // The shell: an optional timeout via the `timeout` utility, an optional
 // bubblewrap sandbox (the filesystem read-only except the cwd).
+namespace {
+
+// The RAII popen guard: pclose on the way out; `close()` returns the
+// exit status exactly once.
+class PopenFile {
+public:
+    explicit PopenFile(FILE* f) : f_(f) {}
+    PopenFile(const PopenFile&) = delete;
+    PopenFile& operator=(const PopenFile&) = delete;
+    ~PopenFile() { if (f_) pclose(f_); }
+    FILE* get() const { return f_; }
+    int close() {
+        const int rc = f_ ? pclose(f_) : -1;
+        f_ = nullptr;
+        return rc;
+    }
+private:
+    FILE* f_ = nullptr;
+};
+
+} // namespace
+
 std::string shellCmd(const std::string& cmd, int timeoutSec,
-                     const std::string& workdir, const std::string& sandbox) {    if (timeoutSec <= 0) timeoutSec = 60;
+                     const std::string& workdir, const std::string& sandbox) {
+    if (timeoutSec <= 0) timeoutSec = 60;
     if (timeoutSec > 600) timeoutSec = 600;
     std::string inner = cmd;
     if (!workdir.empty()) inner = "cd " + json(workdir).dump() + " && " + inner;
@@ -440,17 +463,17 @@ std::string shellCmd(const std::string& cmd, int timeoutSec,
               + " --tmpfs /tmp --unshare-net --die-with-parent -- "
               + inner;
     }
-    std::string wrapped = "timeout " + std::to_string(timeoutSec) + " sh -c "
-                        + json(inner).dump() + " 2>&1";
-    FILE* f = popen(wrapped.c_str(), "r");
-    if (!f) return "error: popen failed";
+    const std::string wrapped = "timeout " + std::to_string(timeoutSec)
+                              + " sh -c " + json(inner).dump() + " 2>&1";
+    PopenFile pf(popen(wrapped.c_str(), "r"));
+    if (!pf.get()) return "error: popen failed";
     std::string out;
     char buf[4096];
-    while (fgets(buf, sizeof(buf), f)) out += buf;
-    int rc = pclose(f);
-    return truncateOut(out) + (rc != 0 ? "\n[exit " + std::to_string(rc) + "]" : "");
+    while (fgets(buf, sizeof(buf), pf.get())) out += buf;
+    const int rc = pf.close();
+    return truncateOut(out)
+         + (rc != 0 ? "\n[exit " + std::to_string(rc) + "]" : "");
 }
-
 // ---- the permission engine ----
 
 enum class Verdict { Allow, Ask, Deny };

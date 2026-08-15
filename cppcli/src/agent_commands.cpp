@@ -21,9 +21,12 @@
 #include <progressive/typing_utils.hpp>
 #include <nlohmann/json.hpp>
 #include <chrono>
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <filesystem>
+#include <format>
+#include <string_view>
 #include <iostream>
 #include <memory>
 #include <sstream>
@@ -84,31 +87,30 @@ static std::string readPrompt(const cli::Args& args) {
 // token counts, the estimated price and the context usage. Goes to stderr
 // so the piped stdout keeps the bare answer.
 static void printMeta(const matrixagent::Completion& c) {
-    char tbuf[16];
-    time_t t = static_cast<time_t>(c.ts / 1000);
-    strftime(tbuf, sizeof(tbuf), "%H:%M:%S", localtime(&t));
-    std::ostringstream meta;
-    meta << "\x1b[90m[" << c.model << " · " << tbuf;
-    int64_t total = c.promptTokens + c.completionTokens;
+    // The C++20 formatting for the metadata block (model, time, tokens,
+    // the estimated price and the context usage).
+    const std::time_t t = static_cast<std::time_t>(c.ts / 1000);
+    std::tm tm{};
+    localtime_r(&t, &tm);
+    std::string meta = std::format("\x1b[90m[{} · {:02d}:{:02d}:{:02d}", c.model,
+                                   tm.tm_hour, tm.tm_min, tm.tm_sec);
+    const int64_t total = c.promptTokens + c.completionTokens;
     if (total > 0) {
-        meta << " · tok " << c.promptTokens << "/" << c.completionTokens
-             << " (" << total << ")";
-        double cost = agenttools::estimateCost(c.model, c.promptTokens, c.completionTokens);
-        if (cost > 0) {
-            char cbuf[24];
-            snprintf(cbuf, sizeof(cbuf), "$%.5f", cost);
-            meta << " · " << cbuf;
+        meta += std::format(" · tok {}/{} ({})", c.promptTokens,
+                            c.completionTokens, total);
+        if (const double cost =
+                agenttools::estimateCost(c.model, c.promptTokens, c.completionTokens);
+            cost > 0) {
+            meta += std::format(" · ${:.5f}", cost);
         }
-        int ctx = agenttools::contextSizeForModel(c.model);
-        if (ctx > 0 && c.promptTokens > 0) {
-            double pct = static_cast<double>(c.promptTokens) * 100.0 / ctx;
-            char pbuf[24];
-            snprintf(pbuf, sizeof(pbuf), "%.2f", pct);
-            meta << " · ctx " << pbuf << "%";
+        if (const int ctx = agenttools::contextSizeForModel(c.model);
+            ctx > 0 && c.promptTokens > 0) {
+            meta += std::format(" · ctx {:.2f}%",
+                                static_cast<double>(c.promptTokens) * 100.0 / ctx);
         }
     }
-    meta << "]\x1b[0m";
-    std::cerr << meta.str() << std::endl;
+    meta += "]\x1b[0m";
+    std::cerr << meta << '\n';
 }
 
 static int cmdLlmChat(const cli::Args& args);
@@ -124,19 +126,24 @@ static int cmdLlmResume(const cli::Args& args);
 // (one-time fallback).
 static std::string llmSessionsDir() {
     const char* xdg = std::getenv("XDG_DATA_HOME");
-    std::string base = xdg && *xdg ? std::string(xdg)
-                                   : std::string(std::getenv("HOME") ? std::getenv("HOME") : ".") + "/.local/share";
-    return base + "/matrixcli/sessions";
+    const char* home = std::getenv("HOME");
+    const std::filesystem::path base =
+        (xdg && *xdg) ? std::filesystem::path(xdg)
+                      : (home && *home) ? std::filesystem::path(home) / ".local/share"
+                                        : std::filesystem::path(".");
+    return (base / "matrixcli/sessions").string();
 }
 
 static std::string llmSessionPathFor(const std::string& name) {
-    if (name.empty()) return llmSessionsDir() + "/llm-chat.json";
     std::string clean;
+    clean.reserve(name.size());
     for (unsigned char ch : name) {
-        if (std::isalnum(ch) || ch == '-' || ch == '_' || ch == '.') clean += (char)ch;
-        else clean += '_';
+        clean += (std::isalnum(ch) || ch == '-' || ch == '_' || ch == '.')
+                     ? static_cast<char>(ch)
+                     : '_';
     }
-    return llmSessionsDir() + "/llm-" + clean + ".json";
+    return (std::filesystem::path(llmSessionsDir())
+            / ("llm-" + (clean.empty() ? "chat" : clean) + ".json")).string();
 }
 
 // The active session name for these args ("" = the default conversation).
@@ -148,16 +155,17 @@ static std::string llmSessionName(const cli::Args& args) {
 // a timestamp) instead of destroyed — `llm sessions` then lists every
 // dialog ever started.
 static void archiveSession(const std::string& name) {
-    std::string path = llmSessionPathFor(name);
-    struct stat st;
-    if (::stat(path.c_str(), &st) != 0) return;
-    std::filesystem::create_directories(llmSessionsDir());
-    std::string stamp = std::to_string(
-        std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count());
-    std::string base = name.empty() ? std::string("chat") : name;
-    ::rename(path.c_str(), (llmSessionsDir() + "/llm-" + base + "-" + stamp
-                            + ".json").c_str());
+    namespace fs = std::filesystem;
+    const fs::path path = llmSessionPathFor(name);
+    std::error_code ec;
+    if (!fs::exists(path, ec)) return;
+    fs::create_directories(llmSessionsDir(), ec);
+    const auto stamp = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    const std::string base = name.empty() ? "chat" : name;
+    fs::rename(path, fs::path(llmSessionsDir())
+                         / ("llm-" + base + "-" + std::to_string(stamp) + ".json"),
+               ec);
 }
 
 // The presentation: the CLI flags win over agent.json (llm_style /
@@ -674,31 +682,30 @@ static std::vector<LlmSessionEntry> collectLlmSessions() {
     for (const auto& dir : dirs) {
         if (!fs::exists(dir)) continue;
         for (const auto& e : fs::directory_iterator(dir)) {
-        std::string fn = e.path().filename().string();
-        if (fn.rfind("llm-", 0) != 0 || fn.find(".json") == std::string::npos)
-            continue;
-        std::string rawName = fn.substr(4);
-        rawName = rawName.substr(0, rawName.size() - 5);
-        if (rawName.empty()) rawName = "chat";
-        // The archived sessions: "chat-<epoch>" → "chat · 2026-08-15 14:43".
-        std::string display = rawName;
-        auto dash = display.find_last_of('-');
-        if (dash != std::string::npos) {
-            std::string tail = display.substr(dash + 1);
-            bool digits = !tail.empty() &&
-                          std::all_of(tail.begin(), tail.end(),
-                                      [](unsigned char c){ return std::isdigit(c); });
-            if (digits && tail.size() >= 10) {
-                std::time_t t = static_cast<std::time_t>(std::stoll(tail));
-                char buf[32];
-                std::tm tm{};
-                localtime_r(&t, &tm);
-                std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d",
-                              tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-                              tm.tm_hour, tm.tm_min);
-                display = display.substr(0, dash) + " · " + buf;
+            const std::string fn = e.path().filename().string();
+            if (!fn.starts_with("llm-") || !fn.ends_with(".json")) continue;
+            std::string rawName = fn.substr(4, fn.size() - 4 - 5);
+            if (rawName.empty()) rawName = "chat";
+            // The archived sessions: "chat-<epoch>" → "chat · 2026-08-15 14:43".
+            std::string display = rawName;
+            const auto dash = display.find_last_of('-');
+            const auto isDigits = [](std::string_view s) {
+                return !s.empty() && std::ranges::all_of(
+                    s, [](unsigned char ch) { return std::isdigit(ch); });
+            };
+            if (dash != std::string::npos) {
+                const std::string tail = display.substr(dash + 1);
+                if (isDigits(tail) && tail.size() >= 10) {
+                    const std::time_t t =
+                        static_cast<std::time_t>(std::stoll(tail));
+                    std::tm tm{};
+                    localtime_r(&t, &tm);
+                    display = std::format(
+                        "{} · {:04d}-{:02d}-{:02d} {:02d}:{:02d}",
+                        display.substr(0, dash), tm.tm_year + 1900,
+                        tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min);
+                }
             }
-        }
         std::vector<agenttools::Message> hist;
         int turns = 0;
         std::string firstUser, lastMsg;
@@ -732,33 +739,31 @@ int cmdLlmSessions(const cli::Args& args) {
             std::cerr << "Usage: matrixcli llm sessions rm <name>" << std::endl;
             return 1;
         }
-        std::string path = llmSessionPathFor(args.positional[2]);
-        struct stat st;
-        if (::stat(path.c_str(), &st) != 0) {
+        namespace fs = std::filesystem;
+        const fs::path path = llmSessionPathFor(args.positional[2]);
+        std::error_code ec;
+        if (!fs::exists(path, ec)) {
             std::cerr << "No such session: " << args.positional[2] << std::endl;
             return 1;
         }
         // Never destroy: the session moves to the trash subdirectory
         // (recoverable by hand, or by --session with the trashed name).
-        std::filesystem::create_directories(llmSessionsDir() + "/trash");
-        std::string stamp = std::to_string(
-            std::chrono::duration_cast<std::chrono::seconds>(
-                std::chrono::system_clock::now().time_since_epoch()).count());
-        std::string to = llmSessionsDir() + "/trash/llm-" + args.positional[2]
-                       + "-" + stamp + ".json";
-        if (::rename(path.c_str(), to.c_str()) == 0) {
-            std::cout << "Moved " << args.positional[2]
-                      << " to the trash (nothing is ever deleted)." << std::endl;
-        } else {
-            std::cerr << "Failed to move " << args.positional[2] << std::endl;
-            return 1;
-        }
+        const auto stamp = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        fs::create_directories(fs::path(llmSessionsDir()) / "trash", ec);
+        fs::rename(path, fs::path(llmSessionsDir()) / "trash"
+                             / ("llm-" + args.positional[2] + "-"
+                                + std::to_string(stamp) + ".json"), ec);
+        std::cout << "Moved " << args.positional[2]
+                  << " to the trash (nothing is ever deleted)." << std::endl;
         return 0;
     }
-    auto clipLine = [](std::string s, size_t n) -> std::string {
-        for (char& c : s) if (c == '\n' || c == '\r') c = ' ';
-        if (s.size() > n) s = s.substr(0, n - 1) + "…";
-        return s;
+    auto clipLine = [](std::string_view s, size_t n) -> std::string {
+        std::string out(s);
+        std::ranges::replace(out, '\n', ' ');
+        std::ranges::replace(out, '\r', ' ');
+        if (out.size() > n) out = out.substr(0, n - 1) + "…";
+        return out;
     };
     auto entries = collectLlmSessions();
     std::cout << "Saved conversations:" << std::endl;
