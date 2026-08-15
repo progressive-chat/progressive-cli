@@ -38,6 +38,18 @@ LoginResult LoginView::run(Screen& screen) {
     result.password = pass_buf;
     echo();
 
+    // The connection selector: direct (Enter), tor, i2p, yggdrasil, or
+    // "custom <host:port>" (SOCKS5-hostname).
+    clear();
+    screen.drawTextCentered(2, "Connection:");
+    screen.drawTextCentered(4, "Enter = direct   |   tor | i2p | yggdrasil | custom <host:port>");
+    char conn_buf[256] = {};
+    move(6, 2);
+    wgetnstr(stdscr, conn_buf, 255);
+    result.connection = conn_buf;
+    while (!result.connection.empty() && result.connection.back() == ' ')
+        result.connection.pop_back();
+
     result.success = !result.username.empty() && !result.password.empty();
     if (result.homeserver.empty()) {
         result.homeserver = "https://matrix.org";

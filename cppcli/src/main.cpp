@@ -70,6 +70,60 @@ void signalHandler(int) {
     matrixcli::g_interrupted = false;
 }
 
+// The login-screen connection choice (direct/tor/i2p/yggdrasil/custom):
+// applies to the TUI client now, persists into config.json and sets the
+// core's global proxy for every subsequent process.
+static void applyConnectionChoice(matrixcli::matrix::Client& client,
+                                  const std::string& connection) {
+    const std::string c = connection.empty() ? "direct" : connection;
+    matrixcli::http::ProxyConfig pc;
+    std::string persistType = "socks5h";
+    bool enabled = false;
+    if (c == "tor") {
+        pc.type = matrixcli::http::ProxyType::SOCKS5;
+        pc.host = "127.0.0.1";
+        pc.port = 9050;
+        enabled = true;
+    } else if (c == "i2p") {
+        pc.type = matrixcli::http::ProxyType::HTTP;
+        pc.host = "127.0.0.1";
+        pc.port = 4444;
+        persistType = "http";
+        enabled = true;
+    } else if (c.rfind("custom ", 0) == 0) {
+        pc.type = matrixcli::http::ProxyType::SOCKS5;
+        const std::string hp = c.substr(7);
+        const auto colon = hp.rfind(':');
+        pc.host = colon == std::string::npos ? hp : hp.substr(0, colon);
+        if (colon != std::string::npos) {
+            try { pc.port = std::stoi(hp.substr(colon + 1)); }
+            catch (...) { pc.port = 9050; }
+        } else {
+            pc.port = 9050;
+        }
+        enabled = true;
+    }
+    // "direct" and "yggdrasil" (the native IPv6 mesh routing) stay direct.
+
+    client.setProxy(enabled ? pc : matrixcli::http::ProxyConfig{});
+    matrixcli::Config::instance().set("proxy_enabled", enabled ? "true" : "false");
+    if (enabled) {
+        matrixcli::Config::instance().set("proxy_host", pc.host);
+        matrixcli::Config::instance().set("proxy_port", std::to_string(pc.port));
+        matrixcli::Config::instance().set("proxy_type", persistType);
+    }
+    matrixcli::Config::instance().save();
+
+    progressive::desktop::ProxyConfig gp;
+    gp.enabled = enabled;
+    gp.host = pc.host;
+    gp.port = pc.port;
+    gp.type = pc.type == matrixcli::http::ProxyType::HTTP
+                  ? progressive::desktop::ProxyConfig::Type::Http
+                  : progressive::desktop::ProxyConfig::Type::Socks5Hostname;
+    progressive::desktop::setGlobalProxy(gp);
+}
+
 int cmdServe(const matrixcli::cli::Args& args) {
     using namespace matrixcli;
 
@@ -3183,6 +3237,11 @@ int cmdTUI(const matrixcli::cli::Args& args) {
                     sacc.device_id = "demo-tui";
                 } else {
                     auto creds = client.loginPassword(login_result.username, login_result.password);
+                    // The login-screen connection choice (direct/tor/i2p/
+                    // yggdrasil/custom): applies to the TUI client now and
+                    // persists into config.json for the CLI + the global
+                    // core proxy.
+                    applyConnectionChoice(client, login_result.connection);
                     Config::instance().set("homeserver_url", login_result.homeserver);
                     Config::instance().set("access_token", creds.access_token);
                     Config::instance().set("user_id", creds.user_id);
