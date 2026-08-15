@@ -13,6 +13,28 @@ target_link_libraries(matrixcli_test PRIVATE
 
 add_test(NAME matrixcli_test COMMAND matrixcli_test)
 
+# The LLM SSE assembly + the content extraction (the production edge cases).
+add_executable(matrixcli_llm_test
+    test_llm.cpp
+)
+target_include_directories(matrixcli_llm_test PRIVATE ${CMAKE_SOURCE_DIR}/lib)
+target_link_libraries(matrixcli_llm_test PRIVATE
+    matrixcli_util
+    matrixcli_json
+)
+add_test(NAME llm_sse COMMAND matrixcli_llm_test)
+
+# The db settings + the invite queries (the state_key fix).
+add_executable(matrixcli_db_settings_test
+    test_db_settings.cpp
+)
+target_include_directories(matrixcli_db_settings_test PRIVATE ${CMAKE_SOURCE_DIR}/lib)
+target_link_libraries(matrixcli_db_settings_test PRIVATE
+    matrixcli_db
+    matrixcli_matrix
+)
+add_test(NAME db_settings COMMAND matrixcli_db_settings_test)
+
 # Vendored desktop E2EE core smoke test
 add_executable(matrixcli_ecore_test
     test_ecore.cpp

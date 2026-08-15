@@ -8,6 +8,7 @@
 #include "../lib/http/http.hpp"
 #include "../lib/matrix/client.hpp"
 #include "../lib/matrix/events.hpp"
+#include "../lib/util/llm_sse.hpp"
 
 #include <progressive/agent_executor.hpp>
 #include <nlohmann/json.hpp>
@@ -228,35 +229,6 @@ std::string chatUrl(const Config& cfg) {
 
 namespace {
 
-// The content of a delta/message across the provider shapes: a plain
-// string, or an array of blocks ({type, text} — the reasoning blocks
-// land in `reasoning`), or an object with "text".
-void extractContent(const json& node, std::string& text,
-                    std::string& reasoning) {
-    if (node.contains("content")) {
-        const auto& c = node["content"];
-        if (c.is_string()) {
-            text += c.get<std::string>();
-        } else if (c.is_array()) {
-            for (const auto& blk : c) {
-                if (!blk.is_object()) continue;
-                std::string type = blk.value("type", "");
-                std::string t = blk.value("text", "");
-                if (type == "reasoning" || type == "thinking" ||
-                    type == "reasoning_content" || type == "analysis")
-                    reasoning += t;
-                else
-                    text += t;
-            }
-        } else if (c.is_object()) {
-            text += c.value("text", "");
-        }
-    }
-    if (node.contains("reasoning_content") &&
-        node["reasoning_content"].is_string())
-        reasoning += node["reasoning_content"].get<std::string>();
-}
-
 } // namespace
 
 // One chat completion. Returns the Completion (text + usage metadata);
@@ -346,7 +318,7 @@ llmCall(const Config& cfg, const std::string& system,
             auto choices = j.value("choices", json::array());
             if (!choices.empty() && choices[0].is_object()) {
                 auto msg = choices[0].value("message", json::object());
-                extractContent(msg, out.text, out.reasoning);
+                util::extractContent(msg, out.text, out.reasoning);
             }
         }
     out.ok = true;
@@ -532,27 +504,18 @@ stream(const Config& cfg, const std::string& system,
     out.ts = std::chrono::duration_cast<std::chrono::milliseconds>(
                  std::chrono::system_clock::now().time_since_epoch()).count();
 
-    std::string acc;  // the SSE line accumulator (chunks may split lines)
     std::string lastPayload;   // for the diagnostics
     std::string firstPayload;  // for the diagnostics
     int totalBytes = 0;
     int parsedEvents = 0;
     int contentEvents = 0;
     int reasoningChars = 0;
-    std::string eventData;  // the multi-line "data:" event assembly
+    util::SseEventAssembler sse;  // the shared, tested SSE assembly
     http::Response resp = httpClient.streamPost(
         chatUrl(cfg), body.dump(), headers,
         [&](const std::string& chunk) {
             totalBytes += static_cast<int>(chunk.size());
-            acc += chunk;
-            // SSE events: the consecutive "data:" lines form ONE event
-            // (joined with \n per the SSE spec — some providers put raw
-            // newlines into the JSON). The blank line flushes the event.
-            auto flushEvent = [&]() {
-                if (eventData.empty()) return;
-                std::string payload = eventData;
-                eventData.clear();
-                if (payload == "[DONE]") return;
+            sse.feed(chunk, [&](const std::string& payload) {
                 lastPayload = payload;
                 if (firstPayload.empty()) firstPayload = payload;
                 if (cfg.debugLlm) {
@@ -574,11 +537,11 @@ stream(const Config& cfg, const std::string& system,
                     // array of blocks, or message.content.
                     std::string piece;
                     std::string rp;
-                    extractContent(delta, piece, rp);
+                    util::extractContent(delta, piece, rp);
                     if (piece.empty() && !delta.value("text", "").empty())
                         piece = delta.value("text", "");
                     if (piece.empty())
-                        extractContent(
+                        util::extractContent(
                             delta.value("message", json::object()),
                             piece, rp);
                     if (!rp.empty()) {
@@ -595,25 +558,7 @@ stream(const Config& cfg, const std::string& system,
                         std::cerr << "[llm] EXC: " << e.what() << std::endl;
                     }
                 }
-            };
-            size_t pos;
-            while ((pos = acc.find('\n')) != std::string::npos) {
-                std::string line = acc.substr(0, pos);
-                acc.erase(0, pos + 1);
-                if (!line.empty() && line.back() == '\r') line.pop_back();
-                if (line.empty()) {
-                    flushEvent();  // the event boundary
-                    continue;
-                }
-                // Any non-blank line belongs to the event (the SSE spec);
-                // the "data:" prefix is stripped when present.
-                std::string payload = line.rfind("data:", 0) == 0
-                                          ? line.substr(5) : line;
-                if (!payload.empty() && payload[0] == ' ') payload.erase(0, 1);
-                if (!eventData.empty()) eventData += "\n";
-                eventData += payload;
-            }
-            flushEvent();
+            });
         },
         []() {
             return !matrixcli::g_interrupted.load() ||
