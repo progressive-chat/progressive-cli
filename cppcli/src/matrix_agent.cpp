@@ -335,6 +335,7 @@ llmCall(const Config& cfg, const std::string& system,
         return std::unexpected("no content in response — raw: "
                                + resp.body.substr(0, 220));
     }
+    out.ok = true;
     return out;
 }
 
@@ -591,6 +592,7 @@ stream(const Config& cfg, const std::string& system,
         return std::unexpected(err);
     }
     if (out.completionTokens == 0) out.completionTokens = out.text.size() / 4;
+    out.ok = true;
     return out;
 }
 

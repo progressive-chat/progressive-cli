@@ -35,6 +35,16 @@ target_link_libraries(matrixcli_db_settings_test PRIVATE
 )
 add_test(NAME db_settings COMMAND matrixcli_db_settings_test)
 
+# The LLM session store (the paths, the sanitization, the archiving).
+add_executable(matrixcli_sessions_test
+    test_sessions.cpp
+)
+target_include_directories(matrixcli_sessions_test PRIVATE ${CMAKE_SOURCE_DIR}/lib)
+target_link_libraries(matrixcli_sessions_test PRIVATE
+    matrixcli_util
+)
+add_test(NAME sessions_store COMMAND matrixcli_sessions_test)
+
 # Vendored desktop E2EE core smoke test
 add_executable(matrixcli_ecore_test
     test_ecore.cpp

@@ -27,3 +27,28 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  sanitizers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ cmake ninja-build \
+            libssl-dev libcurl4-openssl-dev libsqlite3-dev libncurses-dev
+
+      - name: Configure (ASan + UBSan)
+        run: >
+          cmake -G Ninja -S cppcli -B build-asan
+          -DCMAKE_BUILD_TYPE=Debug
+          -DBUILD_TESTS=ON
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+
+      - name: Build
+        run: cmake --build build-asan
+
+      - name: Test
+        run: ctest --test-dir build-asan --output-on-failure

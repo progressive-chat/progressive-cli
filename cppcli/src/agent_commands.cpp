@@ -13,6 +13,7 @@
 #include "globals.hpp"
 #include "../lib/database/db.hpp"
 #include "../lib/util/llm_presets.hpp"
+#include "../lib/util/llm_sessions.hpp"
 #include "agent_tools.hpp"
 #include "matrix_agent.hpp"
 #include "ascii_ui.hpp"
@@ -36,6 +37,9 @@
 #include <unistd.h>
 
 using namespace matrixcli;
+using matrixcli::util::archiveSession;
+using matrixcli::util::llmSessionPathFor;
+using matrixcli::util::llmSessionsDir;
 
 // Build the agent config from the CLI args. The flags win over
 // agent.json / the env / the provider defaults (see applyDefaults).
@@ -119,53 +123,9 @@ static int cmdLlmHistory(const cli::Args& args);
 static int cmdLlmSessions(const cli::Args& args);
 static int cmdLlmResume(const cli::Args& args);
 
-// The conversation store: ~/.local/share/matrixcli/sessions/llm-<name>.json
-// (XDG_DATA_HOME when set). The sessions live OUTSIDE the working
-// directory, so they survive running the client from another directory.
-// On load, the legacy ./agent-sessions/llm-*.json files are still found
-// (one-time fallback).
-static std::string llmSessionsDir() {
-    const char* xdg = std::getenv("XDG_DATA_HOME");
-    const char* home = std::getenv("HOME");
-    const std::filesystem::path base =
-        (xdg && *xdg) ? std::filesystem::path(xdg)
-                      : (home && *home) ? std::filesystem::path(home) / ".local/share"
-                                        : std::filesystem::path(".");
-    return (base / "matrixcli/sessions").string();
-}
-
-static std::string llmSessionPathFor(const std::string& name) {
-    std::string clean;
-    clean.reserve(name.size());
-    for (unsigned char ch : name) {
-        clean += (std::isalnum(ch) || ch == '-' || ch == '_' || ch == '.')
-                     ? static_cast<char>(ch)
-                     : '_';
-    }
-    return (std::filesystem::path(llmSessionsDir())
-            / ("llm-" + (clean.empty() ? "chat" : clean) + ".json")).string();
-}
-
 // The active session name for these args ("" = the default conversation).
 static std::string llmSessionName(const cli::Args& args) {
     return args.options.count("session") ? args.options.at("session") : "";
-}
-
-// The --fresh start: the existing conversation is ARCHIVED (renamed with
-// a timestamp) instead of destroyed — `llm sessions` then lists every
-// dialog ever started.
-static void archiveSession(const std::string& name) {
-    namespace fs = std::filesystem;
-    const fs::path path = llmSessionPathFor(name);
-    std::error_code ec;
-    if (!fs::exists(path, ec)) return;
-    fs::create_directories(llmSessionsDir(), ec);
-    const auto stamp = std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
-    const std::string base = name.empty() ? "chat" : name;
-    fs::rename(path, fs::path(llmSessionsDir())
-                         / ("llm-" + base + "-" + std::to_string(stamp) + ".json"),
-               ec);
 }
 
 // The presentation: the CLI flags win over agent.json (llm_style /
