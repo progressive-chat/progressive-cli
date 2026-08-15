@@ -9,6 +9,7 @@ set(SOURCES
     matrix_commands.cpp
     agent_commands.cpp
     agent_tools.cpp
+    matrix_agent.cpp
     proxy_commands.cpp
     ascii_ui.cpp
     cli/args.cpp

@@ -186,6 +186,45 @@ void feedCache(const progressive::desktop::FastSyncResponse& resp) {
             dbi.insertEvent(mev);
         }
     }
+
+    // Invited rooms: remember the invitation in the cache — the room
+    // metadata plus an invite member event. The invite DATE is the moment
+    // the client first saw the invitation (origin_server_ts of the cached
+    // invite event), so it survives restarts even when the server does
+    // not re-report the invite state.
+    std::string selfUserId;
+    if (core().client) selfUserId = core().client->account().userId;
+    if (!selfUserId.empty()) {
+        auto existing = dbi.openInvites(selfUserId);
+        auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        for (auto& inv : resp.invitedRooms) {
+            std::string roomId(inv.roomId);
+            nlohmann::json rj;
+            rj["name"] = std::string(inv.roomName);
+            rj["avatar"] = std::string(inv.roomAvatar);
+            rj["member_count"] = inv.memberCount;
+            rj["is_encrypted"] = inv.isEncrypted;
+            dbi.upsertRoom(rj, roomId);
+
+            bool known = false;
+            for (auto& ex : existing) {
+                if (ex.roomId == roomId) { known = true; break; }
+            }
+            if (!known) {
+                matrix::Event mev;
+                mev.event_id = "$invite_" + roomId;
+                mev.room_id = roomId;
+                mev.sender = std::string(inv.inviterId);
+                mev.type = "m.room.member";
+                mev.state_key = selfUserId;
+                mev.origin_server_ts = nowMs;
+                mev.content = {{"membership", "invite"},
+                               {"reason", std::string(inv.reason)}};
+                dbi.insertEvent(mev);
+            }
+        }
+    }
 }
 
 }} // namespace matrixcli::pcore

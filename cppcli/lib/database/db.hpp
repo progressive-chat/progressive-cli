@@ -21,6 +21,16 @@ struct StoredAccount {
     bool is_logged_in() const { return !access_token.empty(); }
 };
 
+// An open invite with its cached metadata — the date the invitation
+// arrived is remembered from the invite event's origin_server_ts (the
+// cache keeps it across restarts).
+struct InviteInfo {
+    std::string roomId;
+    std::string inviter;   // the sender of the invite member event
+    std::string reason;    // content.reason ("" = none)
+    int64_t ts = 0;        // the invite timestamp (ms)
+};
+
 class Database {
 public:
     Database();
@@ -57,11 +67,14 @@ public:
     std::string getSetting(const std::string& key,
                            const std::string& def = "");
     // Rooms where the user has an open invite (an m.room.member
-    // "invite" event for them, with no later join). Matches the sender
+    // "invite" event for them, with no later join). Matches the user
     // by localpart so both "@user" and "@user:server" forms count.
     int inviteCount(const std::string& userId);
     // The ids of the rooms where the user has an open invite.
     std::vector<std::string> invitedRoomIds(const std::string& userId);
+    // The open invites with their cached metadata (inviter, reason and
+    // the invite timestamp), newest first.
+    std::vector<InviteInfo> openInvites(const std::string& userId);
     // Spaces: tag a room with its parent space id; rooms carry
     // "is_space"/"space" keys in listRooms().
     bool tagRoom(const std::string& room_id, const std::string& space);
@@ -76,6 +89,18 @@ public:
     int getNotificationCount(const std::string& room_id = "");
     bool markRoomRead(const std::string& room_id);
     bool markAllRead();
+
+    // Read-receipt policy per room (the Element-style toggle): by default
+    // the read markers go to every room; the "receipts_off" setting lists
+    // the room ids where they must not be sent.
+    bool receiptsEnabled(const std::string& room_id);
+    void setReceiptsEnabled(const std::string& room_id, bool enabled);
+    std::vector<std::string> receiptsOffRooms();
+
+    // The last-read position per room (the local copy of the m.fully_read
+    // marker): the event id the user read up to. "" = no marker yet.
+    std::string getReadMarker(const std::string& room_id);
+    void setReadMarker(const std::string& room_id, const std::string& event_id);
 
 private:
     void migrate();

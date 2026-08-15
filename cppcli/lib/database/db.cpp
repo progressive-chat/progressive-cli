@@ -423,14 +423,19 @@ std::vector<std::string> Database::invitedRoomIds(const std::string& userId) {
     std::string like = "%" + localpart + "%";
     std::vector<std::string> result;
     sqlite3_stmt* stmt = nullptr;
+    // The invite member event carries the INVITEE in state_key (the
+    // sender is the inviter) — match the user against state_key, and
+    // require that no later join followed.
     sqlite3_prepare_v2(_db,
         "SELECT r.room_id FROM rooms r WHERE EXISTS ("
         "  SELECT 1 FROM events e WHERE e.room_id = r.room_id "
-        "  AND e.type = 'm.room.member' AND e.sender LIKE ?1 "
+        "  AND e.type = 'm.room.member' AND e.state_key LIKE ?1 "
         "  AND json_extract(e.content, '$.membership') = 'invite' "
-        "  AND (SELECT MAX(origin_server_ts) FROM events e2 "
-        "       WHERE e2.room_id = e.room_id AND e2.type = 'm.room.member' "
-        "       AND e2.sender LIKE ?1) = e.origin_server_ts"
+        "  AND NOT EXISTS ("
+        "    SELECT 1 FROM events e2 WHERE e2.room_id = e.room_id "
+        "    AND e2.type = 'm.room.member' AND e2.state_key LIKE ?1 "
+        "    AND json_extract(e2.content, '$.membership') = 'join' "
+        "    AND e2.origin_server_ts > e.origin_server_ts)"
         ")",
         -1, &stmt, nullptr);
     sqlite3_bind_text(stmt, 1, like.c_str(), like.size(), SQLITE_TRANSIENT);
@@ -455,11 +460,13 @@ int Database::inviteCount(const std::string& userId) {
     sqlite3_prepare_v2(_db,
         "SELECT COUNT(*) FROM rooms r WHERE EXISTS ("
         "  SELECT 1 FROM events e WHERE e.room_id = r.room_id "
-        "  AND e.type = 'm.room.member' AND e.sender LIKE ?1 "
+        "  AND e.type = 'm.room.member' AND e.state_key LIKE ?1 "
         "  AND json_extract(e.content, '$.membership') = 'invite' "
-        "  AND (SELECT MAX(origin_server_ts) FROM events e2 "
-        "       WHERE e2.room_id = e.room_id AND e2.type = 'm.room.member' "
-        "       AND e2.sender LIKE ?1) = e.origin_server_ts"
+        "  AND NOT EXISTS ("
+        "    SELECT 1 FROM events e2 WHERE e2.room_id = e.room_id "
+        "    AND e2.type = 'm.room.member' AND e2.state_key LIKE ?1 "
+        "    AND json_extract(e2.content, '$.membership') = 'join' "
+        "    AND e2.origin_server_ts > e.origin_server_ts)"
         ")",
         -1, &stmt, nullptr);
     sqlite3_bind_text(stmt, 1, like.c_str(), like.size(), SQLITE_TRANSIENT);
@@ -467,6 +474,51 @@ int Database::inviteCount(const std::string& userId) {
     if (sqlite3_step(stmt) == SQLITE_ROW) count = sqlite3_column_int(stmt, 0);
     sqlite3_finalize(stmt);
     return count;
+}
+
+std::vector<InviteInfo> Database::openInvites(const std::string& userId) {
+    std::string localpart = userId;
+    if (!localpart.empty() && localpart[0] == '@') {
+        auto colon = localpart.find(':');
+        if (colon != std::string::npos) localpart = localpart.substr(1, colon - 1);
+        else localpart = localpart.substr(1);
+    }
+    std::string like = "%" + localpart + "%";
+    std::vector<InviteInfo> result;
+    sqlite3_stmt* stmt = nullptr;
+    sqlite3_prepare_v2(_db,
+        "SELECT e.room_id, e.sender, json_extract(e.content, '$.reason'), "
+        "       e.origin_server_ts "
+        "FROM events e "
+        "WHERE e.type = 'm.room.member' AND e.state_key LIKE ?1 "
+        "  AND json_extract(e.content, '$.membership') = 'invite' "
+        "  AND NOT EXISTS ("
+        "    SELECT 1 FROM events e2 WHERE e2.room_id = e.room_id "
+        "    AND e2.type = 'm.room.member' AND e2.state_key LIKE ?1 "
+        "    AND json_extract(e2.content, '$.membership') = 'join' "
+        "    AND e2.origin_server_ts > e.origin_server_ts)"
+        "ORDER BY e.origin_server_ts DESC",
+        -1, &stmt, nullptr);
+    sqlite3_bind_text(stmt, 1, like.c_str(), like.size(), SQLITE_TRANSIENT);
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        InviteInfo info;
+        const char* rid = (const char*)sqlite3_column_text(stmt, 0);
+        const char* sender = (const char*)sqlite3_column_text(stmt, 1);
+        const char* reason = (const char*)sqlite3_column_text(stmt, 2);
+        if (rid) info.roomId = rid;
+        if (sender) info.inviter = sender;
+        if (reason) info.reason = reason;
+        info.ts = sqlite3_column_int64(stmt, 3);
+        // Keep only the newest invite per room (duplicates are possible
+        // when the server re-reports the invite state).
+        bool newer = false;
+        for (auto& ex : result) {
+            if (ex.roomId == info.roomId) { newer = true; break; }
+        }
+        if (!newer) result.push_back(std::move(info));
+    }
+    sqlite3_finalize(stmt);
+    return result;
 }
 
 std::vector<json> Database::search(const std::string& query, int limit) {
@@ -571,6 +623,56 @@ bool Database::markRoomRead(const std::string& room_id) {
 bool Database::markAllRead() {
     exec("UPDATE notifications SET read=1 WHERE read=0");
     return true;
+}
+
+bool Database::receiptsEnabled(const std::string& room_id) {
+    if (room_id.empty()) return true;
+    std::string v = getSetting("receipts_off", "");
+    std::string cur;
+    for (char ch : v) {
+        if (ch == ',') {
+            if (cur == room_id) return false;
+            cur.clear();
+        } else cur += ch;
+    }
+    return cur != room_id;
+}
+
+void Database::setReceiptsEnabled(const std::string& room_id, bool enabled) {
+    if (room_id.empty()) return;
+    std::string v = getSetting("receipts_off", "");
+    std::string out, cur;
+    for (char ch : v) {
+        if (ch == ',') {
+            if (!cur.empty() && cur != room_id) { if (!out.empty()) out += ","; out += cur; }
+            cur.clear();
+        } else cur += ch;
+    }
+    if (!cur.empty() && cur != room_id) { if (!out.empty()) out += ","; out += cur; }
+    if (!enabled) { if (!out.empty()) out += ","; out += room_id; }
+    setSetting("receipts_off", out);
+}
+
+std::vector<std::string> Database::receiptsOffRooms() {
+    std::vector<std::string> out;
+    std::string v = getSetting("receipts_off", "");
+    std::string cur;
+    for (char ch : v) {
+        if (ch == ',') { if (!cur.empty()) out.push_back(cur); cur.clear(); }
+        else cur += ch;
+    }
+    if (!cur.empty()) out.push_back(cur);
+    return out;
+}
+
+std::string Database::getReadMarker(const std::string& room_id) {
+    if (room_id.empty()) return "";
+    return getSetting("read_marker_" + room_id, "");
+}
+
+void Database::setReadMarker(const std::string& room_id, const std::string& event_id) {
+    if (room_id.empty()) return;
+    setSetting("read_marker_" + room_id, event_id);
 }
 
 }} // namespace matrixcli::db

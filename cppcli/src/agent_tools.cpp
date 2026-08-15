@@ -3,6 +3,7 @@
 
 #include "../lib/http/http.hpp"
 #include "../lib/json/json.hpp"
+#include "../lib/util/llm_presets.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -19,6 +20,11 @@
 #include <regex>
 #include <sstream>
 #include <sys/stat.h>
+#include <sys/wait.h>
+#include <sys/ioctl.h>
+#include <fcntl.h>
+#include <pty.h>
+#include <signal.h>
 #include <unistd.h>
 
 namespace matrixcli { namespace agenttools {
@@ -61,6 +67,24 @@ std::string toolSchemasJson() {
             {"workdir", {{"type", "string"},
                          {"description", "run in this directory instead of the cwd"}}}},
            {"command"});
+    schema("process",
+           "An interactive background process in a pseudo-terminal, for "
+           "debugging (gdb/pdb, REPLs, servers). start spawns the command "
+           "and returns an id; send writes an input line; poll reads the "
+           "new output; wait waits for the exit (timeout seconds); kill "
+           "terminates; list shows the live processes. The processes die "
+           "at the end of the turn.",
+           {{"action", {{"type", "string"},
+                        {"enum", {"start", "send", "poll", "wait", "kill", "list"}}}},
+            {"id", {{"type", "string"},
+                    {"description", "the process id from start"}}},
+            {"command", {{"type", "string"},
+                         {"description", "start: the command to run"}}},
+            {"input", {{"type", "string"},
+                       {"description", "send: the line written to the process"}}},
+            {"timeout", {{"type", "integer"},
+                         {"description", "wait: the seconds to wait (default 10)"}}}},
+           {"action"});
     schema("read_file",
            "Read a text file's contents with line numbers (fails on binary "
            "files); use offset/limit to page through long files.",
@@ -106,37 +130,18 @@ std::string toolSchemasJson() {
            {"url"});
     schema("todo",
            "Track the plan: replaces the current task list. Exactly one "
-           "task should be in_progress at a time.",
-           {{"todos",
-             {{"type", "array"},
-              {"items",
-               {{"type", "object"},
-                {"properties",
-                 {{"content", {{"type", "string"}}},
-                  {"status",
-                   {{"type", "string"},
-                    {"enum", {"pending", "in_progress", "completed",
-                              "cancelled"}}}}},
-                 {"required", {"content", "status"}}}}}}}},
+           "task should be in_progress at a time. The items are objects "
+           "with the content (string) and status (pending|in_progress|"
+           "completed|cancelled) keys.",
+           {{"todos", {{"type", "array"}, {"items", {{"type", "object"}}}}}},
            {"todos"});
     schema("question",
            "Ask the user questions and return their answers as the tool "
-           "result (the loop continues afterwards).",
-           {{"questions",
-             {{"type", "array"},
-              {"items",
-               {{"type", "object"},
-                {"properties",
-                 {{"question", {{"type", "string"}}},
-                  {"header", {{"type", "string"}}},
-                  {"options",
-                   {{"type", "array"},
-                    {"items",
-                     {{"type", "object"},
-                      {"properties",
-                       {{"label", {{"type", "string"}}},
-                        {"description", {{"type", "string"}}}}}}}}},
-                  {"multiple", {{"type", "boolean"}}}}}}}}}},
+           "result (the loop continues afterwards). The items are objects "
+           "with the question, header, options (array of {label, "
+           "description}) and multiple (boolean) keys.",
+           {{"questions", {{"type", "array"},
+                           {"items", {{"type", "object"}}}}}},
            {"questions"});
     schema("clock",
            "The current date and time (UTC).",
@@ -417,8 +422,7 @@ std::string grepFiles(const std::string& pattern, const std::string& path) {
 // The shell: an optional timeout via the `timeout` utility, an optional
 // bubblewrap sandbox (the filesystem read-only except the cwd).
 std::string shellCmd(const std::string& cmd, int timeoutSec,
-                     const std::string& workdir, const std::string& sandbox) {
-    if (timeoutSec <= 0) timeoutSec = 60;
+                     const std::string& workdir, const std::string& sandbox) {    if (timeoutSec <= 0) timeoutSec = 60;
     if (timeoutSec > 600) timeoutSec = 600;
     std::string inner = cmd;
     if (!workdir.empty()) inner = "cd " + json(workdir).dump() + " && " + inner;
@@ -445,6 +449,221 @@ std::string shellCmd(const std::string& cmd, int timeoutSec,
     while (fgets(buf, sizeof(buf), f)) out += buf;
     int rc = pclose(f);
     return truncateOut(out) + (rc != 0 ? "\n[exit " + std::to_string(rc) + "]" : "");
+}
+
+// ---- the permission engine ----
+
+enum class Verdict { Allow, Ask, Deny };
+
+// The per-tool glob rules: the LAST matching rule wins (opencode-style).
+Verdict checkPermission(const Config& cfg, const std::string& tool,
+                        const std::string& subject) {
+    Verdict v = Verdict::Allow;  // the default: file tools are allowed
+    for (const auto& r : cfg.rules) {
+        if (r.tool != "*" && r.tool != tool) continue;
+        if (fnmatch(r.glob.c_str(), subject.c_str(), 0) != 0) continue;
+        v = r.action == "deny"   ? Verdict::Deny
+          : r.action == "ask"    ? Verdict::Ask
+                                 : Verdict::Allow;
+    }
+    return v;
+}
+
+// The trust policy for the shell: denyPrefixes > allowPrefixes > the
+// permission rules > the level.
+Verdict checkTrust(const Config& cfg, const std::string& cmd) {
+    for (const auto& p : cfg.denyPrefixes) {
+        if (cmd.rfind(p, 0) == 0) return Verdict::Deny;
+    }
+    for (const auto& p : cfg.allowPrefixes) {
+        if (cmd.rfind(p, 0) == 0) return Verdict::Allow;
+    }
+    Verdict rule = checkPermission(cfg, "shell", cmd);
+    if (rule != Verdict::Allow) return rule;
+    if (cfg.trust == "allow") return Verdict::Allow;
+    if (cfg.trust == "deny") return Verdict::Deny;
+    return Verdict::Ask;
+}
+
+// ---- the interactive process tool (gdb/pdb/REPL debugging) ----
+
+//
+// The shell tool is one-shot; a debugger needs a LIVE session: a
+// pseudo-terminal the agent can write commands into and read the
+// responses from across the tool calls of one turn.
+
+struct BgProcess {
+    int pid = -1;
+    int masterFd = -1;
+    std::string buffer;       // the captured output (capped ring)
+    size_t consumed = 0;      // the agent already read up to here
+    bool exited = false;
+    bool killed = false;
+    int exitCode = -1;
+    std::mutex mtx;
+};
+
+static std::map<std::string, std::shared_ptr<BgProcess>>& bgProcesses() {
+    static std::map<std::string, std::shared_ptr<BgProcess>> m;
+    return m;
+}
+static std::mutex g_bgMtx;
+static int g_bgSeq = 0;
+
+// The reader thread: the master fd → the buffer; EOF reaps the child.
+static void bgReader(std::shared_ptr<BgProcess> p) {
+    char buf[4096];
+    while (true) {
+        ssize_t n = read(p->masterFd, buf, sizeof(buf));
+        if (n > 0) {
+            std::lock_guard<std::mutex> lk(p->mtx);
+            p->buffer.append(buf, static_cast<size_t>(n));
+            if (p->buffer.size() > 65536)
+                p->buffer.erase(0, p->buffer.size() - 65536);
+            continue;
+        }
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+            usleep(20000);
+            continue;
+        }
+        break;  // the child closed the pty
+    }
+    int st = 0;
+    waitpid(p->pid, &st, 0);
+    std::lock_guard<std::mutex> lk(p->mtx);
+    p->exited = true;
+    if (WIFEXITED(st)) p->exitCode = WEXITSTATUS(st);
+    else if (WIFSIGNALED(st)) p->exitCode = 128 + WTERMSIG(st);
+    close(p->masterFd);
+    p->masterFd = -1;
+}
+
+// The snapshot of the NEW output since the last tool call + the status.
+static std::string bgSnapshot(const std::shared_ptr<BgProcess>& p) {
+    std::lock_guard<std::mutex> lk(p->mtx);
+    std::string fresh = p->buffer.substr(p->consumed);
+    p->consumed = p->buffer.size();
+    json j = {{"output", fresh},
+              {"status", p->exited ? "exited" : (p->killed ? "killed" : "running")}};
+    if (p->exited) j["exit"] = p->exitCode;
+    return j.dump();
+}
+
+static std::string processTool(const Config& cfg, const std::string& argsJson,
+                               const std::function<int(const std::string&)>& confirm) {
+    json args = json::object();
+    try { args = json::parse(argsJson); }
+    catch (...) { return "error: bad arguments JSON"; }
+    std::string action = args.value("action", "");
+
+    if (action == "start") {
+        std::string cmd = args.value("command", "");
+        if (cmd.empty()) return "error: command required";
+        if (!matrixcli::g_interrupted.load()) return "interrupted (Ctrl+C)";
+        if (isDangerousCommand(cmd))
+            return "hardline block: dangerous command refused — " + cmd;
+        Verdict v = checkTrust(cfg, cmd);
+        if (v == Verdict::Deny) return "denied by the trust policy: " + cmd;
+        if (v == Verdict::Ask && confirm) {
+            int verdict = confirm(cmd);
+            if (verdict == static_cast<int>(ConfirmVerdict::Decline))
+                return "declined by the user: " + cmd;
+        }
+        int master = -1, slave = -1;
+        if (openpty(&master, &slave, nullptr, nullptr, nullptr) != 0)
+            return "error: openpty failed";
+        pid_t pid = fork();
+        if (pid == 0) {
+            setsid();
+            ioctl(slave, TIOCSCTTY, 0);
+            dup2(slave, 0); dup2(slave, 1); dup2(slave, 2);
+            close(slave); close(master);
+            execl("/bin/sh", "sh", "-c", cmd.c_str(), (char*)nullptr);
+            _exit(127);
+        }
+        close(slave);
+        if (pid < 0) { close(master); return "error: fork failed"; }
+        fcntl(master, F_SETFL, fcntl(master, F_GETFL) | O_NONBLOCK);
+        auto p = std::make_shared<BgProcess>();
+        p->pid = pid;
+        p->masterFd = master;
+        std::string id = "p" + std::to_string(++g_bgSeq);
+        {
+            std::lock_guard<std::mutex> lk(g_bgMtx);
+            bgProcesses()[id] = p;
+        }
+        std::thread(bgReader, p).detach();
+        usleep(250000);  // the first prompt
+        json j = json::parse(bgSnapshot(p));
+        j["id"] = id;
+        j["started"] = cmd;
+        return j.dump();
+    }
+
+    std::string id = args.value("id", "");
+    std::shared_ptr<BgProcess> p;
+    {
+        std::lock_guard<std::mutex> lk(g_bgMtx);
+        auto it = bgProcesses().find(id);
+        if (it == bgProcesses().end())
+            return "error: no such process: " + (id.empty() ? "(empty)" : id);
+        p = it->second;
+    }
+    if (action == "send") {
+        std::string input = args.value("input", "");
+        {
+            std::lock_guard<std::mutex> lk(p->mtx);
+            if (p->exited || p->masterFd < 0) return "error: the process exited";
+        }
+        std::string line = input + "\n";
+        ssize_t n = write(p->masterFd, line.c_str(), line.size());
+        if (n < 0) return "error: write failed";
+        usleep(300000);  // the debugger's response
+        return bgSnapshot(p);
+    }
+    if (action == "poll") {
+        return bgSnapshot(p);
+    }
+    if (action == "wait") {
+        int timeout = args.value("timeout", 10);
+        if (timeout <= 0) timeout = 10;
+        if (timeout > 300) timeout = 300;
+        for (int t = 0; t < timeout * 10; t++) {
+            { std::lock_guard<std::mutex> lk(p->mtx);
+              if (p->exited) break; }
+            usleep(100000);
+        }
+        return bgSnapshot(p);
+    }
+    if (action == "kill") {
+        std::lock_guard<std::mutex> lk(p->mtx);
+        if (!p->exited && p->pid > 0) {
+            kill(p->pid, SIGKILL);
+            p->killed = true;
+        }
+        return bgSnapshot(p);
+    }
+    if (action == "list") {
+        json out = json::array();
+        std::lock_guard<std::mutex> lk(g_bgMtx);
+        for (auto& [pid2, q] : bgProcesses()) {
+            out.push_back({{"id", pid2},
+                           {"status", q->exited ? "exited" : "running"}});
+        }
+        return out.dump();
+    }
+    return "error: unknown action (start|send|poll|wait|kill|list)";
+}
+
+// The turn is over — no process may outlive it (the guard in run()).
+void processCleanupAll() {
+    std::lock_guard<std::mutex> lk(g_bgMtx);
+    for (auto& [id, p] : bgProcesses()) {
+        if (!p->exited && p->pid > 0) kill(p->pid, SIGKILL);
+        if (p->masterFd >= 0) close(p->masterFd);
+        p->masterFd = -1;
+    }
+    bgProcesses().clear();
 }
 
 std::string webFetch(const std::string& url, int maxChars) {
@@ -565,40 +784,6 @@ std::string searchSessions(const std::string& query) {
     }
     globfree(&g);
     return out.empty() ? "(no matches in the sessions)" : out;
-}
-
-// ---- the permission engine ----
-
-enum class Verdict { Allow, Ask, Deny };
-
-// The per-tool glob rules: the LAST matching rule wins (opencode-style).
-Verdict checkPermission(const Config& cfg, const std::string& tool,
-                        const std::string& subject) {
-    Verdict v = Verdict::Allow;  // the default: file tools are allowed
-    for (const auto& r : cfg.rules) {
-        if (r.tool != "*" && r.tool != tool) continue;
-        if (fnmatch(r.glob.c_str(), subject.c_str(), 0) != 0) continue;
-        v = r.action == "deny"   ? Verdict::Deny
-          : r.action == "ask"    ? Verdict::Ask
-                                 : Verdict::Allow;
-    }
-    return v;
-}
-
-// The trust policy for the shell: denyPrefixes > allowPrefixes > the
-// permission rules > the level.
-Verdict checkTrust(const Config& cfg, const std::string& cmd) {
-    for (const auto& p : cfg.denyPrefixes) {
-        if (cmd.rfind(p, 0) == 0) return Verdict::Deny;
-    }
-    for (const auto& p : cfg.allowPrefixes) {
-        if (cmd.rfind(p, 0) == 0) return Verdict::Allow;
-    }
-    Verdict rule = checkPermission(cfg, "shell", cmd);
-    if (rule != Verdict::Allow) return rule;
-    if (cfg.trust == "allow") return Verdict::Allow;
-    if (cfg.trust == "deny") return Verdict::Deny;
-    return Verdict::Ask;
 }
 
 // ---- the MCP client (stdio JSON-RPC) ----
@@ -750,16 +935,19 @@ Message parseOpenAiResponse(const json& resp) {
     Message m;
     m.role = "assistant";
     auto choice = resp.value("choices", json::array());
-    if (choice.empty()) return m;
+    if (choice.empty() || !choice[0].is_object()) return m;
     auto msg = choice[0].value("message", json::object());
-    m.content = msg.value("content", "");
+    if (msg.contains("content") && msg["content"].is_string())
+        m.content = msg["content"].get<std::string>();
     auto tcs = msg.value("tool_calls", json::array());
     for (const auto& t : tcs) {
+        if (!t.is_object()) continue;
         auto fn = t.value("function", json::object());
         ToolCall c;
         c.id = t.value("id", "");
         c.name = fn.value("name", "");
-        c.args = fn.value("arguments", "");
+        if (fn.contains("arguments") && fn["arguments"].is_string())
+            c.args = fn["arguments"].get<std::string>();
         m.calls.push_back(c);
     }
     return m;
@@ -835,38 +1023,23 @@ static std::string llmSimple(const Config& cfg, const std::string& prompt) {
 // ---- the provider presets + the usage accounting ----
 
 std::vector<ProviderPreset> providerPresets() {
-    return {
-        {"openai", "openai", "https://api.openai.com", "gpt-4o-mini"},
-        {"anthropic", "anthropic", "https://api.anthropic.com",
-         "claude-3-5-haiku-20241022"},
-        {"ollama", "openai", "http://localhost:11434", "llama3.2"},
-        {"lmstudio", "openai", "http://localhost:1234", "local-model"},
-        {"deepseek", "openai", "https://api.deepseek.com", "deepseek-chat"},
-        {"qwen", "openai", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-         "qwen-plus"},
-        {"openrouter", "openai", "https://openrouter.ai/api/v1",
-         "openai/gpt-4o-mini"},
-        {"groq", "openai", "https://api.groq.com/openai/v1",
-         "llama-3.3-70b-versatile"},
-        {"fireworks", "openai", "https://api.fireworks.ai/inference/v1",
-         "accounts/fireworks/models/llama-v3p1-8b-instruct"},
-    };
+    std::vector<ProviderPreset> out;
+    for (const auto& p : util::llmPresets()) {
+        out.push_back({p.name, p.provider, p.endpoint, p.model});
+    }
+    return out;
 }
 
 bool applyProviderPreset(Config& cfg, const std::string& name) {
-    for (const auto& p : providerPresets()) {
-        if (p.name == name) {
-            cfg.provider = p.provider;
-            cfg.endpoint = p.endpoint;
-            cfg.model = p.model;
-            return true;
-        }
-    }
-    return false;
+    const auto* p = util::findLlmPreset(name);
+    if (!p) return false;
+    cfg.provider = p->provider;
+    cfg.endpoint = p->endpoint;
+    cfg.model = p->model;
+    return true;
 }
 
-static int contextSizeFor(const std::string& model) {
-    if (model.find("claude-3-5") != std::string::npos ||
+static int contextSizeFor(const std::string& model) {    if (model.find("claude-3-5") != std::string::npos ||
         model.find("claude-3-7") != std::string::npos ||
         model.find("claude-3-opus") != std::string::npos ||
         model.find("o3") != std::string::npos || model.find("o4") != std::string::npos)
@@ -899,6 +1072,20 @@ static double pricePerM(const std::string& model, bool output) {
         model.find("qwen") != std::string::npos)
         return 0.0;
     return -1.0;
+}
+
+double estimateCost(const std::string& model, int64_t inputTokens,
+                    int64_t outputTokens) {
+    double inP = pricePerM(model, false);
+    double outP = pricePerM(model, true);
+    double cost = 0.0;
+    if (inP >= 0) cost += inP * static_cast<double>(inputTokens) / 1000000.0;
+    if (outP >= 0) cost += outP * static_cast<double>(outputTokens) / 1000000.0;
+    return cost;
+}
+
+int contextSizeForModel(const std::string& model) {
+    return contextSizeFor(model);
 }
 
 static std::mutex g_usageMutex;
@@ -1508,6 +1695,8 @@ bool loadAgentConfig(Config& cfg) {
         cfg.rules.push_back({v.value("tool", ""), v.value("glob", ""),
                              v.value("action", "")});
     }
+    cfg.llmStyle = j.value("llm_style", cfg.llmStyle);
+    cfg.llmMarkdown = j.value("llm_markdown", cfg.llmMarkdown);
     cfg.mcpServers.clear();
     for (const auto& v : j.value("mcp", json::array())) {
         cfg.mcpServers.push_back({v.value("name", ""), v.value("command", "")});
@@ -1523,6 +1712,8 @@ void saveAgentConfig(const Config& cfg) {
               {"trust", cfg.trust},
               {"proxy", cfg.proxy},
               {"sandbox", cfg.sandbox},
+              {"llm_style", cfg.llmStyle},
+              {"llm_markdown", cfg.llmMarkdown},
               {"allow", cfg.allowPrefixes},
               {"deny", cfg.denyPrefixes},
               {"mcp", json::array()}};
@@ -1739,6 +1930,12 @@ std::string executeTool(const Config& cfg, const std::string& name,
         }
         return shellCmd(cmd, i64("timeout", 60), str("workdir"), cfg.sandbox);
     }
+    if (name == "process") {
+        if (cfg.planMode) return "denied: plan mode — no processes yet";
+        if (cfg.subagentType == "explore")
+            return "denied: the explore subagent is read-only";
+        return processTool(cfg, argsJson, confirm);
+    }
     if (name == "read_file") {
         std::string p = str("path");
         Verdict v = checkPermission(cfg, "read", p);
@@ -1870,6 +2067,9 @@ struct SseAcc {
     std::string buf;
     std::string raw;   // the whole response (for the non-SSE JSON fallback)
     bool done = false;
+    int64_t promptTokens = 0;
+    int64_t completionTokens = 0;
+    std::string reasoning;  // the accumulated reasoning_content
 };
 
 void feedOpenAiSse(SseAcc& acc, const std::string& chunk,
@@ -1889,9 +2089,16 @@ void feedOpenAiSse(SseAcc& acc, const std::string& chunk,
         } catch (...) {
             continue;
         }
+        if (j.contains("usage") && j["usage"].is_object()) {
+            acc.promptTokens = j["usage"].value("prompt_tokens", 0);
+            acc.completionTokens = j["usage"].value("completion_tokens", 0);
+        }
         auto choices = j.value("choices", json::array());
         if (choices.empty()) continue;
         auto delta = choices[0].value("delta", json::object());
+        if (delta.contains("reasoning_content") &&
+            delta["reasoning_content"].is_string())
+            acc.reasoning += delta["reasoning_content"].get<std::string>();
         if (delta.contains("content") && delta["content"].is_string()) {
             std::string t = delta["content"].get<std::string>();
             if (!t.empty()) {
@@ -1974,11 +2181,16 @@ void feedAnthropicSse(SseAcc& acc, const std::string& chunk,
 
 Result run(const Config& cfg, const std::string& prompt,
            std::vector<Message>& history,
-           const std::function<int(const std::string&)>& confirm,
-           const std::function<std::string(const std::string&)>& ask,
+           const std::function<int(const std::string& cmd)>& confirm,
+           const std::function<std::string(const std::string& questionsJson)>& ask,
            const std::function<void(const std::string&)>& log,
            const std::function<void(const std::string&)>& onToken) {
+    // No background process outlives the turn.
+    struct Guard { ~Guard() { processCleanupAll(); } } guard;
+    (void)guard;
     Result result;
+    result.ts = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
     if (!cfg.cwd.empty() && chdir(cfg.cwd.c_str()) != 0 && log) {
         log("cannot chdir to " + cfg.cwd);
     }
@@ -2163,6 +2375,10 @@ Result run(const Config& cfg, const std::string& prompt,
                 assistant = acc.msg;
                 haveAssistant = true;
                 result.streamed = true;
+                result.promptTokens += acc.promptTokens;
+                result.completionTokens += acc.completionTokens;
+                result.reasoning += acc.reasoning;
+                agentAddUsage(acc.promptTokens, acc.completionTokens, cfg.model);
             } else if (sresp.ok() && !acc.raw.empty()) {
                 // The provider answered with a plain JSON (not the SSE):
                 // parse the whole body instead of re-requesting.
@@ -2211,6 +2427,18 @@ Result run(const Config& cfg, const std::string& prompt,
             assistant = cfg.provider == "anthropic"
                             ? parseAnthropicResponse(parsed)
                             : parseOpenAiResponse(parsed);
+            if (parsed.contains("usage") && parsed["usage"].is_object()) {
+                result.promptTokens += parsed["usage"].value("prompt_tokens", 0);
+                result.completionTokens +=
+                    parsed["usage"].value("completion_tokens", 0);
+            }
+            if (cfg.provider != "anthropic" &&
+                parsed.value("choices", json::array()).size() > 0) {
+                auto msg = parsed["choices"][0].value("message", json::object());
+                if (msg.contains("reasoning_content") &&
+                    msg["reasoning_content"].is_string())
+                    result.reasoning += msg["reasoning_content"].get<std::string>();
+            }
             agentAddUsage(static_cast<int>(req.body.size() / 4),
                           static_cast<int>(resp.body.size() / 4), cfg.model);
         }

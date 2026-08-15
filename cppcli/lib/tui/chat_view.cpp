@@ -84,6 +84,12 @@ void ChatView::run(Screen& screen) {
     _needsRedraw = true;
 
     while (_running) {
+        // Ctrl+C: the SIGINT flag turns true → exit the loop (the agent
+        // threads poll the same flag and stop on their own).
+        if (_quitCb && _quitCb()) {
+            _running = false;
+            break;
+        }
         if (_showHelp) {
             HelpScreen::show(screen);
             _showHelp = false;
@@ -499,6 +505,10 @@ void ChatView::handleKey(Screen& screen, int key) {
     }
     if (_focus == FOCUS_INPUT) {
         switch (key) {
+        case 27: // Esc: stop a running agent (the flag is polled by the
+                  // agent loops); no other Esc behaviour exists in the input.
+            if (_escCb) _escCb();
+            break;
         case '\n': case '\r': case KEY_ENTER:
             if (!_input.empty()) {
                 if (_input[0] == '/' && _cmdHandler) {
@@ -613,6 +623,7 @@ void ChatView::handleKey(Screen& screen, int key) {
             }
             _needsRedraw = true;
             break;
+        default:
             if (key >= 32 && key <= 126) {
                 _input.insert(_input.begin() + _cursorPos, (char)key);
                 _cursorPos++;

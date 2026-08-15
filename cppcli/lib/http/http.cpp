@@ -791,7 +791,8 @@ Response Client::streamPost(const std::string& url,
         raw += chunk;
         auto sep = raw.find("\r\n\r\n");
         if (sep != std::string::npos) {
-            // Parse the status line for the caller.
+            // Parse the status line + the headers (Transfer-Encoding
+            // decides whether the body is chunked).
             auto firstNl = raw.find("\r\n");
             if (firstNl != std::string::npos) {
                 std::string statusLine = raw.substr(0, firstNl);
@@ -803,16 +804,72 @@ Response Client::streamPost(const std::string& url,
                     } catch (...) {}
                 }
             }
+            size_t hp = firstNl == std::string::npos ? 0 : firstNl + 2;
+            while (hp < sep) {
+                auto nl = raw.find("\r\n", hp);
+                if (nl == std::string::npos || nl > sep) break;
+                std::string line = raw.substr(hp, nl - hp);
+                auto colon = line.find(':');
+                if (colon != std::string::npos) {
+                    std::string key = line.substr(0, colon);
+                    std::string value = line.substr(colon + 1);
+                    while (!value.empty() &&
+                           (value[0] == ' ' || value[0] == '\t'))
+                        value = value.substr(1);
+                    resp.headers[key] = value;
+                }
+                hp = nl + 2;
+            }
             carry = raw.substr(sep + 4);
             headersDone = true;
             break;
         }
     }
-    if (!carry.empty() && onChunk) onChunk(carry);
+    // The chunked transfer-encoding decoder: the SSE bytes arrive with
+    // the hex chunk-size lines interleaved; only the decoded data goes
+    // to onChunk.
+    bool chunked = false;
+    {
+        auto te = resp.headers.find("Transfer-Encoding");
+        if (te != resp.headers.end() &&
+            te->second.find("chunked") != std::string::npos)
+            chunked = true;
+    }
+    std::string decPending;   // the raw bytes awaiting decoding
+    bool inData = false;      // inside a chunk's data
+    size_t dataRemain = 0;    // the bytes left in the current chunk
+    auto feed = [&](const std::string& data) {
+        if (!chunked) {
+            if (onChunk && !data.empty()) onChunk(data);
+            return;
+        }
+        decPending += data;
+        while (true) {
+            if (!inData) {
+                auto crlf = decPending.find("\r\n");
+                if (crlf == std::string::npos) return;  // wait for more
+                std::string hexLen = decPending.substr(0, crlf);
+                decPending.erase(0, crlf + 2);
+                if (hexLen.empty()) continue;  // the post-chunk CRLF
+                size_t sz = 0;
+                try { sz = std::stoull(hexLen, nullptr, 16); }
+                catch (...) { return; }
+                if (sz == 0) { decPending.clear(); return; }  // the end
+                inData = true;
+                dataRemain = sz;
+            }
+            if (decPending.size() < dataRemain) return;  // wait for more
+            if (onChunk) onChunk(decPending.substr(0, dataRemain));
+            decPending.erase(0, dataRemain);
+            inData = false;
+            // the "\r\n" after the data is skipped by the empty hex line
+        }
+    };
+    feed(carry);
     while (headersDone) {
         std::string chunk;
         if (!readSome(chunk)) break;
-        if (onChunk) onChunk(chunk);
+        feed(chunk);
     }
     if (ssl) {
         SSL_shutdown(ssl);

@@ -13,7 +13,7 @@ static const std::unordered_set<std::string> kNoValueFlags = {
     "static", "once", "print", "json", "confirm", "debug", "ts", "ids",
     "expand", "verbose", "no-replies", "no-filter", "all", "interactive",
     "help", "version", "cli", "ui", "ascii", "populate", "mobile",
-    "no-mouse", "mouse",
+    "no-mouse", "mouse", "agent",
 };
 
 Args parseArgs(int argc, char* argv[]) {

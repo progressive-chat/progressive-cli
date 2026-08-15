@@ -3,6 +3,7 @@ add_library(matrixcli_util STATIC
     string_utils.cpp
     notifications.cpp
     client_utils.cpp
+    llm_presets.cpp
 )
 target_include_directories(matrixcli_util PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(matrixcli_util PUBLIC matrixcli_json Threads::Threads)

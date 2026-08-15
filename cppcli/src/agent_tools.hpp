@@ -86,6 +86,13 @@ struct Config {
     // The auto-compaction: when the history (the chars/4 estimate) passes
     // this % of the model's context, the old turns get the LLM summary.
     int compactThreshold = 60;              // 0 = off
+
+    // The llm CLI presentation (the user picks simple | rich):
+    //   llmStyle    "simple" = the bare answer (the default),
+    //               "rich" = + the model/timestamp/tokens/price block
+    //   llmMarkdown true = render the answer as ANSI markdown
+    std::string llmStyle = "simple";
+    bool llmMarkdown = false;
 };
 
 // The built-in provider presets (the opencode-style list).
@@ -101,6 +108,12 @@ bool applyProviderPreset(Config& cfg, const std::string& name);
 // The rough token accounting (chars/4) + the model price tables.
 void agentAddUsage(int inputTokens, int outputTokens, const std::string& model);
 std::string agentUsageLine();
+
+// The estimated cost (USD) of a completion with the given model, and the
+// model's context window size (tokens) — the llm metadata block.
+double estimateCost(const std::string& model, int64_t inputTokens,
+                    int64_t outputTokens);
+int contextSizeForModel(const std::string& model);
 
 struct ToolCall {
     std::string id;
@@ -147,6 +160,11 @@ struct Result {
     std::string error;
     int iterations = 0;
     bool streamed = false;  // the tokens were already printed live
+    // The usage + the reasoning (the --tools rich meta reuses them).
+    int64_t promptTokens = 0;
+    int64_t completionTokens = 0;
+    std::string reasoning;  // the accumulated reasoning_content
+    int64_t ts = 0;         // the turn start (ms since epoch)
 };
 
 // One agentic run: the prompt is answered, tool calls are executed (the

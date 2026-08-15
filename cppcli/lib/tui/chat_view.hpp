@@ -76,6 +76,14 @@ public:
     using CommandHandler = std::function<void(const std::string& cmd, const std::string& args)>;
     void setCommandHandler(CommandHandler cb) { _cmdHandler = std::move(cb); }
 
+    // Esc pressed while the input is focused (used to interrupt a running
+    // agent — the TUI sets the g_agentInterrupt flag).
+    void setEscHandler(std::function<void()> cb) { _escCb = std::move(cb); }
+
+    // Polled every loop iteration; returning true exits the TUI (the
+    // Ctrl+C handler — the TUI watches the SIGINT flag).
+    void setQuitCheck(std::function<bool()> cb) { _quitCb = std::move(cb); }
+
     // Pagination
     using PaginateCallback = std::function<void(const std::string& room_id)>;
     void setPaginateCallback(PaginateCallback cb) { _paginateCb = std::move(cb); }
@@ -129,6 +137,8 @@ private:
     RoomSwitchCallback _roomSwitchCb;
     std::function<void(const std::string&)> _notifyCb;
     CommandHandler _cmdHandler;
+    std::function<void()> _escCb;
+    std::function<bool()> _quitCb;
     PaginateCallback _paginateCb;
     mutable std::mutex _mutex;
 };

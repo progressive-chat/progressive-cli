@@ -4,12 +4,14 @@
 #include "commands.hpp"
 #include "config.hpp"
 #include "globals.hpp"
+#include "pcore.hpp"
 #include "../lib/matrix/client.hpp"
 #include "../lib/database/db.hpp"
 #include "../lib/util/string_utils.hpp"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <string>
+#include <set>
 #include <thread>
 #include <chrono>
 
@@ -145,9 +147,113 @@ int cmdRead(const cli::Args& args) {
         using namespace matrixcli;
         db::Database dbi;
         if (!dbi.open("matrixcli.db")) return 1;
-        if (args.options.count("all")) { dbi.markAllRead(); std::cout << "All read." << std::endl; }
-        else if (!args.positional.empty()) { dbi.markRoomRead(args.positional[0]); std::cout << "Marked " << args.positional[0] << " read." << std::endl; }
-        else { std::cerr << "Usage: matrixcli read <room> | matrixcli read --all" << std::endl; return 1; }
+        if (args.options.count("all")) {
+            dbi.markAllRead();
+            // The last-read position moves to the newest event of every
+            // room (the local m.fully_read copy).
+            for (auto& r : dbi.listRooms()) {
+                std::string id = r.value("room_id", "");
+                auto evs = dbi.getEvents(id, 1);
+                if (!evs.empty()) dbi.setReadMarker(id, evs.front().event_id);
+            }
+            std::cout << "All read." << std::endl;
+        } else if (!args.positional.empty()) {
+            std::string room = args.positional[0];
+            dbi.markRoomRead(room);
+            // The last-read marker (the local m.fully_read copy) moves to
+            // the newest cached event of the room.
+            std::string lastEvent;
+            auto evs = dbi.getEvents(room, 1);
+            if (!evs.empty()) {
+                lastEvent = evs.front().event_id;
+                dbi.setReadMarker(room, lastEvent);
+            }
+            // The server-side read markers follow the per-room receipts
+            // policy (the `receipts` command toggles it).
+            if (dbi.receiptsEnabled(room)) {
+                if (pcore::init() && pcore::loadSavedSession()) {
+                    auto r = pcore::core().client->setReadMarker(room, lastEvent);
+                    if (!r.ok) {
+                        std::cout << "Marked " << room
+                                  << " read (the marker failed: " << r.error.message
+                                  << ")." << std::endl;
+                        return 0;
+                    }
+                    std::cout << "Marked " << room << " read (receipt sent)." << std::endl;
+                } else {
+                    std::cout << "Marked " << room
+                              << " read (no session — the marker was not sent)." << std::endl;
+                }
+            } else {
+                std::cout << "Marked " << room
+                          << " read (receipts off — the marker was NOT sent)."
+                          << std::endl;
+            }
+        } else { std::cerr << "Usage: matrixcli read <room> | matrixcli read --all" << std::endl; return 1; }
+        return 0;
+}
+
+// ── receipts ── the per-room read-receipt policy (Element-style).
+//   matrixcli receipts                — the policy for every room
+//   matrixcli receipts <room>         — the status of one room
+//   matrixcli receipts <room> on|off  — set it
+int cmdReceipts(const cli::Args& args) {
+        using namespace matrixcli;
+        db::Database dbi;
+        if (!dbi.open("matrixcli.db")) return 1;
+        bool json_out = args.options.count("json");
+
+        if (!args.positional.empty()) {
+            std::string room = args.positional[0];
+            if (args.positional.size() >= 2 &&
+                (args.positional[1] == "on" || args.positional[1] == "off")) {
+                bool enable = args.positional[1] == "on";
+                dbi.setReceiptsEnabled(room, enable);
+                if (json_out) {
+                    nlohmann::json j;
+                    j["room"] = room;
+                    j["receipts"] = enable;
+                    std::cout << j.dump() << std::endl;
+                } else {
+                    std::cout << "Read receipts for " << room << ": "
+                              << (enable ? "on" : "off") << std::endl;
+                }
+                return 0;
+            }
+            bool on = dbi.receiptsEnabled(room);
+            if (json_out) {
+                nlohmann::json j;
+                j["room"] = room;
+                j["receipts"] = on;
+                std::cout << j.dump() << std::endl;
+            } else {
+                std::cout << "Read receipts for " << room << ": "
+                          << (on ? "on" : "off") << std::endl;
+            }
+            return 0;
+        }
+
+        // The whole room list with the per-room policy.
+        auto off = dbi.receiptsOffRooms();
+        std::set<std::string> offSet(off.begin(), off.end());
+        if (json_out) {
+            nlohmann::json arr = nlohmann::json::array();
+            for (auto& r : dbi.listRooms()) {
+                std::string id = r.value("room_id", "");
+                arr.push_back({{"room", id},
+                               {"name", r.value("name", id)},
+                               {"receipts", !offSet.count(id)}});
+            }
+            std::cout << arr.dump() << std::endl;
+        } else {
+            std::cout << "Read receipts (default: on everywhere):" << std::endl;
+            for (auto& r : dbi.listRooms()) {
+                std::string id = r.value("room_id", "");
+                std::cout << "  " << (offSet.count(id) ? "[off] " : "[on]  ")
+                          << r.value("name", id) << std::endl;
+            }
+            std::cout << "\nToggle: matrixcli receipts <room> on|off" << std::endl;
+        }
         return 0;
 }
 
@@ -291,6 +397,6 @@ void registerMatrixCommands() {
     reg.registerCli("roomname", cmdRoomname, "Set room name: roomname <room> <name>");
     reg.registerCli("avatar", cmdAvatar, "Set room avatar: avatar <room> <mxc-url>");
     reg.registerCli("read", cmdRead, "Mark room read: read <room>");
-    reg.registerCli("notifications", cmdNotifications, "Notification settings: notifications (on|off)");
+    reg.registerCli("receipts", cmdReceipts, "Per-room read receipts: receipts [<room>] [on|off]");    reg.registerCli("notifications", cmdNotifications, "Notification settings: notifications (on|off)");
     reg.registerCli("notif", cmdNotifications, "Notification settings (alias)");
 }

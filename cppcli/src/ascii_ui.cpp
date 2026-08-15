@@ -11,6 +11,7 @@
 #include "../lib/database/db.hpp"
 #include "../lib/matrix/client.hpp"
 #include "../lib/util/logger.hpp"
+#include "../lib/util/string_utils.hpp"
 #include "agent_tools.hpp"
 #include <cstdlib>
 #include <glob.h>
@@ -424,15 +425,15 @@ std::string eventPreview(db::Database* db, const std::string& roomId,
 // show the date as MM-DD (Element Classic style).
 // The newest actual MESSAGE of a room (the shared preview/timestamp
 // source); defined below, used by the roomLastTime first.
-static const matrix::Event* roomLastEvent(db::Database* db,
-                                          const std::string& roomId);
+static matrix::Event roomLastEvent(db::Database* db,
+                                   const std::string& roomId);
 
 std::string roomLastTime(db::Database* db, const std::string& roomId,
                           bool seconds, bool clock12h) {
     if (!db) return "";
-    const matrix::Event* lastEv = roomLastEvent(db, roomId);
-    if (!lastEv) return "";
-    std::time_t t = static_cast<std::time_t>(lastEv->origin_server_ts / 1000);
+    matrix::Event lastEv = roomLastEvent(db, roomId);
+    if (lastEv.event_id.empty()) return "";
+    std::time_t t = static_cast<std::time_t>(lastEv.origin_server_ts / 1000);
     std::tm tm{};
     localtime_r(&t, &tm);
     std::time_t nowT = std::time(nullptr);
@@ -562,24 +563,26 @@ std::string highlightUrls(const std::string& text) {
 // the body render as pills, so a linked message's sender is visible too.
 // The newest actual MESSAGE of a room — pins/state events (the newest
 // entries) must not swallow the preview NOR the timestamp.
-static const matrix::Event* roomLastEvent(db::Database* db,
-                                          const std::string& roomId) {
-    if (!db) return nullptr;
+static matrix::Event roomLastEvent(db::Database* db,
+                                   const std::string& roomId) {
+    matrix::Event out;
+    if (!db) return out;
     auto evs = db->getEvents(roomId, 30);
     for (const auto& e : evs) {
-        if (e.type == "m.room.message" || e.type == "m.sticker") return &e;
+        if (e.type == "m.room.message" || e.type == "m.sticker") return e;
     }
-    return evs.empty() ? nullptr : &evs.front();
+    if (!evs.empty()) return evs.front();
+    return out;
 }
 
 std::string roomLastMsg(db::Database* db, const std::string& roomId,
                         const std::vector<nlohmann::json>& rooms) {
     if (!db) return "";
-    const matrix::Event* found = roomLastEvent(db, roomId);
-    if (!found) return "";
     // The newest MESSAGE — pins/state events (the newest entries) must not
-    // swallow the preview.
-    const matrix::Event& ev = *found;
+    // swallow the preview. (By value: the pointer into the temporary
+    // getEvents vector was a dangling-reference crash.)
+    matrix::Event ev = roomLastEvent(db, roomId);
+    if (ev.event_id.empty()) return "";
     std::string preview;
     if (ev.type == "m.room.message" || ev.type == "m.sticker") {
         std::string body = eventBody(ev);
@@ -644,6 +647,8 @@ struct UiState {
     int membersMode = 0;                // 0 auto, 1 horizontal, 2 vertical list
     bool showThreadsBottom = true;      // thread list at the right panel bottom
     std::unordered_set<std::string> invited;  // rooms with an open invite
+    std::map<std::string, db::InviteInfo> inviteByRoom;  // invite metadata
+    std::string readMarker;                  // the last-read event id
     std::string focusEvent;              // event the viewport jumped to (goto)
     int mobileTab = 0;                   // 0=Rooms 1=Chat 2=People (bottom nav)
     int limitRows = 0;                   // settings "rows <n>": 0 = fit terminal
@@ -830,6 +835,7 @@ void loadRoomIntoState(UiState& st, const std::string& query) {
     }
     st.messages = st.db->getEvents(st.currentRoomId, st.limit);
     std::reverse(st.messages.begin(), st.messages.end());  // newest last
+    st.readMarker = st.db->getReadMarker(st.currentRoomId);
     st.pinned = pinnedIds(st.db, st.currentRoomId);
     st.scroll = 0;  // clamped to the bottom in drawFrame
     st.members.clear();
@@ -1218,8 +1224,7 @@ std::string highlightCodeLine(const std::string& line, bool cFamily) {
 }
 
 std::string renderMarkdownBody(const std::string& body) {
-    std::string out;
-    // The inline decorations: `code`, **bold**, and [text](url) links.
+    std::string out;    // The inline decorations: `code`, **bold**, and [text](url) links.
     auto inlineMd = [](const std::string& t) -> std::string {
         std::string r;
         size_t i = 0;
@@ -1435,8 +1440,16 @@ std::string drawFrame(const UiState& st) {
             if (r.value("is_direct", false)) nm = "  " + nm;
             int w = displayWidth(" " + nm + " ("
                                  + std::to_string(roomMessageCount(st.db, rid)) + ")");
-            std::string last = roomLastMsg(st.db, rid, st.rooms);
-            if (!last.empty()) w += 3 + displayWidth(last);  // " · preview"
+            auto invIt = st.inviteByRoom.find(rid);
+            if (invIt != st.inviteByRoom.end() && invIt->second.ts > 0) {
+                // Invited rooms render "📨 <when>" instead of the
+                // last-message preview.
+                w += displayWidth(" 📨 ") + displayWidth(relativeTime(invIt->second.ts));
+            } else {
+                std::string last = roomLastMsg(st.db, rid, st.rooms);
+                if (!last.empty()) w += 3 + displayWidth(last);  // " · preview"
+            }
+            if (roomThreadCount(st.db, rid) > 0) w += 4;  // " 🧵N"
             if (w > longestRoom) longestRoom = w;
         }
         leftW = std::max(24, std::min(56, longestRoom + 2));
@@ -1491,7 +1504,24 @@ std::string drawFrame(const UiState& st) {
 
     // Header
     std::string out;
-    std::string header = " " + roomName + e2eeMark + " ";
+    // The unread count since the last-read marker — the Element-style
+    // "· N new" hint in the room header (visible regardless of the
+    // viewport scroll).
+    int newSinceRead = 0;
+    if (!st.readMarker.empty()) {
+        bool past = false;
+        for (const auto& ev : st.messages) {
+            if (!past) {
+                if (ev.event_id == st.readMarker) past = true;
+                continue;
+            }
+            if (ev.type == "m.room.message" || ev.type == "m.sticker")
+                newSinceRead++;
+        }
+    }
+    std::string header = " " + roomName + e2eeMark;
+    if (newSinceRead > 0) header += " · " + std::to_string(newSinceRead) + " new";
+    header += " ";
     int headerFill = W - static_cast<int>(header.size()) - 1;
     if (headerFill < 0) headerFill = 0;
     out += header + repeat('=', headerFill) + "\n";
@@ -1572,6 +1602,9 @@ std::string drawFrame(const UiState& st) {
         }
     }
     std::string leftHeader = st.accountLabel + " — Rooms";
+    if (st.invites > 0) {
+        leftHeader += (st.showEmoji ? " 📥 " : " [inv] ") + std::to_string(st.invites);
+    }
     std::string headRoom = " " + roomName;
     if (static_cast<int>(headRoom.size()) > centerW - 1) headRoom = headRoom.substr(0, centerW - 1);
     const char* PIPE = "\x1b[90m";  // dim grey for the panel pipes
@@ -1885,6 +1918,20 @@ std::string drawFrame(const UiState& st) {
             return center;
         };
         int64_t prevDay = -1;
+        // The last-read divider: the messages AFTER the marker count as
+        // "new" (Element-style).
+        int newAfterMarker = 0;
+        if (!st.readMarker.empty()) {
+            bool past = false;
+            for (const auto& ev2 : st.messages) {
+                if (!past) {
+                    if (ev2.event_id == st.readMarker) past = true;
+                    continue;
+                }
+                if (ev2.type == "m.room.message" || ev2.type == "m.sticker")
+                    newAfterMarker++;
+            }
+        }
         for (const auto& ev : st.messages) {
             int64_t day = ev.origin_server_ts / 86400000;
             if (day != prevDay) {
@@ -1932,6 +1979,16 @@ std::string drawFrame(const UiState& st) {
                         + bar;
                 }
                 centerRows.push_back(bar);
+            }
+            // The last-read divider: where the user last read up to, with
+            // the count of the newer messages (the local m.fully_read copy).
+            if (!st.readMarker.empty() && ev.event_id == st.readMarker) {
+                std::string mark = "\x1b[33m── last read ──\x1b[0m";
+                if (newAfterMarker > 0) {
+                    mark += "  \x1b[90m" + std::to_string(newAfterMarker)
+                          + " new\x1b[0m";
+                }
+                centerRows.push_back(mark);
             }
             // Element "show join/leave messages": member events are system
             // rows — hidden when the setting is off.
@@ -2327,6 +2384,14 @@ std::string drawFrame(const UiState& st) {
                 }
                 std::string ltime = roomLastTime(st.db, rid, st.showSeconds,
                                                    st.clock12h);
+                // For invited rooms the time slot shows the remembered
+                // invitation date instead of the last message time.
+                {
+                    auto invIt = st.inviteByRoom.find(rid);
+                    if (invIt != st.inviteByRoom.end() && invIt->second.ts > 0) {
+                        ltime = "invited " + relativeTime(invIt->second.ts);
+                    }
+                }
                 if (!ltime.empty()) {
                     int tl = displayWidth(ltime);
                     int baseW = W - tl - 1;
@@ -2435,6 +2500,9 @@ std::string drawFrame(const UiState& st) {
                 name = (st.showEmoji ? "💬 " : "[DM] ") + name;
             left = mark + "[1m" + name + "[0m ("
                  + std::to_string(roomMessageCount(st.db, rid)) + ")";
+            // Invited rooms: the remembered invitation date replaces the
+            // last-message preview below ("📨 2h ago").
+            auto invIt = st.inviteByRoom.find(rid);
             if (r.value("is_encrypted", false)) {
                 left += (st.showEmoji ? " 🔒" : " [E2EE]");
             }
@@ -2449,28 +2517,34 @@ std::string drawFrame(const UiState& st) {
                 left += (st.showEmoji ? " 🧵" : " (threads ") + std::to_string(thr)
                       + (st.showEmoji ? "" : ")");
             }
-            // The last message preview, like Element's room list.
-            std::string last = roomLastMsg(st.db, rid, st.rooms);
-            if (!last.empty()) {
-                // The preview leaves room for the last-message time at
-                // the row's end (the Element-style room list).
-                int avail = leftW - displayWidth(left) - 9;
-                if (avail >= 6) {
-                    // Nickname in the normal color, the message dimmed.
-                    auto colon = last.find(':');
-                    std::string who = colon == std::string::npos
-                                          ? last : last.substr(0, colon + 1);
-                    std::string what = colon == std::string::npos
-                                           ? "" : last.substr(colon + 1);
-                    int used = displayWidth(who) + 2;  // the " · " separator
-                    left += " [90m· [0m" + who
-                          + "[90m"
-                          + highlightMentions(clip(what, std::max(2, avail - used)))
-                          + "[0m";
-                    left += " [90m"
-                          + roomLastTime(st.db, rid, st.showSeconds,
-                                         st.clock12h)
-                          + "[0m";
+            if (invIt != st.inviteByRoom.end()) {
+                // No preview: the row shows when the invitation arrived
+                // ("📨 2h ago") — the compact form fits the narrow panel.
+                left += " [90m📨 " + relativeTime(invIt->second.ts) + "[0m";
+            } else {
+                // The last message preview, like Element's room list.
+                std::string last = roomLastMsg(st.db, rid, st.rooms);
+                if (!last.empty()) {
+                    // The preview leaves room for the last-message time at
+                    // the row's end (the Element-style room list).
+                    int avail = leftW - displayWidth(left) - 9;
+                    if (avail >= 6) {
+                        // Nickname in the normal color, the message dimmed.
+                        auto colon = last.find(':');
+                        std::string who = colon == std::string::npos
+                                              ? last : last.substr(0, colon + 1);
+                        std::string what = colon == std::string::npos
+                                               ? "" : last.substr(colon + 1);
+                        int used = displayWidth(who) + 2;  // the " · " separator
+                        left += " [90m· [0m" + who
+                              + "[90m"
+                              + highlightMentions(clip(what, std::max(2, avail - used)))
+                              + "[0m";
+                        left += " [90m"
+                              + roomLastTime(st.db, rid, st.showSeconds,
+                                             st.clock12h)
+                              + "[0m";
+                    }
                 }
             }
         }
@@ -2509,6 +2583,12 @@ std::string drawFrame(const UiState& st) {
 }
 
 } // namespace
+
+// The public wrapper over the anonymous-namespace renderer — the llm CLI
+// shares the same ANSI markdown rendering as the chat view.
+std::string renderMarkdownAnsi(const std::string& body) {
+    return renderMarkdownBody(body);
+}
 
 // The about screen: the title, the (c) line, the user's aewan logo
 // (the rising line with the /\ dip), the tagline and the info.
@@ -2650,6 +2730,12 @@ int cmdAsciiUi(const cli::Args& args) {
     for (const auto& id : dbi.invitedRoomIds(st.accountLabel == "demo (offline)"
                                                  ? "@you" : "@" + st.accountLabel)) {
         st.invited.insert(id);
+    }
+    // The remembered invitation dates (the cache keeps the invite events
+    // with their timestamps).
+    for (const auto& inv : dbi.openInvites(st.accountLabel == "demo (offline)"
+                                               ? "@you" : "@" + st.accountLabel)) {
+        st.inviteByRoom[inv.roomId] = inv;
     }
     // Persisted settings (the Settings screen): restore them on start.
     st.showSeconds = dbi.getSetting("time_full") == "1";
@@ -5565,11 +5651,21 @@ int cmdAsciiUi(const cli::Args& args) {
         // ---- goto: jump the chat viewport to an event ----
         if (a.command == "goto") {
             if (a.positional.empty()) {
-                std::cout << "Usage: goto <event_id>  |  newest (back to the latest)"
+                std::cout << "Usage: goto <event_id> | lastread | newest (back to the latest)"
                           << std::endl;
                 continue;
             }
             std::string q = a.positional[0];
+            if (q == "lastread" || q == "last-read" || q == "unread") {
+                // Jump to the last-read position (the local m.fully_read
+                // copy), right after the marker.
+                if (st.readMarker.empty()) {
+                    st.statusNote = "no last-read marker (read <room> sets it)";
+                    std::cout << drawFrame(st) << std::flush;
+                    continue;
+                }
+                q = st.readMarker;
+            }
             matrix::Event target;
             if (!st.db->getEventById(q, target)) {
                 st.statusNote = "event not in the cache: " + q;
@@ -5868,6 +5964,40 @@ int cmdAsciiUi(const cli::Args& args) {
             }
             dbi.setSetting("muted", saved);
             st.statusNote = roomId + (on ? " muted (no indicators)" : " unmuted");
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- receipts [<room>] [on|off]: the per-room read-receipt policy ----
+        if (a.command == "receipts") {
+            std::string roomId = st.currentRoomId;
+            if (!a.positional.empty() && a.positional[0] != "on" &&
+                a.positional[0] != "off") {
+                std::string q = a.positional[0];
+                for (const auto& r : st.rooms) {
+                    std::string id = r.value("room_id", "");
+                    if (id == q || id.find(q) != std::string::npos ||
+                        r.value("name", "") == q) {
+                        roomId = id;
+                        break;
+                    }
+                }
+            }
+            if (roomId.empty()) {
+                std::cout << "No room selected." << std::endl;
+                continue;
+            }
+            std::string act = a.positional.empty() ? ""
+                              : (a.positional.back() == "off" ? "off"
+                                 : a.positional.back() == "on" ? "on" : "");
+            bool enable = act != "off";
+            if (act.empty()) {
+                std::cout << "receipts: " << (st.db->receiptsEnabled(roomId) ? "on" : "off")
+                          << "  (receipts <room> on|off)" << std::endl;
+                continue;
+            }
+            st.db->setReceiptsEnabled(roomId, enable);
+            st.statusNote = std::string("receipts ") + (enable ? "on" : "off")
+                          + " for " + roomId;
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
