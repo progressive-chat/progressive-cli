@@ -228,12 +228,11 @@ static std::vector<agenttools::Message> compactHistory(
         "Summarize this conversation into compact bullet points: the facts, "
         "the decisions and the current task state. Under 500 words. Return "
         "ONLY the summary."});
-    std::string err;
-    matrixagent::Completion c = matrixagent::chat(cfg, system, msgs, err);
-    if (!c.ok) return hist;
+    auto cres = matrixagent::chat(cfg, system, msgs);
+    if (!cres) return hist;
 
     std::vector<agenttools::Message> out;
-    out.push_back({"user", "[earlier conversation summary]\n" + c.text, {}, "", ""});
+    out.push_back({"user", "[earlier conversation summary]\n" + cres->text, {}, "", ""});
     for (const auto& m : tail) out.push_back(m);
     return out;
 }
@@ -245,25 +244,22 @@ static matrixagent::Completion runOneCompletion(const matrixagent::Config& cfg,
                             const std::vector<matrixagent::ChatMessage>& msgs,
                             bool rich, bool markdown, bool stream,
                             bool json_out, bool showReasoning) {
-    matrixagent::Completion c;
-    if (stream) {
-        c = matrixagent::stream(
-            cfg, system, msgs,
-            [](const std::string& piece) { std::cout << piece << std::flush; },
-            showReasoning
-                ? [](const std::string& rp) {
-                      std::cout << "\x1b[38;5;245m" << rp << "\x1b[0m" << std::flush;
-                  }
-                : std::function<void(const std::string&)>{});
-        if (c.ok) std::cout << std::endl;
-    } else {
-        std::string err;
-        c = matrixagent::chat(cfg, system, msgs, err);
+    auto cres = stream
+        ? matrixagent::stream(
+              cfg, system, msgs,
+              [](const std::string& piece) { std::cout << piece << std::flush; },
+              showReasoning
+                  ? [](const std::string& rp) {
+                        std::cout << "\x1b[38;5;245m" << rp << "\x1b[0m" << std::flush;
+                    }
+                  : std::function<void(const std::string&)>{})
+        : matrixagent::chat(cfg, system, msgs);
+    if (stream && cres) std::cout << std::endl;
+    if (!cres) {
+        std::cerr << "LLM error: " << cres.error() << std::endl;
+        return {};
     }
-    if (!c.ok) {
-        std::cerr << "LLM error: " << c.error << std::endl;
-        return c;
-    }
+    matrixagent::Completion c = *cres;
     agenttools::agentAddUsage(c.promptTokens, c.completionTokens, c.model);
     if (json_out) {
         nlohmann::json j;

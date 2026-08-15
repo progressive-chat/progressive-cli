@@ -260,9 +260,10 @@ void extractContent(const json& node, std::string& text,
 } // namespace
 
 // One chat completion. Returns the Completion (text + usage metadata);
-// on failure fills `out.error`.
-Completion llmCall(const Config& cfg, const std::string& system,
-                   const std::vector<ChatMessage>& messages) {
+// on failure returns the unexpected error.
+std::expected<Completion, std::string>
+llmCall(const Config& cfg, const std::string& system,
+        const std::vector<ChatMessage>& messages) {
     Completion out;
     http::Client httpClient;
     httpClient.setTimeout(600);  // the reasoning models think for minutes between chunks
@@ -316,13 +317,14 @@ Completion llmCall(const Config& cfg, const std::string& system,
     if (!resp.ok()) {
         try {
             auto j = json::parse(resp.body);
-            out.error = j.value("error", json::object())
-                            .value("message", "HTTP " + std::to_string(resp.status_code));
+            return std::unexpected(
+                j.value("error", json::object())
+                    .value("message", "HTTP " + std::to_string(resp.status_code)));
         } catch (...) {
-            out.error = resp.body.empty() ? "HTTP " + std::to_string(resp.status_code)
-                                          : resp.body.substr(0, 200);
+            return std::unexpected(
+                resp.body.empty() ? "HTTP " + std::to_string(resp.status_code)
+                                  : resp.body.substr(0, 200));
         }
-        return out;
     }
     try {
         auto j = json::parse(resp.body);
@@ -349,19 +351,17 @@ Completion llmCall(const Config& cfg, const std::string& system,
         }
     out.ok = true;
     } catch (const std::exception& e) {
-        out.error = std::string("response parse failed: ") + e.what();
+        return std::unexpected(std::string("response parse failed: ") + e.what());
     }
-    if (out.ok && out.text.empty()) {
-        out.ok = false;
+    if (out.text.empty()) {
         if (!out.reasoning.empty()) {
-            out.error = "the model produced only reasoning ("
-                      + std::to_string(out.reasoning.size())
-                      + " chars), no answer — try --show-reasoning or "
-                        "--max-tokens";
-        } else {
-            out.error = "no content in response — raw: "
-                      + resp.body.substr(0, 220);
+            return std::unexpected(
+                "the model produced only reasoning ("
+                + std::to_string(out.reasoning.size())
+                + " chars), no answer — try --show-reasoning or --max-tokens");
         }
+        return std::unexpected("no content in response — raw: "
+                               + resp.body.substr(0, 220));
     }
     return out;
 }
@@ -474,29 +474,23 @@ std::string resolveRoomId(const std::string& roomId) {
 
 // ---- the agent loop ----
 
-std::string complete(const Config& cfg, const std::string& system,
-                     const std::string& prompt, std::string& error) {
-    return completeEx(cfg, system, prompt, error).text;
+std::expected<Completion, std::string>
+completeEx(const Config& cfg, const std::string& system,
+           const std::string& prompt) {
+    return llmCall(cfg, system, {{"user", prompt}});
 }
 
-Completion completeEx(const Config& cfg, const std::string& system,
-                      const std::string& prompt, std::string& error) {
-    Completion c = llmCall(cfg, system, {{"user", prompt}});
-    if (!c.ok) error = c.error;
-    return c;
+std::expected<Completion, std::string>
+chat(const Config& cfg, const std::string& system,
+     const std::vector<ChatMessage>& messages) {
+    return llmCall(cfg, system, messages);
 }
 
-Completion chat(const Config& cfg, const std::string& system,
-                const std::vector<ChatMessage>& messages, std::string& error) {
-    Completion c = llmCall(cfg, system, messages);
-    if (!c.ok) error = c.error;
-    return c;
-}
-
-Completion stream(const Config& cfg, const std::string& system,
-                  const std::vector<ChatMessage>& messages,
-                  const std::function<void(const std::string&)>& onToken,
-                  const std::function<void(const std::string&)>& onReasoning) {
+std::expected<Completion, std::string>
+stream(const Config& cfg, const std::string& system,
+       const std::vector<ChatMessage>& messages,
+       const std::function<void(const std::string&)>& onToken,
+       const std::function<void(const std::string&)>& onReasoning) {
     // The Anthropic event-stream deltas take the non-streaming path for
     // now; the OpenAI-compatible wire streams.
     if (cfg.provider == "anthropic" || !onToken) {
@@ -627,30 +621,29 @@ Completion stream(const Config& cfg, const std::string& system,
         });
 
     if (resp.status_code < 200 || resp.status_code >= 300) {
-        out.error = "stream failed: HTTP " + std::to_string(resp.status_code) +
-                    (resp.error_message.empty() ? "" : " — " + resp.error_message);
-        return out;
+        return std::unexpected(
+            "stream failed: HTTP " + std::to_string(resp.status_code) +
+            (resp.error_message.empty() ? "" : " — " + resp.error_message));
     }
-    out.ok = !out.text.empty();
-    if (!out.ok) {
+    if (out.text.empty()) {
         if (!out.reasoning.empty()) {
-            out.error = "the model streamed only reasoning ("
-                      + std::to_string(out.reasoning.size())
-                      + " chars), no answer — try --show-reasoning";
-        } else {
-            out.error = "no content in response (stream: HTTP "
-                      + std::to_string(resp.status_code) + ", "
-                      + std::to_string(totalBytes) + " bytes, "
-                      + std::to_string(parsedEvents) + " events, "
-                      + std::to_string(contentEvents) + " content deltas, "
-                      + std::to_string(reasoningChars) + " reasoning chars)";
-            if (!firstPayload.empty())
-                out.error += " — first: " + firstPayload.substr(0, 1000);
-            if (!lastPayload.empty())
-                out.error += " — last: " + lastPayload.substr(0, 1000);
-            out.error += " — retry with --no-stream, or --debug-llm";
+            return std::unexpected(
+                "the model streamed only reasoning ("
+                + std::to_string(out.reasoning.size())
+                + " chars), no answer — try --show-reasoning");
         }
-        return out;
+        std::string err = "no content in response (stream: HTTP "
+                        + std::to_string(resp.status_code) + ", "
+                        + std::to_string(totalBytes) + " bytes, "
+                        + std::to_string(parsedEvents) + " events, "
+                        + std::to_string(contentEvents) + " content deltas, "
+                        + std::to_string(reasoningChars) + " reasoning chars)";
+        if (!firstPayload.empty())
+            err += " — first: " + firstPayload.substr(0, 1000);
+        if (!lastPayload.empty())
+            err += " — last: " + lastPayload.substr(0, 1000);
+        err += " — retry with --no-stream, or --debug-llm";
+        return std::unexpected(err);
     }
     if (out.completionTokens == 0) out.completionTokens = out.text.size() / 4;
     return out;
@@ -696,14 +689,14 @@ Result run(const Config& cfg, Backend& backend, const std::string& task,
         if (cfg.verbose && log)
             log("[agent] iteration " + std::to_string(state.iteration + 1)
                 + ": calling " + cfg.model + " ...");
-        Completion c = llmCall(cfg, acfg.systemPrompt, {{"user", prompt}});
-        if (!c.ok) {
-            lastError = c.error;
+        auto cres = llmCall(cfg, acfg.systemPrompt, {{"user", prompt}});
+        if (!cres) {
+            lastError = cres.error();
             state.hasError = true;
-            state.errorMessage = c.error;
+            state.errorMessage = cres.error();
             break;
         }
-        state = progressive::processAgentIteration(state, c.text);
+        state = progressive::processAgentIteration(state, cres->text);
         for (auto& call : state.pendingToolCalls) {
             if (cfg.verbose && log)
                 log("[agent] tool: " + call.toolName + " " + call.argumentsJson);

@@ -45,12 +45,12 @@ public:
 
     // Account
     bool saveAccount(const StoredAccount& account);
-    StoredAccount loadAccount();
+    StoredAccount loadAccount() const;
 
     // Rooms
     bool upsertRoom(const std::string& room_id, const matrix::SyncRoom& room);
     bool upsertRoom(const json& room_data, const std::string& room_id);
-    std::vector<json> listRooms();
+    std::vector<json> listRooms() const;
     // Delete a room and all its events (used by the demo rebuild).
     bool clearRoom(const std::string& room_id);
 
@@ -58,55 +58,55 @@ public:
     bool insertEvent(const matrix::Event& event, const std::string& decrypted = "");
     std::vector<matrix::Event> getEvents(const std::string& room_id, int limit = 50,
                                          const std::string& before_event = "",
-                                         const std::string& from_event = "");
+                                         const std::string& from_event = "") const;
     // Fetch a single event by id (for reply-chain rendering). Returns false if absent.
-    bool getEventById(const std::string& event_id, matrix::Event& ev);
-    int getEventCount(const std::string& room_id);
+    bool getEventById(const std::string& event_id, matrix::Event& ev) const;
+    int getEventCount(const std::string& room_id) const;
     // Persisted UI settings (the ascii client's Settings screen).
     bool setSetting(const std::string& key, const std::string& value);
     std::string getSetting(const std::string& key,
-                           const std::string& def = "");
+                           const std::string& def = "") const;
     // Rooms where the user has an open invite (an m.room.member
     // "invite" event for them, with no later join). Matches the user
     // by localpart so both "@user" and "@user:server" forms count.
-    int inviteCount(const std::string& userId);
+    int inviteCount(const std::string& userId) const;
     // The ids of the rooms where the user has an open invite.
-    std::vector<std::string> invitedRoomIds(const std::string& userId);
+    std::vector<std::string> invitedRoomIds(const std::string& userId) const;
     // The open invites with their cached metadata (inviter, reason and
     // the invite timestamp), newest first.
-    std::vector<InviteInfo> openInvites(const std::string& userId);
+    std::vector<InviteInfo> openInvites(const std::string& userId) const;
     // Spaces: tag a room with its parent space id; rooms carry
     // "is_space"/"space" keys in listRooms().
     bool tagRoom(const std::string& room_id, const std::string& space);
 
     // Full-text search
-    std::vector<json> search(const std::string& query, int limit = 20);
+    std::vector<json> search(const std::string& query, int limit = 20) const;
 
     // Notifications
     bool insertNotification(const std::string& room_id, const std::string& event_id,
                              const std::string& sender, const std::string& body, bool highlight);
-    std::vector<json> getNotifications(int limit = 50, bool unread_only = true);
-    int getNotificationCount(const std::string& room_id = "");
+    std::vector<json> getNotifications(int limit = 50, bool unread_only = true) const;
+    int getNotificationCount(const std::string& room_id = "") const;
     bool markRoomRead(const std::string& room_id);
     bool markAllRead();
 
     // Read-receipt policy per room (the Element-style toggle): by default
     // the read markers go to every room; the "receipts_off" setting lists
     // the room ids where they must not be sent.
-    bool receiptsEnabled(const std::string& room_id);
+    bool receiptsEnabled(const std::string& room_id) const;
     void setReceiptsEnabled(const std::string& room_id, bool enabled);
-    std::vector<std::string> receiptsOffRooms();
+    std::vector<std::string> receiptsOffRooms() const;
 
     // The last-read position per room (the local copy of the m.fully_read
     // marker): the event id the user read up to. "" = no marker yet.
-    std::string getReadMarker(const std::string& room_id);
+    std::string getReadMarker(const std::string& room_id) const;
     void setReadMarker(const std::string& room_id, const std::string& event_id);
 
 private:
     void migrate();
     bool exec(const std::string& sql);
 
-    sqlite3* _db = nullptr;
+    mutable sqlite3* _db = nullptr;  // mutable: the const methods only read
 };
 
 }} // namespace matrixcli::db

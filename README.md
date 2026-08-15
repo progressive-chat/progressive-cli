@@ -115,7 +115,7 @@ Full endpoint list is returned by `/api/status` itself.
 
 ## C++ build (cppcli/)
 
-Requires: CMake 3.20+, C++20 compiler, OpenSSL, libolm, ncurses.
+Requires: CMake 3.20+, C++23 compiler, OpenSSL, libolm, ncurses.
 
 ```bash
 cd cppcli
@@ -127,6 +127,42 @@ make -j$(nproc)
 ./matrixcli tui     # Terminal UI
 ```
 
+## The LLM / agent CLI
+
+The client ships with an LLM conversational interface and an agentic
+coding engine (the same engine backs the ASCII UI and the TUI):
+
+```bash
+matrixcli llm "question"                 # one-shot (streams on a TTY)
+matrixcli llm continue "follow-up"       # the next turn (stdin works too)
+matrixcli llm chat                       # the interactive multi-turn chat
+matrixcli llm sessions                   # the saved conversations (+previews)
+matrixcli llm resume 2 "..."             # switch + continue by number
+matrixcli llm --session work "..."       # a named conversation
+matrixcli llm --fresh "..."              # archive + start anew
+
+matrixcli llm "..." --tools              # the agent with the tool access
+matrixcli llm chat --tools               # interactive + tools per turn
+matrixcli agent-code "fix the build"     # the coding agent (open-code style)
+matrixcli agent "summarize #general"     # the Matrix-tools agent
+```
+
+- The conversations persist in `~/.local/share/matrixcli/sessions/`
+  (XDG); `--fresh` archives, nothing is ever deleted (`sessions rm`
+  moves to the trash).
+- Streaming (SSE, chunked transfer), the usage/price/context meta
+  (`--rich`), the light-grey thinking by default (`--no-reasoning`
+  hides it), markdown rendering (`--markdown`), JSON output (`--json`).
+- The provider config: `~/.config/matrixcli/agent.json` (presets:
+  openai, anthropic, deepseek, qwen, openrouter, groq, fireworks, mimo,
+  ollama, lmstudio) or the interactive first-run wizard
+  (`matrixcli tui agent`).
+- The `--tools` engine: filesystem/shell with the trust policy
+  (allow/ask/deny, `y/N/a/A` prompts, the hardline dangerous-command
+  blocks), subagents, MCP, plan mode, goals, cron, and the interactive
+  `process` tool (a PTY per process: start/send/poll/wait/kill — for
+  gdb/pdb-style debugging).
+
 ## Features
 
 - [x] Matrix client with terminal TUI
@@ -135,7 +171,9 @@ make -j$(nproc)
 - [x] Enhanced login: well-known discovery, SSO URL, token auth
 - [x] End-to-end encryption (Olm + Megolm via mautrix-go / libolm)
 - [x] SQLite-backed offline event store
-- [x] C++ rewrite with POSIX sockets and OpenSSL (in progress)
+- [x] LLM conversations, streaming, tools, the coding/Matrix agents
+- [x] Per-room read receipts and the last-read markers
+- [x] C++23 rewrite with POSIX sockets and OpenSSL (in progress)
 - [ ] Full C++ TUI parity with Go TUI
 - [ ] C++ E2EE device verification UI
 - [ ] Voice/video calling (WebRTC)

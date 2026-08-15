@@ -3512,13 +3512,13 @@ int cmdTUI(const matrixcli::cli::Args& args) {
                     std::thread([&, prompt, roomId]() {
                         matrixcli::matrixagent::Config cfg;
                         matrixcli::matrixagent::applyDefaults(cfg);
-                        std::string err;
-                        std::string text = matrixcli::matrixagent::complete(
-                            cfg, "", prompt, err);
+                        auto cres = matrixcli::matrixagent::completeEx(
+                            cfg, "", prompt);
                         tui::MessageInfo mi;
                         mi.sender = "@llm";
-                        mi.body = !err.empty() ? "[llm error] " + err
-                                               : (text.empty() ? "(empty response)" : text);
+                        mi.body = cres
+                            ? (cres->text.empty() ? "(empty response)" : cres->text)
+                            : "[llm error] " + cres.error();
                         chat.addMessage(roomId, mi);
                     }).detach();
                 } else if (cmd == "shrug") {

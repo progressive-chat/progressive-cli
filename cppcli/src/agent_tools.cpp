@@ -33,8 +33,38 @@ using nlohmann::json;
 
 namespace {
 
-// The session's todo list (the todowrite/update_plan tool).
-std::vector<std::pair<std::string, std::string>> g_todos;  // {status, content}
+// The todo list (the todo tool). The board lives for the process — the
+// agent loop reads it back through agentTodos().
+class TodoBoard {
+public:
+    static TodoBoard& instance() {
+        static TodoBoard board;
+        return board;
+    }
+    std::string set(const json& todos) {
+        todos_.clear();
+        for (const auto& t : todos.value("todos", json::array())) {
+            todos_.push_back({t.value("status", "pending"),
+                              t.value("content", "")});
+        }
+        return render();
+    }
+    std::string render() const {
+        std::string out;
+        for (const auto& [status, content] : todos_) {
+            out += (status == "in_progress" ? "→ "
+                    : status == "completed"   ? "✓ "
+                                              : "· ")
+                 + content + "\n";
+        }
+        return out.empty() ? "(todo list cleared)" : out;
+    }
+    std::vector<std::pair<std::string, std::string>> items() const {
+        return todos_;
+    }
+private:
+    std::vector<std::pair<std::string, std::string>> todos_;
+};
 
 std::string baseEndpoint(const Config& cfg) {
     if (!cfg.endpoint.empty()) {
@@ -515,178 +545,214 @@ Verdict checkTrust(const Config& cfg, const std::string& cmd) {
 // pseudo-terminal the agent can write commands into and read the
 // responses from across the tool calls of one turn.
 
-struct BgProcess {
-    int pid = -1;
-    int masterFd = -1;
-    std::string buffer;       // the captured output (capped ring)
-    size_t consumed = 0;      // the agent already read up to here
-    bool exited = false;
-    bool killed = false;
-    int exitCode = -1;
-    std::mutex mtx;
-};
-
-static std::map<std::string, std::shared_ptr<BgProcess>>& bgProcesses() {
-    static std::map<std::string, std::shared_ptr<BgProcess>> m;
-    return m;
-}
-static std::mutex g_bgMtx;
-static int g_bgSeq = 0;
-
-// The reader thread: the master fd → the buffer; EOF reaps the child.
-static void bgReader(std::shared_ptr<BgProcess> p) {
-    char buf[4096];
-    while (true) {
-        ssize_t n = read(p->masterFd, buf, sizeof(buf));
-        if (n > 0) {
-            std::lock_guard<std::mutex> lk(p->mtx);
-            p->buffer.append(buf, static_cast<size_t>(n));
-            if (p->buffer.size() > 65536)
-                p->buffer.erase(0, p->buffer.size() - 65536);
-            continue;
-        }
-        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
-            usleep(20000);
-            continue;
-        }
-        break;  // the child closed the pty
+// The interactive-process registry: a pseudo-terminal per process, the
+// reader threads, the output rings and the ids — one object, no globals.
+class ProcessManager {
+public:
+    static ProcessManager& instance() {
+        static ProcessManager pm;
+        return pm;
     }
-    int st = 0;
-    waitpid(p->pid, &st, 0);
-    std::lock_guard<std::mutex> lk(p->mtx);
-    p->exited = true;
-    if (WIFEXITED(st)) p->exitCode = WEXITSTATUS(st);
-    else if (WIFSIGNALED(st)) p->exitCode = 128 + WTERMSIG(st);
-    close(p->masterFd);
-    p->masterFd = -1;
-}
 
-// The snapshot of the NEW output since the last tool call + the status.
-static std::string bgSnapshot(const std::shared_ptr<BgProcess>& p) {
-    std::lock_guard<std::mutex> lk(p->mtx);
-    std::string fresh = p->buffer.substr(p->consumed);
-    p->consumed = p->buffer.size();
-    json j = {{"output", fresh},
-              {"status", p->exited ? "exited" : (p->killed ? "killed" : "running")}};
-    if (p->exited) j["exit"] = p->exitCode;
-    return j.dump();
-}
+    std::string start(const Config& cfg, const std::string& cmd,
+                      const std::function<int(const std::string&)>& confirm) {
+        if (!matrixcli::g_interrupted.load()) return "interrupted (Ctrl+C)";
+        if (isDangerousCommand(cmd))
+            return "hardline block: dangerous command refused — " + cmd;
+        const Verdict v = checkTrust(cfg, cmd);
+        if (v == Verdict::Deny) return "denied by the trust policy: " + cmd;
+        if (v == Verdict::Ask && confirm &&
+            confirm(cmd) == static_cast<int>(ConfirmVerdict::Decline))
+            return "declined by the user: " + cmd;
+
+        int master = -1, slave = -1;
+        if (openpty(&master, &slave, nullptr, nullptr, nullptr) != 0)
+            return "error: openpty failed";
+        const pid_t pid = fork();
+        if (pid == 0) {
+            setsid();
+            ioctl(slave, TIOCSCTTY, 0);
+            dup2(slave, 0); dup2(slave, 1); dup2(slave, 2);
+            close(slave); close(master);
+            execl("/bin/sh", "sh", "-c", cmd.c_str(), static_cast<char*>(nullptr));
+            _exit(127);
+        }
+        close(slave);
+        if (pid < 0) { close(master); return "error: fork failed"; }
+        fcntl(master, F_SETFL, fcntl(master, F_GETFL) | O_NONBLOCK);
+
+        auto p = std::make_shared<Proc>(pid, master);
+        const std::string id = "p" + std::to_string(++seq_);
+        {
+            std::lock_guard lk(mtx_);
+            procs_[id] = p;
+        }
+        std::thread(&ProcessManager::reader, this, p).detach();
+        usleep(250000);  // the first prompt
+        json j = json::parse(snapshot(p));
+        j["id"] = id;
+        j["started"] = cmd;
+        return j.dump();
+    }
+
+    std::string send(const std::string& id, const std::string& input) {
+        const auto p = find(id);
+        if (!p) return "error: no such process: " + id;
+        {
+            std::lock_guard lk(p->mtx);
+            if (p->exited || p->masterFd < 0) return "error: the process exited";
+        }
+        const std::string line = input + "\n";
+        if (write(p->masterFd, line.c_str(), line.size()) < 0)
+            return "error: write failed";
+        usleep(300000);  // the debugger's response
+        return snapshot(p);
+    }
+
+    std::string poll(const std::string& id) {
+        const auto p = find(id);
+        return p ? snapshot(p) : "error: no such process: " + id;
+    }
+
+    std::string wait(const std::string& id, int timeout) {
+        const auto p = find(id);
+        if (!p) return "error: no such process: " + id;
+        timeout = std::clamp(timeout <= 0 ? 10 : timeout, 1, 300);
+        for (int t = 0; t < timeout * 10; t++) {
+            {
+                std::lock_guard lk(p->mtx);
+                if (p->exited) break;
+            }
+            usleep(100000);
+        }
+        return snapshot(p);
+    }
+
+    std::string kill(const std::string& id) {
+        const auto p = find(id);
+        if (!p) return "error: no such process: " + id;
+        {
+            std::lock_guard lk(p->mtx);
+            if (!p->exited && p->pid > 0) {
+                ::kill(p->pid, SIGKILL);
+                p->killed = true;
+            }
+        }
+        return snapshot(p);
+    }
+
+    std::string list() {
+        json out = json::array();
+        std::lock_guard lk(mtx_);
+        for (const auto& [id, p] : procs_) {
+            out.push_back({{"id", id},
+                           {"status", p->exited ? "exited" : "running"}});
+        }
+        return out.dump();
+    }
+
+    // The turn is over — no process may outlive it (the guard in run()).
+    void cleanupAll() {
+        std::lock_guard lk(mtx_);
+        for (const auto& [id, p] : procs_) {
+            if (!p->exited && p->pid > 0) ::kill(p->pid, SIGKILL);
+            if (p->masterFd >= 0) close(p->masterFd);
+            p->masterFd = -1;
+        }
+        procs_.clear();
+    }
+
+private:
+    struct Proc {
+        Proc(pid_t pid_, int fd) : pid(pid_), masterFd(fd) {}
+        int pid = -1;
+        int masterFd = -1;
+        std::string buffer;      // the captured output (capped ring)
+        size_t consumed = 0;     // the agent already read up to here
+        bool exited = false;
+        bool killed = false;
+        int exitCode = -1;
+        std::mutex mtx;
+    };
+
+    // The reader: the master fd → the buffer; EOF reaps the child.
+    void reader(std::shared_ptr<Proc> p) {
+        char buf[4096];
+        while (true) {
+            const ssize_t n = read(p->masterFd, buf, sizeof(buf));
+            if (n > 0) {
+                std::lock_guard lk(p->mtx);
+                p->buffer.append(buf, static_cast<size_t>(n));
+                if (p->buffer.size() > 65536)
+                    p->buffer.erase(0, p->buffer.size() - 65536);
+            } else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK
+                                 || errno == EINTR)) {
+                usleep(20000);
+            } else {
+                break;  // the child closed the pty
+            }
+        }
+        int st = 0;
+        waitpid(p->pid, &st, 0);
+        std::lock_guard lk(p->mtx);
+        p->exited = true;
+        if (WIFEXITED(st)) p->exitCode = WEXITSTATUS(st);
+        else if (WIFSIGNALED(st)) p->exitCode = 128 + WTERMSIG(st);
+        close(p->masterFd);
+        p->masterFd = -1;
+    }
+
+    // The NEW output since the last tool call + the status.
+    static std::string snapshot(const std::shared_ptr<Proc>& p) {
+        std::lock_guard lk(p->mtx);
+        const std::string fresh = p->buffer.substr(p->consumed);
+        p->consumed = p->buffer.size();
+        json j = {{"output", fresh},
+                  {"status", p->exited ? "exited" : (p->killed ? "killed" : "running")}};
+        if (p->exited) j["exit"] = p->exitCode;
+        return j.dump();
+    }
+
+    std::shared_ptr<Proc> find(const std::string& id) {
+        std::lock_guard lk(mtx_);
+        const auto it = procs_.find(id);
+        return it == procs_.end() ? nullptr : it->second;
+    }
+
+    std::map<std::string, std::shared_ptr<Proc>> procs_;
+    std::mutex mtx_;
+    int seq_ = 0;
+};
 
 static std::string processTool(const Config& cfg, const std::string& argsJson,
                                const std::function<int(const std::string&)>& confirm) {
     json args = json::object();
     try { args = json::parse(argsJson); }
     catch (...) { return "error: bad arguments JSON"; }
-    std::string action = args.value("action", "");
+    const std::string action = args.value("action", "");
+    auto& pm = ProcessManager::instance();
 
     if (action == "start") {
-        std::string cmd = args.value("command", "");
+        const std::string cmd = args.value("command", "");
         if (cmd.empty()) return "error: command required";
-        if (!matrixcli::g_interrupted.load()) return "interrupted (Ctrl+C)";
-        if (isDangerousCommand(cmd))
-            return "hardline block: dangerous command refused — " + cmd;
-        Verdict v = checkTrust(cfg, cmd);
-        if (v == Verdict::Deny) return "denied by the trust policy: " + cmd;
-        if (v == Verdict::Ask && confirm) {
-            int verdict = confirm(cmd);
-            if (verdict == static_cast<int>(ConfirmVerdict::Decline))
-                return "declined by the user: " + cmd;
-        }
-        int master = -1, slave = -1;
-        if (openpty(&master, &slave, nullptr, nullptr, nullptr) != 0)
-            return "error: openpty failed";
-        pid_t pid = fork();
-        if (pid == 0) {
-            setsid();
-            ioctl(slave, TIOCSCTTY, 0);
-            dup2(slave, 0); dup2(slave, 1); dup2(slave, 2);
-            close(slave); close(master);
-            execl("/bin/sh", "sh", "-c", cmd.c_str(), (char*)nullptr);
-            _exit(127);
-        }
-        close(slave);
-        if (pid < 0) { close(master); return "error: fork failed"; }
-        fcntl(master, F_SETFL, fcntl(master, F_GETFL) | O_NONBLOCK);
-        auto p = std::make_shared<BgProcess>();
-        p->pid = pid;
-        p->masterFd = master;
-        std::string id = "p" + std::to_string(++g_bgSeq);
-        {
-            std::lock_guard<std::mutex> lk(g_bgMtx);
-            bgProcesses()[id] = p;
-        }
-        std::thread(bgReader, p).detach();
-        usleep(250000);  // the first prompt
-        json j = json::parse(bgSnapshot(p));
-        j["id"] = id;
-        j["started"] = cmd;
-        return j.dump();
+        return pm.start(cfg, cmd, confirm);
     }
-
-    std::string id = args.value("id", "");
-    std::shared_ptr<BgProcess> p;
-    {
-        std::lock_guard<std::mutex> lk(g_bgMtx);
-        auto it = bgProcesses().find(id);
-        if (it == bgProcesses().end())
-            return "error: no such process: " + (id.empty() ? "(empty)" : id);
-        p = it->second;
-    }
-    if (action == "send") {
-        std::string input = args.value("input", "");
-        {
-            std::lock_guard<std::mutex> lk(p->mtx);
-            if (p->exited || p->masterFd < 0) return "error: the process exited";
-        }
-        std::string line = input + "\n";
-        ssize_t n = write(p->masterFd, line.c_str(), line.size());
-        if (n < 0) return "error: write failed";
-        usleep(300000);  // the debugger's response
-        return bgSnapshot(p);
-    }
-    if (action == "poll") {
-        return bgSnapshot(p);
-    }
-    if (action == "wait") {
-        int timeout = args.value("timeout", 10);
-        if (timeout <= 0) timeout = 10;
-        if (timeout > 300) timeout = 300;
-        for (int t = 0; t < timeout * 10; t++) {
-            { std::lock_guard<std::mutex> lk(p->mtx);
-              if (p->exited) break; }
-            usleep(100000);
-        }
-        return bgSnapshot(p);
-    }
-    if (action == "kill") {
-        std::lock_guard<std::mutex> lk(p->mtx);
-        if (!p->exited && p->pid > 0) {
-            kill(p->pid, SIGKILL);
-            p->killed = true;
-        }
-        return bgSnapshot(p);
-    }
-    if (action == "list") {
-        json out = json::array();
-        std::lock_guard<std::mutex> lk(g_bgMtx);
-        for (auto& [pid2, q] : bgProcesses()) {
-            out.push_back({{"id", pid2},
-                           {"status", q->exited ? "exited" : "running"}});
-        }
-        return out.dump();
-    }
+    if (action == "send")
+        return pm.send(args.value("id", ""), args.value("input", ""));
+    if (action == "poll")
+        return pm.poll(args.value("id", ""));
+    if (action == "wait")
+        return pm.wait(args.value("id", ""), args.value("timeout", 10));
+    if (action == "kill")
+        return pm.kill(args.value("id", ""));
+    if (action == "list")
+        return pm.list();
     return "error: unknown action (start|send|poll|wait|kill|list)";
 }
 
 // The turn is over — no process may outlive it (the guard in run()).
 void processCleanupAll() {
-    std::lock_guard<std::mutex> lk(g_bgMtx);
-    for (auto& [id, p] : bgProcesses()) {
-        if (!p->exited && p->pid > 0) kill(p->pid, SIGKILL);
-        if (p->masterFd >= 0) close(p->masterFd);
-        p->masterFd = -1;
-    }
-    bgProcesses().clear();
+    ProcessManager::instance().cleanupAll();
 }
 
 std::string webFetch(const std::string& url, int maxChars) {
@@ -705,19 +771,7 @@ std::string webFetch(const std::string& url, int maxChars) {
 
 std::string todoTool(const std::string& argsJson) {
     try {
-        json args = json::parse(argsJson);
-        g_todos.clear();
-        for (const auto& t : args.value("todos", json::array())) {
-            g_todos.push_back({t.value("status", "pending"),
-                               t.value("content", "")});
-        }
-        std::string out;
-        for (const auto& [st, content] : g_todos) {
-            out += (st == "in_progress" ? "→ " : st == "completed" ? "✓ "
-                                                                    : "· ")
-                 + content + "\n";
-        }
-        return out.empty() ? "(todo list cleared)" : out;
+        return TodoBoard::instance().set(json::parse(argsJson));
     } catch (...) {
         return "error: bad todos JSON";
     }
@@ -1310,7 +1364,7 @@ static std::string lspQuery(const Config& cfg, const std::string& operation,
 }
 
 std::vector<std::pair<std::string, std::string>> agentTodos() {
-    return g_todos;
+    return TodoBoard::instance().items();
 }
 
 // ---- the notes (the hermes MEMORY.md / USER.md) ----

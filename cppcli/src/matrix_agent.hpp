@@ -13,6 +13,7 @@
 //   4. OPENAI_API_KEY / ANTHROPIC_API_KEY environment variables
 //   5. per-provider defaults (endpoint + model)
 
+#include <expected>
 #include <functional>
 #include <memory>
 #include <string>
@@ -85,10 +86,6 @@ Result run(const Config& cfg, Backend& backend, const std::string& task,
            const std::string& roomId,
            const std::function<void(const std::string&)>& log = {});
 
-// A single chat completion (the /llm path). Returns the assistant text;
-// on failure returns "" and fills `error`.
-std::string complete(const Config& cfg, const std::string& system,
-                     const std::string& prompt, std::string& error);
 
 // ---- rich completions (the llm CLI metadata) ----
 
@@ -109,20 +106,24 @@ struct Completion {
 };
 
 // One completion with the usage metadata (tokens, model, timestamp).
-Completion completeEx(const Config& cfg, const std::string& system,
-                      const std::string& prompt, std::string& error);
+// The error case carries the message (std::expected, C++23).
+std::expected<Completion, std::string>
+completeEx(const Config& cfg, const std::string& system,
+           const std::string& prompt);
 
 // Multi-turn completion: the whole conversation is sent to the model.
-Completion chat(const Config& cfg, const std::string& system,
-                const std::vector<ChatMessage>& messages, std::string& error);
+std::expected<Completion, std::string>
+chat(const Config& cfg, const std::string& system,
+     const std::vector<ChatMessage>& messages);
 
 // The SSE-streamed completion: the tokens are fed to `onToken` as they
 // arrive (the OpenAI-compatible providers; Anthropic falls back to the
 // non-streaming path). The reasoning pieces go to `onReasoning`. The
 // usage comes from the final chunk when the provider reports it.
-Completion stream(const Config& cfg, const std::string& system,
-                  const std::vector<ChatMessage>& messages,
-                  const std::function<void(const std::string&)>& onToken = {},
-                  const std::function<void(const std::string&)>& onReasoning = {});
+std::expected<Completion, std::string>
+stream(const Config& cfg, const std::string& system,
+       const std::vector<ChatMessage>& messages,
+       const std::function<void(const std::string&)>& onToken = {},
+       const std::function<void(const std::string&)>& onReasoning = {});
 
 }} // namespace matrixcli::matrixagent

@@ -135,7 +135,7 @@ bool Database::saveAccount(const StoredAccount& account) {
     return true;
 }
 
-StoredAccount Database::loadAccount() {
+StoredAccount Database::loadAccount() const {
     StoredAccount acc;
     auto get = [this](const char* key) -> std::string {
         auto sql = "SELECT value FROM account WHERE key='" + std::string(key) + "'";
@@ -239,7 +239,7 @@ bool Database::clearRoom(const std::string& room_id) {
     return true;
 }
 
-std::vector<json> Database::listRooms() {
+std::vector<json> Database::listRooms() const {
     std::vector<json> result;
     sqlite3_stmt* stmt;
     sqlite3_prepare_v2(_db, "SELECT room_id, name, topic, avatar_url, is_direct, is_encrypted, member_count, is_space, space FROM rooms ORDER BY name", -1, &stmt, nullptr);
@@ -301,8 +301,7 @@ bool Database::insertEvent(const matrix::Event& event, const std::string& decryp
 
 std::vector<matrix::Event> Database::getEvents(const std::string& room_id, int limit,
                                                 const std::string& before_event,
-                                                const std::string& from_event) {
-    std::vector<matrix::Event> result;
+                                                const std::string& from_event) const {    std::vector<matrix::Event> result;
     std::string sql = "SELECT event_id, sender, type, content, origin_server_ts, state_key, redacts, decrypted_content FROM events WHERE room_id = ?";
     if (!before_event.empty()) {
         sql += " AND origin_server_ts < (SELECT origin_server_ts FROM events WHERE event_id = ?)";
@@ -348,7 +347,7 @@ std::vector<matrix::Event> Database::getEvents(const std::string& room_id, int l
     return result;
 }
 
-bool Database::getEventById(const std::string& event_id, matrix::Event& ev) {
+bool Database::getEventById(const std::string& event_id, matrix::Event& ev) const {
     sqlite3_stmt* stmt;
     sqlite3_prepare_v2(_db,
         "SELECT event_id, sender, type, content, origin_server_ts, state_key, redacts, decrypted_content, room_id "
@@ -392,8 +391,7 @@ bool Database::setSetting(const std::string& key, const std::string& value) {
 }
 
 std::string Database::getSetting(const std::string& key,
-                                 const std::string& def) {
-    std::string value = def;
+                                 const std::string& def) const {    std::string value = def;
     sqlite3_stmt* stmt = nullptr;
     sqlite3_prepare_v2(_db, "SELECT value FROM settings WHERE key = ?",
                        -1, &stmt, nullptr);
@@ -406,7 +404,7 @@ std::string Database::getSetting(const std::string& key,
     return value;
 }
 
-int Database::getEventCount(const std::string& room_id) {
+int Database::getEventCount(const std::string& room_id) const {
     sqlite3_stmt* stmt;
     sqlite3_prepare_v2(_db, "SELECT COUNT(*) FROM events WHERE room_id = ?", -1, &stmt, nullptr);
     sqlite3_bind_text(stmt, 1, room_id.c_str(), room_id.size(), SQLITE_TRANSIENT);
@@ -416,7 +414,7 @@ int Database::getEventCount(const std::string& room_id) {
     return count;
 }
 
-std::vector<std::string> Database::invitedRoomIds(const std::string& userId) {
+std::vector<std::string> Database::invitedRoomIds(const std::string& userId) const {
     std::string localpart = userId;
     if (!localpart.empty() && localpart[0] == '@') {
         auto colon = localpart.find(':');
@@ -450,7 +448,7 @@ std::vector<std::string> Database::invitedRoomIds(const std::string& userId) {
     return result;
 }
 
-int Database::inviteCount(const std::string& userId) {
+int Database::inviteCount(const std::string& userId) const {
     // Localpart of the user ("you" from "@you:demo.local" or "@you").
     std::string localpart = userId;
     if (!localpart.empty() && localpart[0] == '@') {
@@ -479,7 +477,7 @@ int Database::inviteCount(const std::string& userId) {
     return count;
 }
 
-std::vector<InviteInfo> Database::openInvites(const std::string& userId) {
+std::vector<InviteInfo> Database::openInvites(const std::string& userId) const {
     std::string localpart = userId;
     if (!localpart.empty() && localpart[0] == '@') {
         auto colon = localpart.find(':');
@@ -524,7 +522,7 @@ std::vector<InviteInfo> Database::openInvites(const std::string& userId) {
     return result;
 }
 
-std::vector<json> Database::search(const std::string& query, int limit) {
+std::vector<json> Database::search(const std::string& query, int limit) const {
     std::vector<json> result;
     sqlite3_stmt* stmt;
     std::string sql = "SELECT events.event_id, events.room_id, events.sender, "
@@ -575,7 +573,7 @@ bool Database::insertNotification(const std::string& room_id, const std::string&
     return true;
 }
 
-std::vector<json> Database::getNotifications(int limit, bool unread_only) {
+std::vector<json> Database::getNotifications(int limit, bool unread_only) const {
     std::vector<json> result;
     std::string sql = "SELECT n.id, n.room_id, n.event_id, n.sender, n.body, n.highlight, n.ts, r.name "
                       "FROM notifications n LEFT JOIN rooms r ON n.room_id = r.room_id ";
@@ -603,7 +601,7 @@ std::vector<json> Database::getNotifications(int limit, bool unread_only) {
     return result;
 }
 
-int Database::getNotificationCount(const std::string& room_id) {
+int Database::getNotificationCount(const std::string& room_id) const {
     std::string sql = "SELECT COUNT(*) FROM notifications WHERE read = 0";
     if (!room_id.empty()) sql += " AND room_id = ?";
     sqlite3_stmt* stmt;
@@ -650,7 +648,7 @@ std::string joinCsv(const std::vector<std::string>& items) {
 }
 } // namespace
 
-bool Database::receiptsEnabled(const std::string& room_id) {
+bool Database::receiptsEnabled(const std::string& room_id) const {
     if (room_id.empty()) return true;
     const auto off = splitCsv(getSetting("receipts_off", ""));
     return std::ranges::find(off, room_id) == off.end();
@@ -664,11 +662,11 @@ void Database::setReceiptsEnabled(const std::string& room_id, bool enabled) {
     setSetting("receipts_off", joinCsv(off));
 }
 
-std::vector<std::string> Database::receiptsOffRooms() {
+std::vector<std::string> Database::receiptsOffRooms() const {
     return splitCsv(getSetting("receipts_off", ""));
 }
 
-std::string Database::getReadMarker(const std::string& room_id) {
+std::string Database::getReadMarker(const std::string& room_id) const {
     if (room_id.empty()) return "";
     return getSetting("read_marker_" + room_id, "");
 }
