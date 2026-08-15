@@ -147,7 +147,11 @@ void ChatView::draw(Screen& screen) {
 #endif
 
     // Input line (bottom)
-    drawInput(screen, 1, room_h + 1, w - 1);
+    if (_showSearch) {
+        drawSearch(screen, 1, room_h + 1, w - 1);
+    } else {
+        drawInput(screen, 1, room_h + 1, w - 1);
+    }
 
     screen.refresh();
 }
@@ -470,6 +474,18 @@ void ChatView::drawInput(Screen& screen, int x, int y, int w) {
 #endif
 }
 
+void ChatView::drawSearch(Screen& screen, int x, int y, int w) {
+#ifdef HAS_NCURSES
+    mvaddch(y, x - 1, '/');
+    mvaddstr(y, x, _searchQuery.c_str());
+    for (int cx = x + _searchQuery.size(); cx < x + w; cx++) mvaddch(y, cx, ' ');
+    move(y, x + _searchQuery.size());
+    curs_set(1);
+#else
+    screen.drawText(x, y, "/ " + _searchQuery);
+#endif
+}
+
 void ChatView::handleKey(Screen& screen, int key) {
 #ifdef HAS_NCURSES
     if (key == KEY_MOUSE) {
@@ -627,6 +643,37 @@ void ChatView::handleKey(Screen& screen, int key) {
             if (key >= 32 && key <= 126) {
                 _input.insert(_input.begin() + _cursorPos, (char)key);
                 _cursorPos++;
+                _needsRedraw = true;
+            }
+            break;
+        }
+    } else if (_focus == FOCUS_SEARCH) {
+        // The Ctrl+F search box: type the query, Enter runs it (the
+        // callback filters the chat), Esc closes.
+        switch (key) {
+        case '\n': case '\r': case KEY_ENTER: {
+            const std::string query = _searchQuery;
+            _showSearch = false;
+            _focus = FOCUS_INPUT;
+            _needsRedraw = true;
+            if (_searchCb) _searchCb(query);
+            break;
+        }
+        case 27:
+            _showSearch = false;
+            _focus = FOCUS_INPUT;
+            _searchQuery.clear();
+            _needsRedraw = true;
+            break;
+        case KEY_BACKSPACE: case 127: case '\b':
+            if (!_searchQuery.empty()) {
+                _searchQuery.pop_back();
+                _needsRedraw = true;
+            }
+            break;
+        default:
+            if (key >= 32 && key <= 126) {
+                _searchQuery += static_cast<char>(key);
                 _needsRedraw = true;
             }
             break;

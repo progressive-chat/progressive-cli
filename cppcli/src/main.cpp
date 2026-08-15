@@ -4138,6 +4138,43 @@ int cmdTUI(const matrixcli::cli::Args& args) {
                 }
             }
 
+            // Ctrl+F search: filter the active room's cached messages to
+            // the matches (the Go-TUI parity).
+            chat.setSearchCallback([&](const std::string& query) {
+                std::string roomId = chat.activeRoomId();
+                if (roomId.empty() || query.empty()) {
+                    chat.setConnectionStatus("search: nothing to search");
+                    return;
+                }
+                auto rows = dbi.search(query, 50);
+                std::vector<tui::MessageInfo> msgs;
+                for (auto& r : rows) {
+                    if (r.value("room_id", "") != roomId) continue;
+                    tui::MessageInfo mi;
+                    std::string s = r.value("sender", "");
+                    auto at = s.find(':');
+                    if (at != std::string::npos) s = s.substr(1, at - 1);
+                    else if (!s.empty() && s[0] == '@') s = s.substr(1);
+                    mi.sender = s;
+                    mi.body = r.value("content", nlohmann::json::object())
+                                  .value("body", "");
+                    mi.event_id = r.value("event_id", "");
+                    msgs.push_back(mi);
+                }
+                if (!msgs.empty()) {
+                    tui::MessageInfo notice;
+                    notice.sender = "@search";
+                    notice.is_notice = true;
+                    notice.body = std::to_string(msgs.size())
+                                + " results for \"" + query
+                                + "\" (Esc/Ctrl+F to reset)";
+                    msgs.insert(msgs.begin(), notice);
+                }
+                chat.setMessages(roomId, msgs);
+                chat.setConnectionStatus("search: " + std::to_string(msgs.size())
+                                         + " results for \"" + query + "\"");
+            });
+
             // Set up send callback with retry queue
             chat.setSendCallback([&](const std::string& body) {
                 std::string roomId = chat.activeRoomId();

@@ -76,6 +76,11 @@ public:
     using CommandHandler = std::function<void(const std::string& cmd, const std::string& args)>;
     void setCommandHandler(CommandHandler cb) { _cmdHandler = std::move(cb); }
 
+    // The Ctrl+F message search: the query is handed to the callback on
+    // Enter (the caller filters the chat and reports the match count).
+    using SearchCallback = std::function<void(const std::string& query)>;
+    void setSearchCallback(SearchCallback cb) { _searchCb = std::move(cb); }
+
     // Esc pressed while the input is focused (used to interrupt a running
     // agent — the TUI sets the g_agentInterrupt flag).
     void setEscHandler(std::function<void()> cb) { _escCb = std::move(cb); }
@@ -106,7 +111,7 @@ private:
     void drawMessages(Screen& screen, int x, int y, int w, int h);
     void drawInput(Screen& screen, int x, int y, int w);
     void drawStatus(Screen& screen, int y, int w);
-    void drawSearch(Screen& screen, int w, int h);
+    void drawSearch(Screen& screen, int x, int y, int w);
     void handleKey(Screen& screen, int key);
 
     void loadMessagesForActiveRoom();
@@ -140,6 +145,7 @@ private:
     std::function<void()> _escCb;
     std::function<bool()> _quitCb;
     PaginateCallback _paginateCb;
+    SearchCallback _searchCb;
     mutable std::mutex _mutex;
 };
 
