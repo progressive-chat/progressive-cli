@@ -28,6 +28,9 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+      - name: Docs freshness (the feature anchors + status.json)
+        run: node docs/check.mjs --gen
+
   sanitizers:
     runs-on: ubuntu-latest
     steps:

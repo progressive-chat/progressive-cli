@@ -15,6 +15,11 @@ C++ from the ground up — the old Go implementation is retired (the
 > [progressive-android](https://github.com/progressive-chat/progressive-android),
 > the shared Qt-free core in
 > [progressive-core](https://github.com/progressive-chat/progressive-core).
+>
+> The docs live in [`docs/`](docs/) — the GitHub Pages sources. The
+> [feature status table](docs/status.html) is stamped with the
+> version/commit/build it was generated from, and every feature carries a
+> code anchor (file + line) verified by `docs/check.mjs` in the CI.
 
 ## Highlights
 
