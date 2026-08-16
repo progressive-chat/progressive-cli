@@ -7,6 +7,7 @@
 // no auto-updates, no raw terminal mode (works in any terminal, scrolls
 // like a normal CLI program).
 #include "ascii_ui.hpp"
+#include "ascii_state.hpp"
 #include "commands.hpp"
 #include "../lib/database/db.hpp"
 #include "../lib/matrix/client.hpp"
@@ -50,7 +51,7 @@ namespace {
 
 // ---- small terminal/string helpers ----
 
-int terminalWidth() {
+int terminalWidthImpl() {
 #ifdef TIOCGWINSZ
     struct winsize ws;
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 20) {
@@ -389,7 +390,7 @@ std::string eventBodyRaw(const matrix::Event& ev) {
     return "";
 }
 
-std::string roomDisplayName(const nlohmann::json& r) {
+std::string roomDisplayNameImpl(const nlohmann::json& r) {
     std::string id = r.value("room_id", "");
     std::string name = r.value("name", "");
     if (name.empty()) name = id;
@@ -401,7 +402,7 @@ int roomMessageCount(db::Database* db, const std::string& roomId) {
     return db ? db->getEventCount(roomId) : 0;
 }
 
-std::string senderShort(const std::string& sender) {
+std::string senderShortImpl(const std::string& sender) {
     std::string s = sender;
     if (!s.empty() && s[0] == '@') {
         auto colon = s.find(':');
@@ -417,7 +418,7 @@ std::string eventPreview(db::Database* db, const std::string& roomId,
     if (!db || eventId.empty() || !db->getEventById(eventId, ev)) return "";
     std::string b = eventBody(ev);
     if (b.empty()) return "";
-    return senderShort(ev.sender) + ": " + clip(b, 24);
+    return senderShortImpl(ev.sender) + ": " + clip(b, 24);
 }
 
 
@@ -517,7 +518,7 @@ std::string renderPermalinks(const std::string& body,
             matrix::Event ev;
             if (db->getEventById(evPart, ev)) {
                 std::string preview = eventBody(ev);
-                pill += " \u00b7 " + senderShort(ev.sender) + ": " + clip(preview, 24);
+                pill += " \u00b7 " + senderShortImpl(ev.sender) + ": " + clip(preview, 24);
             } else {
                 pill += " \u00b7 (event)";
             }
@@ -609,79 +610,12 @@ std::string roomLastMsg(db::Database* db, const std::string& roomId,
                                                : "✓ joined";
     }
     if (preview.empty()) return "";
-    return senderShort(ev.sender) + ": " + preview;
+    return senderShortImpl(ev.sender) + ": " + preview;
 }
 
 
 // ---- the frame ----
 
-struct UiState {
-    db::Database* db = nullptr;
-    std::vector<nlohmann::json> rooms;   // listRooms()
-    std::string currentRoomId;
-    std::vector<matrix::Event> messages; // getEvents(currentRoom)
-    std::vector<std::string> members;    // unique senders in the room
-    int limit = 200;  // the chat window — deep enough for the threads
-    int scroll = 0;                      // viewport offset (rows)
-    int leftScroll = 0;                  // rooms-list-only offset (desktop)
-    int threadsScroll = 0;               // threads-section offset (desktop right)
-    int viaLimit = 3;                    // via args in permalinks; 0 = all
-    int tzOffset = 0;                    // timezone offset in hours (display)
-    int hiddenSeconds = 12;              // hide duration; 0 = until reload
-    std::string senderFilter;            // "from @user": only their messages
-    std::unordered_set<std::string> hiddenRooms;   // temporarily hidden
-    std::unordered_set<std::string> mutedRooms;    // no unread/indicators
-    std::unordered_set<std::string> starredRooms;  // ★ pinned to the top
-    std::map<std::string, std::string> roomNicks;  // "room|user" -> display name
-    std::map<std::string, std::string> roomAvatars; // room -> avatar url
-    std::map<std::string, std::string> userColors;  // @user -> color name
-    std::map<std::string, int64_t> hiddenUntil;    // room -> un-hide timestamp
-    std::string accountLabel;            // e.g. "bob@matrix.org" or "demo (offline)"
-    std::string proxyLabel;              // "on (socks5h ...)" or "off"
-    std::string roomFilter;              // find/space filter for the left panel
-    std::string statusNote;              // last action's summary (dump etc.)
-    bool staticFrame = false;            // --static: one-shot frame
-    bool mobile = false;                 // smartphone: stacked sections
-    int invites = 0;                     // open invites for the logged-in user
-    std::string activeSpace;             // "" = all rooms; else a space id
-    bool autoPanels = true;             // size the panels to the content
-    int membersMode = 0;                // 0 auto, 1 horizontal, 2 vertical list
-    bool showThreadsBottom = true;      // thread list at the right panel bottom
-    std::unordered_set<std::string> invited;  // rooms with an open invite
-    std::map<std::string, db::InviteInfo> inviteByRoom;  // invite metadata
-    std::string readMarker;                  // the last-read event id
-    std::string focusEvent;              // event the viewport jumped to (goto)
-    int mobileTab = 0;                   // 0=Rooms 1=Chat 2=People (bottom nav)
-    int limitRows = 0;                   // settings "rows <n>": 0 = fit terminal
-    std::map<std::string, std::string> presence; // member -> О/А/Ф letters
-    std::map<std::string, std::string> memberNames; // member -> displayname
-    // Right panel mode: 0 = members, 1 = room thread list, 2 = one thread,
-    // 3 = threads across all rooms (Element-style thread panel).
-    bool showIds = false;       // show event ids next to the messages
-    bool showSeconds = false;   // HH:MM:SS instead of HH:MM
-    bool showImages = false;    // full image cards (default: compact marker)
-    bool showEmoji = true;      // emoji glyphs; off = ASCII fallbacks
-    bool showNames = true;      // Element: show sender display names
-    bool showReceipts = true;   // Element: show read receipts
-    bool showJoins = true;      // Element: show join/leave messages
-    bool showLinks = true;      // Element: enable URL previews (the pills)
-    bool clock12h = false;      // Element: 12/24-hour clock
-    bool timeRight = false;     // chat time at the right edge of the row
-    bool msgNewline = false;    // message on its own line under "HH:MM [nick] >"
-    std::unordered_set<std::string> nameColliders;  // same localpart → full mxid
-    int leftPanelW = -1;        // -1 = default width, 0 = hidden
-    int rightPanelW = -1;       // -1 = default width, 0 = hidden
-    std::map<std::string, int> powerLevels;  // member -> power level
-    nlohmann::json powerLevelsEvent;         // the full m.room.power_levels
-    int eventsDefault = 0;               // the room's send permission level
-    std::unordered_set<std::string> redactedIds;  // events that were redacted
-    std::unordered_set<std::string> pinned;       // the room's pinned ids
-    std::map<std::string, std::string> receipts;  // eventId -> "a b" readers
-    int rightPanel = 0;
-    std::string threadRoomId;   // for the room thread list
-    std::string threadRootId;   // for the single-thread view
-    std::vector<matrix::Event> threadReplies;  // replies of threadRootId
-};
 
 // The row index of an event inside the chat timeline (day separators
 // included) — mirrors the centerRows builder in drawFrame.
@@ -749,7 +683,7 @@ std::string proxyLabelText() {
 }
 
 // Total content rows across the three panels (the scrollable height).
-int contentRows(const UiState& st) {
+int contentRowsImpl(const UiState& st) {
     int n = static_cast<int>(st.rooms.size());
     n = std::max(n, static_cast<int>(st.messages.size()));
     n = std::max(n, static_cast<int>(st.members.size()));
@@ -762,7 +696,7 @@ std::map<std::string, std::string> minimalUniqueNames(
     const std::vector<std::string>& members) {
     std::map<std::string, std::string> out;
     for (const auto& m : members) {
-        std::string name = senderShort(m);
+        std::string name = senderShortImpl(m);
         if (name.empty()) continue;
         // The shortest prefix not shared with any other member.
         std::string prefix;
@@ -771,7 +705,7 @@ std::map<std::string, std::string> minimalUniqueNames(
             bool unique = true;
             for (const auto& o : members) {
                 if (o == m) continue;
-                if (senderShort(o).compare(0, prefix.size(), prefix) == 0) {
+                if (senderShortImpl(o).compare(0, prefix.size(), prefix) == 0) {
                     unique = false;
                     break;
                 }
@@ -806,7 +740,7 @@ std::unordered_set<std::string> pinnedIds(db::Database* db,
     return out;
 }
 
-void loadRoomIntoState(UiState& st, const std::string& query) {
+void loadRoomIntoStateImpl(UiState& st, const std::string& query) {
     st.currentRoomId.clear();
     // Accept the id ("!room:server"), the full alias ("#alias:server") or
     // the short alias/name ("#alias", "alias").
@@ -883,9 +817,9 @@ void loadRoomIntoState(UiState& st, const std::string& query) {
     st.nameColliders.clear();
     {
         std::map<std::string, int> counts;
-        for (const auto& m : st.members) counts[senderShort(m)]++;
+        for (const auto& m : st.members) counts[senderShortImpl(m)]++;
         for (const auto& m : st.members) {
-            if (counts[senderShort(m)] > 1) st.nameColliders.insert(m);
+            if (counts[senderShortImpl(m)] > 1) st.nameColliders.insert(m);
         }
     }
     // Read receipts (approximation): a message is read by the members whose
@@ -1020,7 +954,7 @@ std::vector<std::string> roomThreadList(db::Database* db,
                 localtime_r(&t, &tm);
                 char buf[8];
                 std::snprintf(buf, sizeof(buf), "%02d:%02d", tm.tm_hour, tm.tm_min);
-                thr.push_back("  " + senderShort(last->sender) + " · "
+                thr.push_back("  " + senderShortImpl(last->sender) + " · "
                               + buf);
             }
             // With --ids: the thread master's full id on the next line.
@@ -1108,7 +1042,7 @@ std::string displayName(const UiState& st, const std::string& roomId,
                         const std::string& sender) {
     auto it = st.roomNicks.find(roomId + "|" + sender);
     if (it != st.roomNicks.end() && !it->second.empty()) return it->second;
-    return senderShort(sender);
+    return senderShortImpl(sender);
 }
 
 // The user's custom highlight color (the "color" setting).
@@ -1135,7 +1069,7 @@ std::string fullMxid(const UiState& st, const std::string& mem);
 std::string chatName(const UiState& st, const std::string& roomId,
                      const std::string& sender) {
     std::string nm = displayName(st, roomId, sender);
-    if (nm == senderShort(sender) && st.nameColliders.count(sender)) {
+    if (nm == senderShortImpl(sender) && st.nameColliders.count(sender)) {
         nm = fullMxid(st, sender);
     }
     return nm;
@@ -1381,10 +1315,10 @@ std::string fullMxid(const UiState& st, const std::string& mem) {
 
 std::string memberRowStr(const UiState& st, const std::string& mem,
                          bool fullIds = false) {
-    std::string mx = fullIds ? fullMxid(st, mem) : senderShort(mem);
+    std::string mx = fullIds ? fullMxid(st, mem) : senderShortImpl(mem);
     // The display name: a custom nick wins, then the member event's
     // displayname, then the mxid localpart.
-    std::string nm = senderShort(mem);
+    std::string nm = senderShortImpl(mem);
     auto rk = st.roomNicks.find(st.currentRoomId + "|" + mem);
     if (rk != st.roomNicks.end() && !rk->second.empty()) {
         nm = rk->second;
@@ -1394,7 +1328,7 @@ std::string memberRowStr(const UiState& st, const std::string& mem,
     }
     // A display name that differs from the mxid string is highlighted.
     std::string namePart = nm;
-    if (nm != senderShort(mem)) namePart = "\x1b[34m" + nm + "\x1b[0m";
+    if (nm != senderShortImpl(mem)) namePart = "\x1b[34m" + nm + "\x1b[0m";
     std::string letter;
     auto pit = st.presence.find(mem);
     if (pit != st.presence.end() && !pit->second.empty()) {
@@ -1420,8 +1354,8 @@ std::string memberRowStr(const UiState& st, const std::string& mem,
     return m;
 }
 
-std::string drawFrame(const UiState& st) {
-    int W = terminalWidth();
+std::string drawFrameImpl(const UiState& st) {
+    int W = terminalWidthImpl();
     // Few members: the user list goes horizontal (one row across the top
     // of the chat) and the right panel is freed - auto mode, or forced.
     bool horizMembers = !st.mobile && st.rightPanel == 0 &&
@@ -1442,7 +1376,7 @@ std::string drawFrame(const UiState& st) {
         for (const auto& r : st.rooms) {
             if (r.value("is_space", false)) continue;
             std::string rid = r.value("room_id", "");
-            std::string nm = roomDisplayName(r);
+            std::string nm = roomDisplayNameImpl(r);
             if (r.value("is_direct", false)) nm = "  " + nm;
             int w = displayWidth(" " + nm + " ("
                                  + std::to_string(roomMessageCount(st.db, rid)) + ")");
@@ -1501,7 +1435,7 @@ std::string drawFrame(const UiState& st) {
     std::string e2eeMark;  // the lock for the open room
     for (const auto& r : st.rooms) {
         if (r.value("room_id", "") == st.currentRoomId) {
-            roomName = roomDisplayName(r);
+            roomName = roomDisplayNameImpl(r);
             if (r.value("is_encrypted", false)) {
                 e2eeMark = (st.showEmoji ? " 🔒 " : " [E2EE] ");
             }
@@ -1720,7 +1654,7 @@ std::string drawFrame(const UiState& st) {
                     else if (ms == "leave") center = "[" + who + "] left the room";
                     else if (ms == "invite") {
                         std::string target = ev.state_key.empty()
-                                                 ? "" : senderShort(ev.state_key);
+                                                 ? "" : senderShortImpl(ev.state_key);
                         std::string reason = ev.content.value("reason", "");
                         center = "[" + who + "] invited "
                                + (target.empty() ? "someone" : target);
@@ -1732,7 +1666,7 @@ std::string drawFrame(const UiState& st) {
                     else if (ms == "ban") center = "[" + who + "] was banned";
                     else center = "[" + who + "] membership: " + ms;
                 }
-                if (center.empty()) center = "[" + senderShort(ev.sender) + "] (member event)";
+                if (center.empty()) center = "[" + senderShortImpl(ev.sender) + "] (member event)";
                 return center;
             }
             // Extra content types: polls, stickers, audio, video, images.
@@ -1747,7 +1681,7 @@ std::string drawFrame(const UiState& st) {
                         auto t = q->find("text");
                         if (t != q->end() && t->is_string()) qtext = t->get<std::string>();
                     }
-                    center = "[" + senderShort(ev.sender) + "] "
+                    center = "[" + senderShortImpl(ev.sender) + "] "
                            + (st.showEmoji ? "\u2b55 poll: " : "[poll] ")
                            + (qtext.empty() ? "?" : qtext);
                 } else if (mt == "m.poll.response") {
@@ -1760,13 +1694,13 @@ std::string drawFrame(const UiState& st) {
                     }
                     // The vote row uses plain text — the 🗳 glyph renders
                     // one cell in the phone terminal and shifted the pipes.
-                    center = "[" + senderShort(ev.sender) + "] voted";
+                    center = "[" + senderShortImpl(ev.sender) + "] voted";
                 } else if (mt == "m.sticker") {
-                    center = "[" + senderShort(ev.sender) + "] "
+                    center = "[" + senderShortImpl(ev.sender) + "] "
                            + (st.showEmoji ? "\u2b1c sticker: " : "[sticker] ")
                            + (body.empty() ? "?" : "\x1b[36m" + body + "\x1b[0m");
                 } else if (mt == "m.audio") {
-                    center = "[" + senderShort(ev.sender) + "] "
+                    center = "[" + senderShortImpl(ev.sender) + "] "
                            + (st.showEmoji ? "\u266a audio: " : "[audio] ")
                            + (body.empty() ? "?" : "\x1b[36m" + body + "\x1b[0m");
                 } else if (mt == "m.file") {
@@ -1774,7 +1708,7 @@ std::string drawFrame(const UiState& st) {
                            + (st.showEmoji ? "\xf0\x9f\x93\x84 " : "[file] ")
                            + (body.empty() ? "?" : "\x1b[36m" + body + "\x1b[0m");
                 } else if (mt == "m.video") {
-                    center = "[" + senderShort(ev.sender) + "] "
+                    center = "[" + senderShortImpl(ev.sender) + "] "
                            + (st.showEmoji ? "\u25b6 video: " : "[video] ")
                            + (body.empty() ? "?" : "\x1b[36m" + body + "\x1b[0m");
                 } else if (mt == "m.image") {
@@ -1794,7 +1728,7 @@ std::string drawFrame(const UiState& st) {
                     std::string imgPrefix = st.showImages
                         ? (st.showEmoji ? "\u2b1c image: " : "[img] ")
                         : (st.showEmoji ? "\xf0\x9f\x96\xbc " : "[img] ");
-                    center = "[" + senderShort(ev.sender) + "] " + imgPrefix
+                    center = "[" + senderShortImpl(ev.sender) + "] " + imgPrefix
                            + "\x1b[36m" + body + "\x1b[0m" + dims;
                 }
             }
@@ -1848,7 +1782,7 @@ std::string drawFrame(const UiState& st) {
             }
             // Redaction events render as system lines.
             if (ev.type == "m.room.redaction") {
-                return "\xf0\x9f\x97\x91 " + senderShort(ev.sender)
+                return "\xf0\x9f\x97\x91 " + senderShortImpl(ev.sender)
                      + " deleted a message";  // 🗑
             }
             // Redacted targets get the (deleted) marker.
@@ -2226,12 +2160,12 @@ std::string drawFrame(const UiState& st) {
         if (!st.threadRootId.empty()) {
             for (const auto& ev : st.messages) {
                 if (ev.event_id == st.threadRootId) {
-                    pushWrapped("[" + senderShort(ev.sender) + "] "
+                    pushWrapped("[" + senderShortImpl(ev.sender) + "] "
                                 + eventBody(ev));
                 }
             }
             for (const auto& ev : st.threadReplies) {
-                pushWrapped("  \u2937 [" + senderShort(ev.sender) + "] "
+                pushWrapped("  \u2937 [" + senderShortImpl(ev.sender) + "] "
                             + eventBody(ev));
             }
         }
@@ -2362,7 +2296,7 @@ std::string drawFrame(const UiState& st) {
             for (const auto* r : visible) {
                 std::string rid = r->value("room_id", "");
                 std::string mark = rid == st.currentRoomId ? "*" : " ";
-                std::string name = roomDisplayName(*r);
+                std::string name = roomDisplayNameImpl(*r);
                 if (r->value("is_direct", false))
                     name = (st.showEmoji ? "💬 " : "[DM] ") + name;
                 if (st.invited.count(rid)) {
@@ -2488,7 +2422,7 @@ std::string drawFrame(const UiState& st) {
     }
 
     // Clamp the scroll into [0, contentRows - rows] (state stays const).
-    int visCount = st.roomFilter.empty() ? contentRows(st)
+    int visCount = st.roomFilter.empty() ? contentRowsImpl(st)
                                          : static_cast<int>(visible.size());
     visCount = std::max(visCount, static_cast<int>(centerRows.size()));
     visCount = std::max(visCount, static_cast<int>(rightRows.size()));
@@ -2499,7 +2433,7 @@ std::string drawFrame(const UiState& st) {
     int leftScroll = std::min(std::max(0, st.leftScroll),
                               std::max(0, static_cast<int>(visible.size()) - rows));
     if (scroll > 0) out += "  ^ more above (scroll up)\n";
-    if (scroll + rows < contentRows(st)) out += "  v more below (scroll down)\n";
+    if (scroll + rows < contentRowsImpl(st)) out += "  v more below (scroll down)\n";
     for (int i = 0; i < rows; ++i) {
         int src = scroll + i;  // the content row this view row shows
         int leftSrc = leftScroll + i;  // the rooms row (scrolled separately)
@@ -2508,7 +2442,7 @@ std::string drawFrame(const UiState& st) {
             const auto& r = *visible[static_cast<size_t>(leftSrc)];
             std::string rid = r.value("room_id", "");
             std::string mark = rid == st.currentRoomId ? "*" : " ";
-            std::string name = roomDisplayName(r);
+            std::string name = roomDisplayNameImpl(r);
             if (r.value("is_direct", false))
                 name = (st.showEmoji ? "💬 " : "[DM] ") + name;
             left = mark + "[1m" + name + "[0m ("
@@ -2580,10 +2514,10 @@ std::string drawFrame(const UiState& st) {
     // Status line
     out += repeat('=', std::max(0, W - 1)) + "\n";
     std::string pos;
-    if (contentRows(st) > rows) {
+    if (contentRowsImpl(st) > rows) {
         pos = " [rows " + std::to_string(scroll + 1) + "-"
             + std::to_string(scroll + rows) + " of "
-            + std::to_string(contentRows(st)) + "]";
+            + std::to_string(contentRowsImpl(st)) + "]";
     }
     out += "proxy: " + st.proxyLabel + " | scroll: up/down/top/bottom" + pos;
     if (!st.statusNote.empty()) {
@@ -2597,6 +2531,18 @@ std::string drawFrame(const UiState& st) {
 }
 
 } // namespace
+
+
+// ---- the cross-TU wrappers (the settings commands in ascii_settings.cpp) ----
+
+std::string drawFrame(const UiState& st) { return drawFrameImpl(st); }
+void loadRoomIntoState(UiState& st, const std::string& query) {
+    loadRoomIntoStateImpl(st, query);
+}
+int terminalWidth() { return terminalWidthImpl(); }
+std::string roomDisplayName(const nlohmann::json& r) { return roomDisplayNameImpl(r); }
+std::string senderShort(const std::string& sender) { return senderShortImpl(sender); }
+int contentRows(const UiState& st) { return contentRowsImpl(st); }
 
 // The public wrapper over the anonymous-namespace renderer — the llm CLI
 // shares the same ANSI markdown rendering as the chat view.
@@ -2766,7 +2712,7 @@ int cmdAsciiUi(const cli::Args& args) {
     st.mobile = dbi.getSetting("mobile") == "1";
     // Auto: a narrow terminal (< 60 columns) cannot fit the three
     // columns, so the smartphone layout kicks in by itself.
-    if (terminalWidth() < 60) {
+    if (terminalWidthImpl() < 60) {
         st.mobile = true;
         st.statusNote = "narrow terminal · smartphone layout auto-enabled";
     }
@@ -2862,21 +2808,21 @@ int cmdAsciiUi(const cli::Args& args) {
         }
     }
     std::string initial = args.positional.empty() ? "" : args.positional[0];
-    loadRoomIntoState(st, initial);
+    loadRoomIntoStateImpl(st, initial);
     if (st.currentRoomId.empty() && !st.rooms.empty()) {
-        loadRoomIntoState(st, st.rooms.front().value("room_id", ""));
+        loadRoomIntoStateImpl(st, st.rooms.front().value("room_id", ""));
     }
 
 
     // --static thread <room> / --static threads: the right panel becomes
     // the thread list instead of a room being opened.
     if (initial == "thread" && args.positional.size() >= 2) {
-        loadRoomIntoState(st, args.positional[1]);
+        loadRoomIntoStateImpl(st, args.positional[1]);
         st.rightPanel = 1;
         st.threadRoomId = st.currentRoomId;
     } else if (initial == "threads") {
         st.rightPanel = 3;
-        if (args.positional.size() >= 2) loadRoomIntoState(st, args.positional[1]);
+        if (args.positional.size() >= 2) loadRoomIntoStateImpl(st, args.positional[1]);
     }
     // Non-interactive flags (also usable in the REPL): --ids, --time-full,
     // --right members|threads, --limit N.
@@ -2891,7 +2837,7 @@ int cmdAsciiUi(const cli::Args& args) {
     if (args.options.count("no-emoji")) st.showEmoji = false;
     if (args.options.count("limit")) {
         try { st.limit = std::stoi(args.options.at("limit")); } catch (...) {}
-        loadRoomIntoState(st, std::string(st.currentRoomId));
+        loadRoomIntoStateImpl(st, std::string(st.currentRoomId));
     }
     if (args.options.count("right")) {
         std::string r = args.options.at("right");
@@ -3015,7 +2961,7 @@ int cmdAsciiUi(const cli::Args& args) {
     if (args.options.count("scroll-threads")) {
         try { st.threadsScroll = std::stoi(args.options.at("scroll-threads")); } catch (...) {}
     }
-    std::cout << drawFrame(st) << std::flush;
+    std::cout << drawFrameImpl(st) << std::flush;
 
     // --agent <prompt>: run the local coding agent after the frame.
     if (args.options.count("agent")) {
@@ -3214,21 +3160,22 @@ int cmdAsciiUi(const cli::Args& args) {
                          "  help / quit / exit\n";
             continue;
         }
+        if (asciiSettingsCommand(st, dbi, a)) continue;
         if (a.command == "open" || a.command == "view") {
             std::string q = a.positional.empty() ? st.currentRoomId : a.positional[0];
-            loadRoomIntoState(st, q);
+            loadRoomIntoStateImpl(st, q);
             if (st.mobile) {
                 st.mobileTab = 1;  // Element Classic: opening jumps to Chat
                 st.scroll = 0;
             }
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         if (a.command == "thread") {
             if (!a.positional.empty() && a.positional[0] == "off") {
                 st.rightPanel = 0;
                 st.statusNote = "right panel: members";
-                std::cout << drawFrame(st) << std::flush;
+                std::cout << drawFrameImpl(st) << std::flush;
                 continue;
             }
             auto isNum = [](const std::string& x) {
@@ -3255,7 +3202,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 st.threadRoomId = tRoom;
                 st.statusNote = "right panel: threads of " + tRoom
                               + " — thread <room> <N|id> opens one";
-                std::cout << drawFrame(st) << std::flush;
+                std::cout << drawFrameImpl(st) << std::flush;
                 continue;
             }
             // One thread in the right panel: root + replies. The thread is
@@ -3288,7 +3235,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 if (n < 1 || n > static_cast<int>(roots.size())) {
                     st.statusNote = "thread #" + sel + " not found ("
                                   + std::to_string(roots.size()) + " threads)";
-                    std::cout << drawFrame(st) << std::flush;
+                    std::cout << drawFrameImpl(st) << std::flush;
                     continue;
                 }
                 root = roots[static_cast<size_t>(n - 1)];
@@ -3303,7 +3250,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 }
                 if (root.empty()) {
                     st.statusNote = "thread root not found: " + sel;
-                    std::cout << drawFrame(st) << std::flush;
+                    std::cout << drawFrameImpl(st) << std::flush;
                     continue;
                 }
             }
@@ -3316,14 +3263,14 @@ int cmdAsciiUi(const cli::Args& args) {
             st.threadRoomId = tRoom;
             st.statusNote = "right panel: thread " + root.substr(0, 12)
                           + " (" + std::to_string(st.threadReplies.size()) + " replies)";
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- threads: threads across ALL rooms (the Element thread list) ----
         if (a.command == "threads") {
             st.rightPanel = 3;
             st.statusNote = "right panel: threads in all rooms";
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         if (a.command == "rooms") {
@@ -3333,8 +3280,8 @@ int cmdAsciiUi(const cli::Args& args) {
             }
             st.rooms = dbi.listRooms();
             sortRoomsByActivity(st);
-            loadRoomIntoState(st, std::string(st.currentRoomId));
-            std::cout << drawFrame(st) << std::flush;
+            loadRoomIntoStateImpl(st, std::string(st.currentRoomId));
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         if (a.command == "up" || a.command == "down" ||
@@ -3347,9 +3294,9 @@ int cmdAsciiUi(const cli::Args& args) {
             if (a.command == "up") st.scroll -= std::max(1, step);
             else if (a.command == "down") st.scroll += std::max(1, step);
             else if (a.command == "top") st.scroll = 0;
-            else if (a.command == "bottom") st.scroll = contentRows(st);
+            else if (a.command == "bottom") st.scroll = contentRowsImpl(st);
             else st.scroll += step;  // "scroll <n>" = down by n
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         if (a.command == "spaces") {
@@ -3363,7 +3310,7 @@ int cmdAsciiUi(const cli::Args& args) {
             if (st.mobile) {
                 st.mobileTab = 0;
                 st.scroll = 0;
-                std::cout << drawFrame(st) << std::flush;
+                std::cout << drawFrameImpl(st) << std::flush;
             }
             continue;
         }
@@ -3377,13 +3324,13 @@ int cmdAsciiUi(const cli::Args& args) {
         if (a.command == "chat" && st.mobile) {
             st.mobileTab = 1;
             st.scroll = 0;
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         if (a.command == "people" && st.mobile) {
             st.mobileTab = 2;
             st.scroll = 0;
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         if (a.command == "mobile") {
@@ -3394,7 +3341,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 ? "smartphone layout: stacked sections"
                 : "desktop layout: three columns";
             dbi.setSetting("mobile", st.mobile ? "1" : "0");
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         if (a.command == "rows") {
@@ -3406,11 +3353,11 @@ int cmdAsciiUi(const cli::Args& args) {
                 ? "frame height: " + std::to_string(st.limitRows) + " rows"
                 : "frame height: auto (terminal)";
             dbi.setSetting("rows", std::to_string(st.limitRows));
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         if (a.command == "refresh") {
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         if (a.command == "attach" || a.command == "send-file") {
@@ -3444,8 +3391,8 @@ int cmdAsciiUi(const cli::Args& args) {
                 std::cout << "[offline] file recorded locally: " << path
                           << " -> " << roomId << std::endl;
             }
-            loadRoomIntoState(st, std::string(st.currentRoomId));
-            std::cout << drawFrame(st) << std::flush;
+            loadRoomIntoStateImpl(st, std::string(st.currentRoomId));
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         if (a.command == "send") {
@@ -3478,9 +3425,9 @@ int cmdAsciiUi(const cli::Args& args) {
             ev.origin_server_ts = ts;
             dbi.insertEvent(ev);
             if (roomId == st.currentRoomId) {
-                loadRoomIntoState(st, roomId);
+                loadRoomIntoStateImpl(st, roomId);
             }
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- find: filter the room list ----
@@ -3495,7 +3442,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 st.statusNote = "rooms matching '" + st.roomFilter + "'";
             }
             st.scroll = 0;
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- space: like find, for spaces (rooms of a space by name) ----
@@ -3508,7 +3455,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 st.statusNote = "space/rooms matching '" + st.roomFilter + "'";
             }
             st.scroll = 0;
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- modredact on|off: whether the client may redact OTHER
@@ -3518,7 +3465,7 @@ int cmdAsciiUi(const cli::Args& args) {
             const bool on = a.positional.size() >= 1 && a.positional[0] == "on";
             dbi.setSetting("mod_redact", on ? "1" : "0");
             st.statusNote = std::string("moderation redactions: ") + (on ? "allowed" : "blocked");
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- powerlevels: the full power-level structure (the custom
@@ -3533,7 +3480,7 @@ int cmdAsciiUi(const cli::Args& args) {
             std::string roomLabel = st.currentRoomId;
             for (const auto& r : st.rooms) {
                 if (r.value("room_id", "") == st.currentRoomId) {
-                    roomLabel = roomDisplayName(r);
+                    roomLabel = roomDisplayNameImpl(r);
                     break;
                 }
             }
@@ -3612,9 +3559,9 @@ int cmdAsciiUi(const cli::Args& args) {
                     if (!uid.empty() && uid[0] == '@') uid = uid.substr(1);
                     st.accountLabel = uid;
                     st.rooms = dbi.listRooms();
-                    loadRoomIntoState(st, "");
+                    loadRoomIntoStateImpl(st, "");
                     if (st.currentRoomId.empty() && !st.rooms.empty()) {
-                        loadRoomIntoState(st, st.rooms.front().value("room_id", ""));
+                        loadRoomIntoStateImpl(st, st.rooms.front().value("room_id", ""));
                     }
                     st.presence.clear();
                     st.statusNote = "account switched to " + uid;
@@ -3623,7 +3570,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 }
             }
             if (!found) std::cout << "No such account: " << a.positional[0] << std::endl;
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- verify: SAS session verification (needs a session) ----
@@ -3634,7 +3581,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 continue;
             }
             cliHandler(a);
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- presence: fetch member presence (needs a session) ----
@@ -3661,7 +3608,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 st.presence[mem] = letter;
             }
             st.statusNote = "presence fetched (" + std::to_string(st.members.size()) + " members)";
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- moderation + room settings (delegate to the registry) ----
@@ -3672,7 +3619,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 continue;
             }
             cliHandler(a);
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- media: download + save/open a media event ----
@@ -3770,7 +3717,7 @@ int cmdAsciiUi(const cli::Args& args) {
                     pout.write(reinterpret_cast<const char*>(bytes.data()),
                                static_cast<std::streamsize>(bytes.size()));
                 }
-                int cols = std::max(30, terminalWidth() - 4);
+                int cols = std::max(30, terminalWidthImpl() - 4);
                 int rows = std::max(10, cols / 3);
                 std::string cmd;
                 if (std::system("which chafa >/dev/null 2>&1") == 0) {
@@ -3805,7 +3752,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 std::string cmd = "xdg-open '" + fn + "' 2>/dev/null &";
                 std::system(cmd.c_str());
             }
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- dump: export the room like Element Web ----
@@ -3988,7 +3935,7 @@ int cmdAsciiUi(const cli::Args& args) {
                         char buf[20];
                         std::snprintf(buf, sizeof(buf), "%02d:%02d:%02d",
                                       tm.tm_hour, tm.tm_min, tm.tm_sec);
-                        fout << "[" << buf << "] " << senderShort(ev.sender) << ": "
+                        fout << "[" << buf << "] " << senderShortImpl(ev.sender) << ": "
                              << eventBody(ev) << std::endl;
                         processed++;
                     }
@@ -3997,7 +3944,7 @@ int cmdAsciiUi(const cli::Args& args) {
                          << "<title>" << rname << "</title></head><body><h1>"
                          << rname << "</h1>" << std::endl;
                     for (const auto& ev : events) {
-                        fout << "<p><b>" << senderShort(ev.sender) << "</b> "
+                        fout << "<p><b>" << senderShortImpl(ev.sender) << "</b> "
                              << eventBody(ev) << "</p>" << std::endl;
                         processed++;
                     }
@@ -4118,7 +4065,7 @@ int cmdAsciiUi(const cli::Args& args) {
                               + " events, " + std::to_string(processed) + " processed -> " + path
                               + (withMedia ? " + " + std::to_string(mediaSaved) + " media" : "");
             }
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- profile: show a user's profile (display name, avatar) ----
@@ -4151,7 +4098,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 st.statusNote = std::string("members ") +
                                 (st.membersMode == 1 ? "horizontal" :
                                  st.membersMode == 2 ? "vertical list" : "auto");
-                std::cout << drawFrame(st) << std::flush;
+                std::cout << drawFrameImpl(st) << std::flush;
                 continue;
             }
             std::string q = a.positional.empty() ? st.currentRoomId : a.positional[0];
@@ -4202,7 +4149,7 @@ int cmdAsciiUi(const cli::Args& args) {
             st.statusNote = std::string("panel ") + which + " = " + v;
             dbi.setSetting(which == "left" ? "panel_left" : "panel_right",
                            std::to_string(w));
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- panel auto on|off: size the panels to the content ----
@@ -4212,7 +4159,7 @@ int cmdAsciiUi(const cli::Args& args) {
             dbi.setSetting("panel_auto", st.autoPanels ? "1" : "0");
             st.statusNote = std::string("panel auto ") +
                             (st.autoPanels ? "on (sized to content)" : "off (fixed)");
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- emoji on|off: emoji glyphs or ASCII fallbacks ----
@@ -4221,7 +4168,7 @@ int cmdAsciiUi(const cli::Args& args) {
             else st.showEmoji = false;
             st.statusNote = std::string("emoji ") + (st.showEmoji ? "on" : "off (ASCII)");
             dbi.setSetting("emoji", st.showEmoji ? "1" : "0");
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- images on|off: full image cards ----
@@ -4230,7 +4177,7 @@ int cmdAsciiUi(const cli::Args& args) {
             else st.showImages = false;
             st.statusNote = std::string("images ") + (st.showImages ? "full cards" : "compact");
             dbi.setSetting("images", st.showImages ? "1" : "0");
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- raw <room> <event_id>: the event's raw JSON ----
@@ -4276,7 +4223,7 @@ int cmdAsciiUi(const cli::Args& args) {
             else st.showIds = true;
             st.statusNote = std::string("event ids ") + (st.showIds ? "shown" : "hidden");
             dbi.setSetting("ids", st.showIds ? "1" : "0");
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- time [full|sec|off]: message time with seconds ----
@@ -4291,7 +4238,7 @@ int cmdAsciiUi(const cli::Args& args) {
             else st.showSeconds = true;  // full / sec / anything = seconds on
             st.statusNote = std::string("time ") + (st.showSeconds ? "HH:MM:SS" : "HH:MM");
             dbi.setSetting("time_full", st.showSeconds ? "1" : "0");
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- timeside left|right: the chat time on the left or right ----
@@ -4304,7 +4251,7 @@ int cmdAsciiUi(const cli::Args& args) {
             st.timeRight = (v == "right");
             dbi.setSetting("time_side", v);
             st.statusNote = "time on the " + v;
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- msgline inline|newline: message next to or under the time ----
@@ -4317,7 +4264,7 @@ int cmdAsciiUi(const cli::Args& args) {
             st.msgNewline = (v == "newline");
             dbi.setSetting("msg_line", v);
             st.statusNote = "message " + v;
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
 
@@ -5279,7 +5226,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 continue;
             }
             cliHandler(a);
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- jump: view the room starting from a date (like Element) ----
@@ -5371,7 +5318,7 @@ int cmdAsciiUi(const cli::Args& args) {
             st.statusNote = "jumped to " + a.positional[1]
                           + (useServer ? " (server history)" : "") + " — "
                           + std::to_string(st.messages.size()) + " events from that day on";
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- invite: invite a user into the room ----
@@ -5400,7 +5347,7 @@ int cmdAsciiUi(const cli::Args& args) {
             } else {
                 st.statusNote = "invited " + a.positional[1] + " to " + roomId;
             }
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- create-room / create-space ----
@@ -5440,7 +5387,7 @@ int cmdAsciiUi(const cli::Args& args) {
             std::cout << "Created " << kind << ": " << a.positional[0] << " (" << roomId
                       << ")" << std::endl;
             st.rooms = dbi.listRooms();
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- add-to-space: make a room a child of a space ----
@@ -5480,7 +5427,7 @@ int cmdAsciiUi(const cli::Args& args) {
             } else {
                 st.statusNote = "room " + roomId + " added to space " + spaceId;
             }
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- pin / unpin ----
@@ -5509,7 +5456,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 : pcore::core().client->unpinMessage(roomId, a.positional[1]).ok;
             st.statusNote = std::string(a.command) + " "
                           + (ok ? "ok" : "failed") + " in " + roomId;
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- search filters: --sender, --since, --until ----
@@ -5548,10 +5495,10 @@ int cmdAsciiUi(const cli::Args& args) {
                 char tbuf[24];
                 std::strftime(tbuf, sizeof(tbuf), "%m-%d %H:%M", std::localtime(&t));
                 std::cout << "  \x1b[1m" << roomName << "\x1b[0m  "
-                          << senderShort(mxid) << "  (\x1b[36m" << mxid
+                          << senderShortImpl(mxid) << "  (\x1b[36m" << mxid
                           << "\x1b[0m)  " << tbuf << std::endl;
                 // The full body, wrapped to the terminal.
-                auto lines = wrapText(body, terminalWidth() - 6);
+                auto lines = wrapText(body, terminalWidthImpl() - 6);
                 for (const auto& l : lines) std::cout << "    " << l << std::endl;
 
                 // The reply context: the parent message when present.
@@ -5567,7 +5514,7 @@ int cmdAsciiUi(const cli::Args& args) {
                             std::string pbody = parent.content.value("body", "");
                             if (pbody.size() > 120) pbody = pbody.substr(0, 120) + "...";
                             std::cout << "    \x1b[90m\u21b3 reply to "
-                                      << senderShort(parent.sender) << ": "
+                                      << senderShortImpl(parent.sender) << ": "
                                       << pbody << "\x1b[0m" << std::endl;
                         }
                     }
@@ -5589,289 +5536,7 @@ int cmdAsciiUi(const cli::Args& args) {
             }
             continue;
         }
-        if (a.command == "names") {
-            if (a.positional.empty() || a.positional[0] == "on") st.showNames = true;
-            else st.showNames = false;
-            dbi.setSetting("names", st.showNames ? "1" : "0");
-            st.statusNote = std::string("sender names ") + (st.showNames ? "shown" : "hidden");
-            std::cout << drawFrame(st) << std::flush;
-            continue;
-        }
-        // ---- receipts: the display + the per-room SEND policy ----
-        if (a.command == "receipts") {
-            if (a.positional.empty()) {
-                std::cout << "receipts show: " << (st.showReceipts ? "on" : "off")
-                          << " | send (this room): "
-                          << (dbi.receiptsEnabled(st.currentRoomId) ? "on" : "off")
-                          << std::endl
-                          << "  receipts show on|off — whether to SHOW them\n"
-                          << "  receipts send on|off — whether to SEND them (this room)\n"
-                          << "  receipts on|off       — the display toggle (the Element habit)"
-                          << std::endl;
-                continue;
-            }
-            if (a.positional[0] == "send") {
-                const bool on = a.positional.size() < 2 || a.positional[1] != "off";
-                dbi.setReceiptsEnabled(st.currentRoomId, on);
-                st.statusNote = std::string("read receipts SENT: ") + (on ? "on" : "off")
-                              + " for " + st.currentRoomId;
-                std::cout << drawFrame(st) << std::flush;
-                continue;
-            }
-            if (a.positional[0] == "show") {
-                st.showReceipts = a.positional.size() < 2 || a.positional[1] != "off";
-                dbi.setSetting("receipts", st.showReceipts ? "1" : "0");
-                st.statusNote = std::string("read receipts ") + (st.showReceipts ? "shown" : "hidden");
-                std::cout << drawFrame(st) << std::flush;
-                continue;
-            }
-            if (a.positional[0] == "on") st.showReceipts = true;
-            else if (a.positional[0] == "off") st.showReceipts = false;
-            else if (a.positional[0] == "current") {
-                st.showReceipts = true;
-                dbi.setSetting("receipts_mode", "current");
-                st.statusNote = "read receipts: only the current marker";
-                std::cout << drawFrame(st) << std::flush;
-                continue;
-            } else if (a.positional[0] == "all") {
-                st.showReceipts = true;
-                dbi.setSetting("receipts_mode", "all");
-                st.statusNote = "read receipts: every received receipt";
-                std::cout << drawFrame(st) << std::flush;
-                continue;
-            } else {
-                st.showReceipts = false;
-            }
-            dbi.setSetting("receipts", st.showReceipts ? "1" : "0");
-            st.statusNote = std::string("read receipts ") + (st.showReceipts ? "shown" : "hidden");
-            std::cout << drawFrame(st) << std::flush;
-            continue;
-        }
-        // ---- sendtyping on|off: whether the client SENDS the typing
-        // notifications (the TUI composer) ----
-        if (a.command == "sendtyping") {
-            const bool on = a.positional.empty() || a.positional[0] != "off";
-            dbi.setSetting("send_typing", on ? "1" : "0");
-            st.statusNote = std::string("typing notifications SENT: ") + (on ? "on" : "off");
-            std::cout << drawFrame(st) << std::flush;
-            continue;
-        }
-        // ---- joins on|off: Element "show join/leave messages" ----
-        if (a.command == "joins") {
-            if (a.positional.empty() || a.positional[0] == "on") st.showJoins = true;
-            else st.showJoins = false;
-            dbi.setSetting("joins", st.showJoins ? "1" : "0");
-            st.statusNote = std::string("join/leave rows ") + (st.showJoins ? "shown" : "hidden");
-            std::cout << drawFrame(st) << std::flush;
-            continue;
-        }
-        // ---- links on|off: Element "enable URL previews" ----
-        if (a.command == "links" && a.positional.size() >= 1 &&
-            (a.positional[0] == "on" || a.positional[0] == "off")) {
-            st.showLinks = (a.positional[0] == "on");
-            dbi.setSetting("links", st.showLinks ? "1" : "0");
-            st.statusNote = std::string("link pills ") + (st.showLinks ? "shown" : "raw URLs");
-            std::cout << drawFrame(st) << std::flush;
-            continue;
-        }
-        // ---- clock 12h|24h: Element "24-hour clock" ----
-        if (a.command == "clock") {
-            std::string v = a.positional.empty() ? "12h" : a.positional[0];
-            st.clock12h = (v == "12h" || v == "12" || v == "am");
-            dbi.setSetting("clock12h", st.clock12h ? "1" : "0");
-            st.statusNote = std::string("clock ") + (st.clock12h ? "12h (AM/PM)" : "24h");
-            std::cout << drawFrame(st) << std::flush;
-            continue;
-        }
-        // ---- poll <event_id>: the poll variants and the voters ----
-        if (a.command == "poll") {
-            if (a.positional.empty()) {
-                std::cout << "Usage: poll <event_id>   (ids on shows the ids)"
-                          << std::endl;
-                continue;
-            }
-            matrix::Event pev;
-            if (!st.db->getEventById(a.positional[0], pev) ||
-                pev.content.value("msgtype", "") != "m.poll.start") {
-                std::cout << "No poll with that id." << std::endl;
-                continue;
-            }
-            std::string qtext;
-            auto q = pev.content.find("question");
-            if (q != pev.content.end() && q->is_object()) {
-                qtext = q->value("text", "");
-            }
-            std::cout << "Poll: " << (qtext.empty() ? "?" : qtext) << std::endl;
-            std::map<std::string, std::string> answerTexts;
-            std::map<std::string, std::vector<std::string>> voters;
-            auto ans = pev.content.find("answers");
-            if (ans != pev.content.end() && ans->is_array()) {
-                for (const auto& a : *ans) {
-                    if (!a.is_object()) continue;
-                    std::string id = a.value("id", "");
-                    std::string text = a.value("text", "");
-                    if (!id.empty()) answerTexts[id] = text;
-                }
-            }
-            for (const auto& ev2 : st.messages) {
-                if (ev2.content.value("msgtype", "") != "m.poll.response") continue;
-                auto rel2 = ev2.content.find("m.relates_to");
-                if (rel2 == ev2.content.end() || !rel2->is_object()) continue;
-                if (rel2->value("event_id", "") != pev.event_id) continue;
-                auto sel = ev2.content.find("selections");
-                if (sel == ev2.content.end() || !sel->is_array() ||
-                    sel->empty() || !(*sel)[0].is_string()) continue;
-                voters[(*sel)[0].get<std::string>()].push_back(
-                    senderShort(ev2.sender));
-            }
-            int shown = 0;
-            for (const auto& [id, votersList] : voters) {
-                auto it = answerTexts.find(id);
-                std::string label = (it != answerTexts.end() && !it->second.empty())
-                                        ? it->second : id;
-                std::string who;
-                for (const auto& v : votersList) {
-                    if (!who.empty()) who += ", ";
-                    who += v;
-                }
-                std::cout << "  (" << id << ") " << label << " — "
-                          << votersList.size() << " vote"
-                          << (votersList.size() == 1 ? "" : "s")
-                          << (who.empty() ? "" : " (" + who + ")") << std::endl;
-                shown++;
-            }
-            if (shown == 0) {
-                std::cout << "  No votes yet." << std::endl;
-            }
-            continue;
-        }
-        // ---- settings: the current client settings ----
-        if (a.command == "settings") {
-            // The optional keyword filters the list (settings <keyword>).
-            std::string kw;
-            for (const auto& w : a.positional) kw += (kw.empty() ? "" : " ") + w;
-            auto kwMatch = [&](const std::string& line) {
-                if (kw.empty()) return true;
-                std::string l = line, k = kw;
-                std::transform(l.begin(), l.end(), l.begin(), ::tolower);
-                std::transform(k.begin(), k.end(), k.begin(), ::tolower);
-                return l.find(k) != std::string::npos;
-            };
-            std::vector<std::string> lines;
-            auto add = [&](const std::string& line) {
-                if (kwMatch(line)) lines.push_back(line);
-            };
-            add("Settings — Element equivalents in parentheses:");
-            add("  time      " + std::string(st.showSeconds ? "HH:MM:SS" : "HH:MM") + "       (time full / time off)");
-            add("  clock     " + std::string(st.clock12h ? "12h (AM/PM)" : "24h") + "       (clock 12h / clock 24h)  [Element: 24-hour clock]");
-            add("  timeside  " + std::string(st.timeRight ? "right" : "left") + "      (timeside left / timeside right)");
-            add("  msgline   " + std::string(st.msgNewline ? "newline (message below)" : "inline (same line)") + "  (msgline inline / msgline newline)");
-            add("  agent     " + dbi.getSetting("agent_provider", "openai") + " / " + dbi.getSetting("agent_model", "(default model)") + " / trust: " + dbi.getSetting("agent_trust", "ask") + "  (agent config <k> <v> / agent trust <allow|ask|deny>)");
-            add("  nickname  " + dbi.getSetting("displayname", "(unset)") + "  (nickname <name>)");
-            add("  avatar    " + dbi.getSetting("avatar_url", "(unset)") + "  (avatar <url>)");
-            add("  presence  " + dbi.getSetting("presence", "online") + "  (presence online|away|offline)");
-            add("  names     " + std::string(st.showNames ? "shown" : "hidden") + "       (names on / names off)  [Element: show sender display names]");
-            add("  receipts  " + std::string(st.showReceipts ? "shown" : "hidden") + "  (receipts on / receipts off)  [Element: show read receipts]");
-            add("  sendrcpts " + std::string(dbi.receiptsEnabled(st.currentRoomId) ? "on" : "off") + " (this room)  (receipts send on / receipts send off)  [Element: send read receipts]");
-            add("  modredact " + std::string(dbi.getSetting("mod_redact", "0") == "1" ? "allowed" : "blocked") + "  (modredact on / modredact off)  [redact others' messages]");
-            add("  sendtyping " + std::string(dbi.getSetting("send_typing", "1") != "0" ? "on" : "off") + "       (sendtyping on / sendtyping off)  [Element: send typing notifications]");
-            add("  invreason chat " + std::string(dbi.getSetting("invreason_chat", "1") != "0" ? "shown" : "hidden") + "  (invreason chat on|off)");
-            add("  invreason menu " + std::string(dbi.getSetting("invreason_menu", "0") != "0" ? "shown" : "hidden") + "  (invreason menu on|off)");
-            add("  joins     " + std::string(st.showJoins ? "shown" : "hidden") + "       (joins on / joins off)  [Element: show join/leave messages]");
-            add("  links     " + std::string(st.showLinks ? "pills" : "raw URLs") + "      (links on / links off)  [Element: URL previews]");
-            add("  ids       " + std::string(st.showIds ? "shown" : "hidden") + "       (ids on / ids off)  [Element: developer mode]");
-            add("  images    " + std::string(st.showImages ? "full cards" : "compact") + "  (images on / images off)  [Element: show images & videos]");
-            add("  sendpreset " + dbi.getSetting("send_preset", "original") + "  (sendpreset original|compact|full)");
-            add("  emoji     " + std::string(st.showEmoji ? "on" : "off (ASCII)") + "       (emoji on / emoji off)");
-            add("  threads   " + std::string(dbi.getSetting("threads_off", "0") == "0" ? "enabled" : "disabled") + "  (threads on / threads off)");
-            add("  rows      " + (st.limitRows > 0 ? std::to_string(st.limitRows) : "auto (terminal)") + "  (rows <n> / rows 0)");
-            add("  panel L   " + (st.leftPanelW == 0 ? "off" : st.leftPanelW > 0 ? std::to_string(st.leftPanelW) : "default") + "  (panel left <off|on|width>)");
-            add("  panel R   " + (st.rightPanelW == 0 ? "off" : st.rightPanelW > 0 ? std::to_string(st.rightPanelW) : "default") + "  (panel right <off|on|width>)");
-            add("  panels    " + std::string(st.autoPanels ? "auto (sized to content)" : "fixed") + "  (panel auto on / panel auto off)");
-            add("  members   " + std::string(st.membersMode == 1 ? "horizontal" : st.membersMode == 2 ? "vertical list" : "auto") + "  (members <horizontal|list|auto>)");
-            add("  via       " + (st.viaLimit == 0 ? "unlimited (all servers)" : std::to_string(st.viaLimit)) + "  (via <n> / via 0) [Element: 3]");
-            add("  timezone  " + std::string(st.tzOffset >= 0 ? "+" : "") + std::to_string(st.tzOffset) + "h  (timezone <N>)");
-            add("  hide      " + std::to_string(st.hiddenSeconds) + "s  (hide <room> [seconds])");
-            add("  from      " + (st.senderFilter.empty() ? "all" : st.senderFilter) + "  (from <@user> / from off)");
-            add("  muted     " + std::to_string(st.mutedRooms.size()) + " rooms  (mute <room> on|off)");
-            add("  layout    " + std::string(st.mobile ? "smartphone (stacked)" : "desktop (three columns)") + "  (mobile on / mobile off)");
-            add("  account   " + st.accountLabel);
-            add("  proxy     " + st.proxyLabel);
-            add("  invites   " + std::to_string(st.invites));
-            add("  space     " + (st.activeSpace.empty() ? "all rooms" : st.activeSpace) + "  (space <name> / space all)");
-            for (const auto& l : lines) std::cout << l << std::endl;
-            continue;
-        }
-        // ---- threads on|off: disable the thread UI entirely ----
-        if (a.command == "threads") {
-            if (!a.positional.empty() &&
-                (a.positional[0] == "bottom" || a.positional[0] == "panel")) {
-                st.showThreadsBottom = a.positional.size() < 2 || a.positional[1] != "off";
-                dbi.setSetting("threads_bottom", st.showThreadsBottom ? "1" : "0");
-                st.statusNote = std::string("the threads bottom list: ") + (st.showThreadsBottom ? "on" : "off");
-            } else {
-                const bool on = !a.positional.empty() && a.positional[0] == "on";
-                dbi.setSetting("threads_off", on ? "0" : "1");
-                st.statusNote = std::string("threads: ") + (on ? "enabled" : "disabled (the markers hidden)");
-            }
-            std::cout << drawFrame(st) << std::flush;
-            continue;
-        }
-        // ---- invreason chat|menu on|off: where the invitation reasons show ----
-        if (a.command == "invreason") {
-            if (a.positional.size() >= 2 &&
-                (a.positional[0] == "chat" || a.positional[0] == "menu")) {
-                const std::string key = std::string("invreason_") + a.positional[0];
-                const bool on = a.positional[1] != "off";
-                dbi.setSetting(key, on ? "1" : "0");
-                st.statusNote = std::string("the invite reason (") + a.positional[0]
-                              + "): " + (on ? "shown" : "hidden");
-            } else {
-                std::cout << "Usage: invreason <chat|menu> <on|off>" << std::endl;
-            }
-            continue;
-        }
-        // ---- sendpreset original|compact|full: the media sending preset ----
-        if (a.command == "sendpreset") {
-            std::string v = a.positional.empty() ? "original" : a.positional[0];
-            if (v != "original" && v != "compact" && v != "full") v = "original";
-            dbi.setSetting("send_preset", v);
-            st.statusNote = "the send preset: " + v;
-            std::cout << drawFrame(st) << std::flush;
-            continue;
-        }
-        // ---- nickname / avatar / presence: the account options ----
-        if (a.command == "nickname" || a.command == "avatar" || a.command == "presence") {
-            if (a.positional.empty()) {
-                std::cout << "Usage: " << a.command
-                          << (a.command == "nickname" ? " <name>" : a.command == "avatar" ? " <url>" : " <online|away|offline>")
-                          << std::endl;
-                continue;
-            }
-            const std::string v = a.positional[0];
-            dbi.setSetting(a.command == "nickname" ? "displayname"
-                           : a.command == "avatar" ? "avatar_url" : "presence", v);
-            if (pcore::init() && pcore::loadSavedSession()) {
-                auto& client = pcore::core().client;
-                if (a.command == "nickname") client->setDisplayName(v);
-                else if (a.command == "avatar") client->setAvatarUrl(v);
-            }
-            if (a.command == "presence") {
-                // The presence goes via the lib/matrix client (the
-                // config.json session — the same one the TUI uses).
-                matrix::Client cl;
-                db::StoredAccount sacc = dbi.loadAccount();
-                if (sacc.is_logged_in()) {
-                    cl.setHomeserverURL(sacc.homeserver_url);
-                    cl.setAccessToken(sacc.access_token);
-                    try { cl.setPresence(v); } catch (...) {}
-                }
-            }
-            st.statusNote = a.command + " set: " + v;
-            std::cout << drawFrame(st) << std::flush;
-            continue;
-        }
-        // ---- goto: jump the chat viewport to an event ----        // ---- goto: jump the chat viewport to an event ----
+        // ---- goto: jump the chat viewport to an event ----
         if (a.command == "goto") {
             if (a.positional.empty()) {
                 std::cout << "Usage: goto <event_id> | lastread | newest (back to the latest)"
@@ -5884,7 +5549,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 // copy), right after the marker.
                 if (st.readMarker.empty()) {
                     st.statusNote = "no last-read marker (read <room> sets it)";
-                    std::cout << drawFrame(st) << std::flush;
+                    std::cout << drawFrameImpl(st) << std::flush;
                     continue;
                 }
                 q = st.readMarker;
@@ -5892,11 +5557,11 @@ int cmdAsciiUi(const cli::Args& args) {
             matrix::Event target;
             if (!st.db->getEventById(q, target)) {
                 st.statusNote = "event not in the cache: " + q;
-                std::cout << drawFrame(st) << std::flush;
+                std::cout << drawFrameImpl(st) << std::flush;
                 continue;
             }
             if (st.currentRoomId != target.room_id) {
-                loadRoomIntoState(st, target.room_id);
+                loadRoomIntoStateImpl(st, target.room_id);
             }
             bool inWindow = std::find_if(
                 st.messages.begin(), st.messages.end(),
@@ -5904,7 +5569,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 st.messages.end();
             if (!inWindow) {
                 st.limit = 5000;  // the event is older than the window
-                loadRoomIntoState(st, target.room_id);
+                loadRoomIntoStateImpl(st, target.room_id);
                 inWindow = std::find_if(
                     st.messages.begin(), st.messages.end(),
                     [&](const matrix::Event& ev) { return ev.event_id == q; }) !=
@@ -5912,7 +5577,7 @@ int cmdAsciiUi(const cli::Args& args) {
             }
             if (!inWindow) {
                 st.statusNote = "event exists but is outside the loaded window";
-                std::cout << drawFrame(st) << std::flush;
+                std::cout << drawFrameImpl(st) << std::flush;
                 continue;
             }
             st.focusEvent = q;
@@ -5920,7 +5585,7 @@ int cmdAsciiUi(const cli::Args& args) {
             st.scroll = rowIdx >= 0 ? std::max(0, rowIdx - 12) : 0;
             if (st.mobile) st.mobileTab = 1;
             st.statusNote = "viewing event ‹" + q + "› · 'newest' to return";
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         if (a.command == "newest") {
@@ -5928,7 +5593,7 @@ int cmdAsciiUi(const cli::Args& args) {
             st.scroll = 1 << 30;  // clamped to the bottom in drawFrame
             st.statusNote = "back to the latest messages";
             if (st.mobile) st.mobileTab = 1;
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- threads bottom on|off: the thread list in the right panel ----
@@ -5938,7 +5603,7 @@ int cmdAsciiUi(const cli::Args& args) {
             dbi.setSetting("threads_bottom", st.showThreadsBottom ? "1" : "0");
             st.statusNote = std::string("thread list in the right panel ") +
                             (st.showThreadsBottom ? "on" : "off");
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- files: the room's media messages (audio/video/image/file) ----
@@ -5972,7 +5637,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 char buf[8];
                 std::snprintf(buf, sizeof(buf), "%02d:%02d", tm.tm_hour, tm.tm_min);
                 std::cout << "  " << icon << ": " << clip(name, 40)
-                          << "  [" << senderShort(ev.sender) << " " << buf << "]"
+                          << "  [" << senderShortImpl(ev.sender) << " " << buf << "]"
                           << "\n      id: " << ev.event_id;
                 std::string mxc;
                 auto urlIt = ev.content.find("url");
@@ -6040,7 +5705,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 g_widthOverrides.clear();
                 dbi.setSetting("widths", "");
                 st.statusNote = "custom widths cleared";
-                std::cout << drawFrame(st) << std::flush;
+                std::cout << drawFrameImpl(st) << std::flush;
                 continue;
             }
             if (a.positional.size() < 2) {
@@ -6067,7 +5732,7 @@ int cmdAsciiUi(const cli::Args& args) {
             std::snprintf(buf, sizeof(buf), "U+%04X = %d cell", cp, wd);
             st.statusNote = std::string("width ") + a.positional[0] + " (" + buf
                             + (wd == 1 ? ")" : "s)");
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- permalink <room> <event_id>: the matrix.to link with via ----
@@ -6113,7 +5778,7 @@ int cmdAsciiUi(const cli::Args& args) {
             dbi.setSetting("via_limit", std::to_string(v));
             st.statusNote = std::string("permalinks via: ") +
                             (v == 0 ? "unlimited (all servers)" : std::to_string(v));
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- from <@user> | from off: only that sender's messages ----
@@ -6127,7 +5792,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 if (st.senderFilter[0] != '@') st.senderFilter = "@" + st.senderFilter;
                 st.statusNote = "showing only " + st.senderFilter;
             }
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- hide [room] [seconds]: temporarily hide a room ----
@@ -6158,7 +5823,7 @@ int cmdAsciiUi(const cli::Args& args) {
                     + int64_t(secs) * 1000;
                 st.statusNote = roomId + " hidden for " + std::to_string(secs) + "s";
             }
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- mute <room> on|off: no indicators, just stay ----
@@ -6187,7 +5852,7 @@ int cmdAsciiUi(const cli::Args& args) {
             }
             dbi.setSetting("muted", saved);
             st.statusNote = roomId + (on ? " muted (no indicators)" : " unmuted");
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- timezone <N>: hours offset for all displayed times ----
@@ -6202,7 +5867,7 @@ int cmdAsciiUi(const cli::Args& args) {
             dbi.setSetting("tz_offset", std::to_string(st.tzOffset));
             st.statusNote = std::string("timezone UTC") + (st.tzOffset >= 0 ? "+" : "")
                           + std::to_string(st.tzOffset);
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- nick <room> <@user> <name>: per-room display names ----
@@ -6232,7 +5897,7 @@ int cmdAsciiUi(const cli::Args& args) {
             }
             dbi.setSetting("room_nicks", saved);
             st.statusNote = "nick: " + user + " = " + name + " (in " + roomId + ")";
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- avatar <room> <url>: per-room avatar (shown in info) ----
@@ -6257,7 +5922,7 @@ int cmdAsciiUi(const cli::Args& args) {
             }
             dbi.setSetting("room_avatars", saved);
             st.statusNote = "avatar set for " + roomId;
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- color <@user> <color|off>: custom nickname highlight ----
@@ -6282,7 +5947,7 @@ int cmdAsciiUi(const cli::Args& args) {
             dbi.setSetting("user_colors", saved);
             st.statusNote = std::string("color ") + user + " "
                           + (st.userColors.count(user) ? st.userColors[user] : "off");
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- info <room>: members, version, avatar, member search ----
@@ -6322,7 +5987,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 std::cout << "  " << nm;
                 auto nickIt = st.roomNicks.find(roomId + "|" + mem);
                 if (nickIt != st.roomNicks.end()) {
-                    std::cout << " (" << senderShort(mem) << ")";
+                    std::cout << " (" << senderShortImpl(mem) << ")";
                 }
                 std::cout << std::endl;
                 shown++;
@@ -6372,7 +6037,7 @@ replyRef:
                 std::tm tm{};
                 localtime_r(&t, &tm);
                 if (tm.tm_hour == hh && tm.tm_min == mm &&
-                    senderShort(it->sender) == nick) {
+                    senderShortImpl(it->sender) == nick) {
                     target = &(*it);
                     break;
                 }
@@ -6401,7 +6066,7 @@ replyRef:
                 pin.origin_server_ts = nowTs;
                 dbi.insertEvent(pin);
                 st.statusNote = "pinned " + target->event_id;
-                std::cout << drawFrame(st) << std::flush;
+                std::cout << drawFrameImpl(st) << std::flush;
                 continue;
             }
             if (a.positional.size() < 3) {
@@ -6435,8 +6100,8 @@ replyRef:
             dbi.insertEvent(act);
             st.statusNote = std::string(a.command) + " to "
                           + a.positional[0] + " [" + nick + "]";
-            loadRoomIntoState(st, std::string(st.currentRoomId));
-            std::cout << drawFrame(st) << std::flush;
+            loadRoomIntoStateImpl(st, std::string(st.currentRoomId));
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- star <room> on|off: anchor the room to the top of the list ----
@@ -6470,7 +6135,7 @@ replyRef:
                     st.rooms.empty() ? "?" : st.rooms.front().value("name","").c_str(),
                     st.starredRooms.size());
             st.statusNote = roomId + (on ? " ★ starred (top)" : " unstarred");
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- roomname <room> <name> / topic <room> <text>: like Element ----
@@ -6510,9 +6175,9 @@ replyRef:
             }
             st.rooms = dbi.listRooms();
             sortRoomsByActivity(st);
-            loadRoomIntoState(st, std::string(st.currentRoomId));
+            loadRoomIntoStateImpl(st, std::string(st.currentRoomId));
             st.statusNote = roomId + ": " + std::string(a.command) + " = " + value;
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- power <room>: the power levels; power <room> <@user> <level>;
@@ -6604,10 +6269,10 @@ replyRef:
                     std::chrono::system_clock::now().time_since_epoch()).count();
                 dbi.insertEvent(pl);
             }
-            loadRoomIntoState(st, std::string(st.currentRoomId));
+            loadRoomIntoStateImpl(st, std::string(st.currentRoomId));
             st.statusNote = "power: " + roomId + " " + a.positional[1]
                           + " = " + std::to_string(level);
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- links: list the matrix.to permalinks of the current room ----
@@ -6648,7 +6313,7 @@ replyRef:
                         std::cout << " -> " << evPart;
                         matrix::Event target;
                         if (st.db->getEventById(evPart, target)) {
-                            std::cout << "  [" << senderShort(target.sender) << ": "
+                            std::cout << "  [" << senderShortImpl(target.sender) << ": "
                                       << clip(eventBody(target), 40) << "]";
                         } else {
                             std::cout << "  (event not in the cache)";
@@ -6701,7 +6366,7 @@ replyRef:
                 attachH(at);
                 st.statusNote = "voice message sent to " + a.positional[0];
             }
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- sticker: send an m.sticker ----
@@ -6732,7 +6397,7 @@ replyRef:
             } else {
                 st.statusNote = "sticker sent to " + roomId;
             }
-            std::cout << drawFrame(st) << std::flush;
+            std::cout << drawFrameImpl(st) << std::flush;
             continue;
         }
         // ---- notify: terminal/desktop notification for a room ----

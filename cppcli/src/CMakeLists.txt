@@ -1,5 +1,6 @@
 set(SOURCES
     main.cpp
+    demo_tui.cpp
     config.cpp
     commands.cpp
     bridge_commands.cpp
@@ -13,6 +14,7 @@ set(SOURCES
     call_commands.cpp
     proxy_commands.cpp
     ascii_ui.cpp
+    ascii_settings.cpp
     cli/args.cpp
     server/server.cpp
     server/web_proxy.cpp
