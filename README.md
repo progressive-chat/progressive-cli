@@ -125,6 +125,7 @@ make -j$(nproc)
 ./matrixcli serve   # Start API server
 ./matrixcli login   # Interactive login
 ./matrixcli tui     # Terminal UI
+./matrixcli call    # VoIP signaling: call <@user> | answer | hangup | status | wait
 ```
 
 ## The LLM / agent CLI
@@ -176,7 +177,7 @@ matrixcli agent "summarize #general"     # the Matrix-tools agent
 - [x] C++23 rewrite with POSIX sockets and OpenSSL (in progress)
 - [ ] Full C++ TUI parity with Go TUI
 - [ ] C++ E2EE device verification UI
-- [ ] Voice/video calling (WebRTC)
+- [~] VoIP signaling (the m.call.* state machine; the WebRTC media plane is next) — `matrixcli call`
 
 ## License
 
