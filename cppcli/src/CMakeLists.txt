@@ -10,6 +10,7 @@ set(SOURCES
     agent_commands.cpp
     agent_tools.cpp
     matrix_agent.cpp
+    call_commands.cpp
     proxy_commands.cpp
     ascii_ui.cpp
     cli/args.cpp

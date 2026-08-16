@@ -19,6 +19,7 @@ void registerE2eeCommands();
 void registerRoomCommands();
 void registerMatrixCommands();
 void registerAgentCommands();
+void registerCallCommands();
 void registerProxyCommands();
 void registerAsciiUiCommand();
 
@@ -33,6 +34,7 @@ void registerBuiltinCommands() {
     registerRoomCommands();
     registerMatrixCommands();
     registerAgentCommands();
+    registerCallCommands();
     registerProxyCommands();
     registerAsciiUiCommand();
 
