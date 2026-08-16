@@ -105,7 +105,7 @@ for (const f of status.features) {
     if (treeText === null || !anchorHolds(treeText, a.pattern)) {
         console.warn(`drift ${f.id}: "${a.pattern}" gone from the working tree (${a.file})`);
         drift++;
-    } else if (remote) {
+    } else {
         const lineNow = anchorLine(treeText, a.pattern);
         const lineThen = a.line ?? -1;
         if (lineNow !== -1 && lineThen !== -1 && lineNow !== lineThen) {
@@ -118,6 +118,8 @@ for (const f of status.features) {
 if (remote && headCommit && commit && commit !== 'unknown' && headCommit !== commit) {
     console.warn(`drift: the page was generated at ${commit.slice(0, 7)}, HEAD is ${headCommit.slice(0, 7)}`);
     drift++;
+} else if (!remote && headCommit && commit && commit !== 'unknown' && headCommit !== commit) {
+    console.warn(`note: status.json was generated at ${commit.slice(0, 7)}, HEAD is ${headCommit.slice(0, 7)}`);
 }
 
 console.log(`${checked} anchor(s) checked, ${broken} broken, ${drift} drifted`);
