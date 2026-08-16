@@ -15,8 +15,11 @@
 #include "config.hpp"
 #include "core/http_client.hpp"
 #include <nlohmann/json.hpp>
+#include <cstdio>
+#include <fstream>
 #include <iostream>
 #include <string>
+#include <unistd.h>
 
 using namespace matrixcli;
 
@@ -43,7 +46,41 @@ std::string proxyTypeName(progressive::desktop::ProxyConfig::Type t) {
     return "socks5h";
 }
 
+// Minimal ANSI color helpers. Colors are only emitted when stdout is a TTY,
+// so piped output (scripts, --json) stays plain.
+// Levels: important = bright bold, normal = cyan, unimportant = dim.
+bool useColor() {
+    static const bool tty = ::isatty(::fileno(stdout)) != 0;
+    return tty;
+}
+
+std::string paint(const char* code, const std::string& s) {
+    return useColor() ? std::string(code) + s + "\033[0m" : s;
+}
+
 } // namespace
+
+// Dump the on-disk config.json verbatim (best-effort), white-highlighting
+// the proxy_enabled line (the main reason for the current state).
+void dumpConfigFile() {
+    std::ifstream in("config.json");
+    if (!in) return;
+    std::string contents((std::istreambuf_iterator<char>(in)),
+                         std::istreambuf_iterator<char>());
+    std::cout << paint("\033[90m", "config.json:") << std::endl;
+    size_t start = 0;
+    while (start <= contents.size()) {
+        size_t nl = contents.find('\n', start);
+        std::string line = contents.substr(start,
+            nl == std::string::npos ? std::string::npos : nl - start);
+        if (line.find("proxy_enabled") != std::string::npos)
+            std::cout << paint("\033[1;37m", line) << std::endl;
+        else
+            std::cout << paint("\033[90m", line) << std::endl;
+        if (nl == std::string::npos) break;
+        start = nl + 1;
+    }
+}
 
 // Apply the persisted proxy config (config.json) to the core's global proxy.
 // Called once at startup from main(). No-op when nothing is configured.
@@ -136,12 +173,16 @@ int cmdProxy(const cli::Args& args) {
         std::cout << j.dump() << std::endl;
     } else {
         if (!cfg.enabled) {
-            std::cout << "proxy: disabled (direct connections)" << std::endl;
+            std::cout << paint("\033[1;31m",
+                "proxy: disabled (direct connections) — to enable: proxy on --host H --port P")
+                      << std::endl;
+            dumpConfigFile();
         } else {
-            std::cout << "proxy: " << proxyTypeName(cfg.type) << "://" << cfg.host
-                      << ":" << cfg.port;
-            if (!cfg.username.empty()) std::cout << " (auth)";
-            std::cout << std::endl;
+            std::string line = "proxy: " + proxyTypeName(cfg.type) + "://" + cfg.host
+                             + ":" + std::to_string(cfg.port);
+            if (!cfg.username.empty()) line += " (auth)";
+            std::cout << paint("\033[1;37m", line) << std::endl;
+            dumpConfigFile();
         }
     }
     return 0;
