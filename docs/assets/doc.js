@@ -58,6 +58,20 @@ async function boot() {
             n.textContent = f.note;
             info.appendChild(n);
         }
+        if (f.screenshot) {
+            const s = document.createElement('div');
+            s.className = 'screenshot';
+            const a = document.createElement('a');
+            a.href = f.screenshot;
+            a.title = f.name;
+            a.target = '_blank';
+            const img = document.createElement('img');
+            img.src = f.screenshot;
+            img.alt = `screenshot: ${f.name}`;
+            a.appendChild(img);
+            s.appendChild(a);
+            info.appendChild(s);
+        }
         if (f.anchor && !f.anchor.missing) {
             const a = document.createElement('div');
             a.className = 'anchor';

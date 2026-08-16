@@ -110,3 +110,18 @@ figcaption {
     font-size: 12px;
     font-family: ui-monospace, monospace;
 }
+.screenshot {
+    margin-top: 8px;
+}
+.screenshot img {
+    display: block;
+    max-width: 420px;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: #000;
+}
+.screenshot a:hover img {
+    border-color: var(--accent);
+}

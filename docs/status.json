@@ -1,8 +1,8 @@
 {
   "generated": {
-    "version": "v0.5.1-11-g9a477b0",
-    "commit": "9a477b015a11e1a8a0149b6bf905b4195ec37041",
-    "builtAt": "2026-08-16T17:43:01.022438+00:00",
+    "version": "v0.5.1-14-g69869bf",
+    "commit": "69869bf8030b285669aace5fae5545537c95234d",
+    "builtAt": "2026-08-16T18:38:55.852083+00:00",
     "generator": "docs/gen.mjs"
   },
   "note": "This file is generated. Edit docs/features.json instead.",
@@ -20,10 +20,25 @@
   ],
   "features": [
     {
+      "id": "proxy-status",
+      "name": "Proxy status display (colored state + config.json reason)",
+      "category": "cli",
+      "status": "verified",
+      "since": "0.5.1",
+      "screenshot": "assets/Screenshot_proxy_status.png",
+      "note": "disabled state shown: red status line, the deciding proxy_enabled line highlighted white, the whole config.json below",
+      "anchor": {
+        "file": "src/proxy_commands.cpp",
+        "pattern": "proxy: disabled",
+        "missing": false,
+        "line": 177
+      }
+    },
+    {
       "id": "cli-login",
       "name": "CLI login (interactive + password)",
       "category": "cli",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.1",
       "test": "cli_e2e",
       "anchor": {
@@ -37,7 +52,7 @@
       "id": "cli-rooms",
       "name": "Rooms, messages, spaces",
       "category": "cli",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.1",
       "test": "cli_e2e",
       "anchor": null
@@ -46,7 +61,7 @@
       "id": "threads",
       "name": "Threads (m.relates_to m.thread)",
       "category": "cli",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.5.1",
       "test": "media_send",
       "anchor": {
@@ -141,7 +156,7 @@
       "id": "sendpreset",
       "name": "Media send presets (original/compact/full)",
       "category": "cli",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.5.1",
       "test": "media_send",
       "anchor": {
@@ -236,7 +251,7 @@
       "id": "tui",
       "name": "ncurses TUI",
       "category": "ui",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.1",
       "test": "cli_e2e",
       "anchor": null
@@ -253,7 +268,7 @@
       "id": "ascii-ui",
       "name": "ASCII UI (rooms/chat/mobile tabs)",
       "category": "ui",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.5.0",
       "anchor": null
     },
@@ -261,7 +276,7 @@
       "id": "demo",
       "name": "Demo mode (demo tui|ui|mobile|cli)",
       "category": "ui",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.5.1",
       "anchor": {
         "file": "src/demo_repl.cpp",
@@ -274,7 +289,7 @@
       "id": "ctrl-c",
       "name": "Ctrl+C/Ctrl+D handling (EINTR-safe)",
       "category": "ui",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.5.1",
       "test": "cli_e2e",
       "anchor": {
@@ -297,7 +312,7 @@
       "id": "e2ee-megolm",
       "name": "E2EE Olm/Megolm (m.megolm.v1.aes-sha2)",
       "category": "e2ee",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.1",
       "test": "megolm_inbound",
       "anchor": {
@@ -311,7 +326,7 @@
       "id": "e2ee-sas",
       "name": "SAS device verification (/verify in the ASCII UI)",
       "category": "e2ee",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.5.1",
       "test": "e2ee_sas",
       "anchor": {
@@ -333,7 +348,7 @@
       "id": "e2ee-attach",
       "name": "Encrypted media (AES-CTR + the Element file block)",
       "category": "e2ee",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.5.1",
       "test": "media_send",
       "anchor": {
@@ -347,7 +362,7 @@
       "id": "llm-chat",
       "name": "LLM chat (llm, streaming SSE)",
       "category": "llm",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.5.0",
       "test": "llm_sse",
       "anchor": null
@@ -356,7 +371,7 @@
       "id": "llm-sse",
       "name": "Chunked SSE decoding (multi-line events, null usage)",
       "category": "llm",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.5.1",
       "test": "llm_sse",
       "anchor": {
@@ -370,7 +385,7 @@
       "id": "llm-sessions",
       "name": "Sessions: continue/chat/resume, named, archive/trash",
       "category": "llm",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.5.0",
       "test": "sessions_store",
       "anchor": null
@@ -395,7 +410,7 @@
       "id": "llm-tools",
       "name": "LLM tools (filesystem/shell, PTY process)",
       "category": "llm",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.5.1",
       "test": "agent_loop",
       "anchor": null
@@ -532,7 +547,7 @@
       "id": "test-llm",
       "name": "LLM SSE tests",
       "category": "tests",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.5.1",
       "test": "llm_sse",
       "anchor": null
@@ -541,7 +556,7 @@
       "id": "test-db",
       "name": "DB settings + invites tests",
       "category": "tests",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.5.1",
       "test": "db_settings",
       "anchor": null
@@ -550,7 +565,7 @@
       "id": "test-sessions",
       "name": "Session store tests",
       "category": "tests",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.5.1",
       "test": "sessions_store",
       "anchor": null
@@ -559,7 +574,7 @@
       "id": "test-agent",
       "name": "Agent loop integration test (fake OpenAI server)",
       "category": "tests",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.5.1",
       "test": "agent_loop",
       "anchor": null
@@ -568,7 +583,7 @@
       "id": "test-media",
       "name": "Media send preset tests",
       "category": "tests",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.5.1",
       "test": "media_send",
       "anchor": null
@@ -577,7 +592,7 @@
       "id": "ci",
       "name": "CI (build + tests + ASan/UBSan)",
       "category": "tests",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.5.1",
       "anchor": null
     },
