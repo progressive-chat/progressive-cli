@@ -1,41 +1,35 @@
 # matrixcli
 
-A **CLI-first** Matrix client — a hard fork of
-[gomuks](https://github.com/tulir/gomuks) with a multi-format REST API,
-Tor/I2P/Yggdrasil proxy support, and a ground-up C++20 rewrite in progress
-(`cppcli/`).
-
-The **command-line interface is the primary interface**; the ncurses TUI is an
-optional add-on, not the main product.
+A **CLI-first** Matrix client in **C++23** — the terminal is the primary
+interface (the ncurses TUI, the ASCII client and the REST API server are
+the other surfaces). The codebase grew out of a fork of
+[gomuks](https://github.com/tulir/gomuks); the Go implementation was
+retired in favour of the C++ rewrite and lives in the `go-legacy` tag.
 
 > **Note:** This is an independent project in the Progressive Chat ecosystem.
 > The Android client lives in
 > [progressive-android](https://github.com/progressive-chat/progressive-android).
 
-## Why a fork?
+## Highlights
 
-gomuks is an excellent Go Matrix client. This fork extends it with:
-
-- **Multi-format REST API** — query rooms, messages, and client state in
-  JSON, plain text, Markdown, Gemtext (Gemini protocol), or HTML
+- **The full CLI client** — rooms, messages, threads, polls, reactions,
+  E2EE (Olm/Megolm, device verification), key backup, spaces
+- **Multi-format REST API** — JSON, plain text, Markdown, Gemtext
+  (Gemini protocol), or HTML (`matrixcli serve`)
 - **Onion/I2P/Yggdrasil transport** — built-in proxy support for anonymous
   and mesh networks (SOCKS5 for Tor, HTTP for I2P, native Yggdrasil IPv6)
-- **C++ rewrite** — a parallel C++20 codebase (`cppcli/`) with POSIX socket
-  HTTP client, OpenSSL TLS, libolm E2EE, and ncurses TUI — targeting
-  minimal dependencies and maximum portability
-- **Enhanced login** — server discovery via `.well-known`, SSO URL builder,
-  token login, proxy-aware authentication flow
+- **The LLM conversations + the agents** — the streaming chat with the
+  sessions (`llm`, `llm chat`, `llm continue`), the tool access
+  (`--tools`: the filesystem/shell, the PTY `process` tool, subagents,
+  MCP), the Matrix-tools agent and the coding agent
+- **The VoIP signaling** — `matrixcli call` (the m.call.* state machine)
+- **POSIX sockets + OpenSSL** — minimal dependencies, maximum portability
 
 ## Project structure
 
 ```
-matrixclient/
-├── gomuks/          # Hard fork of gomuks (Go backend + TUI)
-│   ├── pkg/hicli/   #   Enhanced login, proxy, sync, E2EE
-│   ├── pkg/hicli/api/  # Multi-format API renderers
-│   ├── pkg/gomuks/  #   HTTP server, REST API endpoints
-│   └── tui/         #   Terminal TUI with proxy/network selector
-├── cppcli/          # C++20 CLI rewrite (in progress)
+matrixcli/
+├── cppcli/          # The C++23 client (the whole thing)
 │   ├── lib/http/    #   POSIX + OpenSSL HTTP client, SOCKS5/HTTP proxy
 │   ├── lib/matrix/  #   Matrix protocol (login, sync, send, events)
 │   ├── lib/         #   E2EE/sync core: fetched from progressive-chat/
@@ -45,22 +39,6 @@ matrixclient/
 │   ├── lib/formats/ #   Format renderers (JSON, text, MD, gemtext, HTML)
 │   └── lib/tui/     #   ncurses terminal UI
 └── ROADMAP.md       # Full porting roadmap (in Russian)
-```
-
-## Quick start (Go / gomuks fork)
-
-```bash
-cd gomuks
-go build ./cmd/gomuks
-./gomuks
-```
-
-Then open `http://localhost:29325` in a browser, or use the terminal TUI:
-
-```bash
-cd gomuks
-go build ./cmd/gomuks-terminal
-./gomuks-terminal
 ```
 
 ### Terminal TUI login
@@ -181,11 +159,10 @@ matrixcli agent "summarize #general"     # the Matrix-tools agent
 
 ## License
 
-This project is a derivative work of gomuks, licensed under the
-**GNU Affero General Public License v3.0** (AGPLv3).
+Licensed under the **GNU Affero General Public License v3.0** (AGPLv3).
 
 ```
-Copyright (C) 2024-2025 Tulir Asokan (original gomuks)
+Copyright (C) 2024-2025 Tulir Asokan (the original gomuks)
 Copyright (C) 2026 Progressive Matrix Client contributors
 
 This program is free software: you can redistribute it and/or modify

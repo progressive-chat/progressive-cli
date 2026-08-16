@@ -1,8 +1,4 @@
 # Build artifacts
-gomuks/web/dist/
-gomuks/cmd/gomuks/gomuks
-gomuks/cmd/gomuks-terminal/gomuks-terminal
-gomuks/cmd/wasmuks/wasmuks
 cppcli/build/
 
 # IDE
@@ -53,3 +49,11 @@ build-dbg/
 build/
 session.db
 cli-sessions/
+
+# The local state (never commit)
+matrixcli.db
+session.db
+config.json
+matrixcli.toml
+*.log
+.agent-sessions/
