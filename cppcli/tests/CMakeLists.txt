@@ -64,6 +64,17 @@ target_link_libraries(matrixcli_agent_loop_test PRIVATE
 )
 add_test(NAME agent_loop COMMAND matrixcli_agent_loop_test)
 
+# The media send presets: the content builders + the header dimensions.
+add_executable(matrixcli_media_test
+    test_media_send.cpp
+    ${CMAKE_SOURCE_DIR}/src/media_send.cpp
+)
+target_include_directories(matrixcli_media_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(matrixcli_media_test PRIVATE
+    matrixcli_json
+)
+add_test(NAME media_send COMMAND matrixcli_media_test)
+
 # Vendored desktop E2EE core smoke test
 add_executable(matrixcli_ecore_test
     test_ecore.cpp

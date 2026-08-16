@@ -16,6 +16,7 @@ set(SOURCES
     ascii_ui.cpp
     ascii_settings.cpp
     ascii_commands.cpp
+    media_send.cpp
     cli/args.cpp
     server/server.cpp
     server/web_proxy.cpp
