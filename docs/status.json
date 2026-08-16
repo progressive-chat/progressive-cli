@@ -1,8 +1,8 @@
 {
   "generated": {
-    "version": "v0.5.1-19-g6e45750",
-    "commit": "6e45750ca94032b79e05af77637e4234366aafaa",
-    "builtAt": "2026-08-16T19:08:44.011996+00:00",
+    "version": "v0.5.1-20-g142413b",
+    "commit": "142413bbe400c55856ba9aad095d8f638903388b",
+    "builtAt": "2026-08-16T19:11:10.623872+00:00",
     "generator": "docs/gen.mjs"
   },
   "note": "This file is generated. Edit docs/features.json instead.",
@@ -20,18 +20,46 @@
   ],
   "features": [
     {
-      "id": "proxy-status-output",
-      "name": "Proxy status display \u2014 output renders",
+      "id": "proxy-status-disabled",
+      "name": "Proxy status \u2014 disabled state display",
       "category": "cli",
       "status": "verified",
       "since": "0.5.1",
       "screenshot": "assets/Screenshot_proxy_status.png",
-      "note": "the disabled case on a real terminal: red status line with the enable hint, the deciding proxy_enabled line white-highlighted, the whole config.json in grey below",
+      "note": "on a real terminal: red status line with the enable hint, the deciding proxy_enabled line white-highlighted, the whole config.json in grey below",
       "anchor": {
         "file": "src/proxy_commands.cpp",
         "pattern": "proxy: disabled",
         "missing": false,
         "line": 177
+      }
+    },
+    {
+      "id": "proxy-status-enabled",
+      "name": "Proxy status \u2014 enabled state display",
+      "category": "cli",
+      "status": "implemented",
+      "since": "0.5.1",
+      "note": "white line with socks5h://host:port and the auth flag when set \u2014 same layout as the disabled state; not captured on a screenshot yet",
+      "anchor": {
+        "file": "src/proxy_commands.cpp",
+        "pattern": "\"proxy: \" \\+ proxyTypeName",
+        "missing": false,
+        "line": 181
+      }
+    },
+    {
+      "id": "proxy-status-json",
+      "name": "Proxy status \u2014 machine-readable --json",
+      "category": "cli",
+      "status": "implemented",
+      "since": "0.5.1",
+      "note": "prints {\"enabled\", \"host\", \"port\", \"type\", \"auth\"}; whether the values match config.json still needs the manual test",
+      "anchor": {
+        "file": "src/proxy_commands.cpp",
+        "pattern": "j\\[\"enabled\"\\]",
+        "missing": false,
+        "line": 168
       }
     },
     {
