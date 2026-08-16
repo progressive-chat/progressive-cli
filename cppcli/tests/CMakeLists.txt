@@ -45,6 +45,25 @@ target_link_libraries(matrixcli_sessions_test PRIVATE
 )
 add_test(NAME sessions_store COMMAND matrixcli_sessions_test)
 
+# The agent loop integration test: a fake OpenAI-compatible server drives
+# the real engine — the shell tool executes, the result feeds back, the
+# final answer lands.
+add_executable(matrixcli_agent_loop_test
+    test_agent_loop.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent_tools.cpp
+)
+target_include_directories(matrixcli_agent_loop_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/lib
+)
+target_link_libraries(matrixcli_agent_loop_test PRIVATE
+    matrixcli_util
+    matrixcli_http
+    matrixcli_json
+    Threads::Threads
+)
+add_test(NAME agent_loop COMMAND matrixcli_agent_loop_test)
+
 # Vendored desktop E2EE core smoke test
 add_executable(matrixcli_ecore_test
     test_ecore.cpp
