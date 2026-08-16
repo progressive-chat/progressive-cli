@@ -93,7 +93,7 @@ public:
     explicit MatrixBackend(matrix::Client* client) : _client(client) {}
 
     // The live operations need a logged-in session. In the demo TUI and
-    // the offline agent mode (`matrixcli tui agent`) the client exists but
+    // the offline agent mode (`progressive-cli tui agent`) the client exists but
     // has no token — the tools report it clearly and the agent continues
     // with the cache-backed tools (read/search/room info).
     bool haveSession() const { return _client && _client->isLoggedIn(); }
@@ -601,7 +601,7 @@ Result run(const Config& cfg, Backend& backend, const std::string& task,
            const std::function<void(const std::string&)>& log) {
     Result res;
     if (cfg.key.empty()) {
-        res.error = "no API key — run './matrixcli tui agent' for the "
+        res.error = "no API key — run './progressive-cli tui agent' for the "
                     "interactive setup, or set it in ~/.config/matrixcli/"
                     "agent.json / OPENAI_API_KEY / ANTHROPIC_API_KEY";
         return res;

@@ -85,7 +85,7 @@ int cmdE2ee(const cli::Args& args) {
                   << std::endl;
         return 0;
     }
-    std::cerr << "Usage: matrixcli e2ee <status|upload|fallback>" << std::endl;
+    std::cerr << "Usage: progressive-cli e2ee <status|upload|fallback>" << std::endl;
     return 1;
 }
 
@@ -123,7 +123,7 @@ int cmdBackup(const cli::Args& args) {
     if (sub == "restore") {
         std::string key = args.options.count("recovery-key") ? args.options.at("recovery-key") : (args.positional.size() > 1 ? args.positional[1] : "");
         if (key.empty()) {
-            std::cerr << "Usage: matrixcli backup restore --recovery-key <key>" << std::endl;
+            std::cerr << "Usage: progressive-cli backup restore --recovery-key <key>" << std::endl;
             return 1;
         }
         int n = core.sync->restoreKeyBackupNow(key);
@@ -143,7 +143,7 @@ int cmdBackup(const cli::Args& args) {
         }
         return ok ? 0 : 1;
     }
-    std::cerr << "Usage: matrixcli backup <create|upload|restore|delete>" << std::endl;
+    std::cerr << "Usage: progressive-cli backup <create|upload|restore|delete>" << std::endl;
     return 1;
 }
 
@@ -188,7 +188,7 @@ int cmdCrossSign(const cli::Args& args) {
             if (core.sync->setupCrossSigningWithPassword(password)) return report(true, "reset");
         return report(false, "reset");
     }
-    std::cerr << "Usage: matrixcli crosssign <setup|reset> [--password <pw>]" << std::endl;
+    std::cerr << "Usage: progressive-cli crosssign <setup|reset> [--password <pw>]" << std::endl;
     return 1;
 }
 
@@ -200,7 +200,7 @@ int cmdSsss(const cli::Args& args) {
 
     std::string key = args.options.count("recovery-key") ? args.options.at("recovery-key") : (args.positional.size() > 1 ? args.positional[1] : "");
     if (key.empty()) {
-        std::cerr << "Usage: matrixcli ssss <upload|retrieve> --recovery-key <key>" << std::endl;
+        std::cerr << "Usage: progressive-cli ssss <upload|retrieve> --recovery-key <key>" << std::endl;
         return 1;
     }
 
@@ -222,7 +222,7 @@ int cmdSsss(const cli::Args& args) {
         }
         return n > 0 ? 0 : 1;
     }
-    std::cerr << "Usage: matrixcli ssss <upload|retrieve> --recovery-key <key>" << std::endl;
+    std::cerr << "Usage: progressive-cli ssss <upload|retrieve> --recovery-key <key>" << std::endl;
     return 1;
 }
 
@@ -365,7 +365,7 @@ int runSasVerification(const std::string& targetUser,
 int cmdVerify(const cli::Args& args) {
     if (!pcore::requireSession()) return 1;
     if (args.positional.empty()) {
-        std::cerr << "Usage: matrixcli verify <@user:server> --device <deviceId> [--confirm] [--timeout s] [--json]" << std::endl;
+        std::cerr << "Usage: progressive-cli verify <@user:server> --device <deviceId> [--confirm] [--timeout s] [--json]" << std::endl;
         return 1;
     }
     const std::string targetUser = args.positional[0];

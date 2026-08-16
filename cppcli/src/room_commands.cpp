@@ -81,7 +81,7 @@ int cmdSync(const cli::Args& args) {
 int cmdDevices(const cli::Args& args) {
     if (!pcore::requireSession()) return 1;
     if (args.positional.empty() || args.positional[0] != "delete" || args.positional.size() < 2) {
-        std::cerr << "Usage: matrixcli devices delete <deviceId> --password <pw>" << std::endl;
+        std::cerr << "Usage: progressive-cli devices delete <deviceId> --password <pw>" << std::endl;
         return 1;
     }
     std::string password = args.options.count("password") ? args.options.at("password") : "";
@@ -104,7 +104,7 @@ int cmdModerate(const cli::Args& args) {
     if (!pcore::requireSession()) return 1;
     std::string sub = args.command;  // kick | ban | unban
     if (args.positional.size() < 2) {
-        std::cerr << "Usage: matrixcli " << sub << " <room> <@user> [--reason r]" << std::endl;
+        std::cerr << "Usage: progressive-cli " << sub << " <room> <@user> [--reason r]" << std::endl;
         return 1;
     }
     std::string room = resolveRoom(args.positional[0]);
@@ -131,7 +131,7 @@ int cmdModerate(const cli::Args& args) {
 int cmdProfile(const cli::Args& args) {
     if (!pcore::requireSession()) return 1;
     if (args.positional.empty()) {
-        std::cerr << "Usage: matrixcli profile <@user:server>" << std::endl;
+        std::cerr << "Usage: progressive-cli profile <@user:server>" << std::endl;
         return 1;
     }
     auto r = pcore::core().client->getUserProfile(args.positional[0]);
@@ -158,7 +158,7 @@ int cmdProfile(const cli::Args& args) {
 int cmdMembers(const cli::Args& args) {
     if (!pcore::requireSession()) return 1;
     if (args.positional.empty()) {
-        std::cerr << "Usage: matrixcli members <room>" << std::endl;
+        std::cerr << "Usage: progressive-cli members <room>" << std::endl;
         return 1;
     }
     std::string room = resolveRoom(args.positional[0]);
@@ -192,7 +192,7 @@ int cmdMembers(const cli::Args& args) {
 int cmdThreads(const cli::Args& args) {
     if (!pcore::requireSession()) return 1;
     if (args.positional.empty()) {
-        std::cerr << "Usage: matrixcli threads <room> [--limit N]" << std::endl;
+        std::cerr << "Usage: progressive-cli threads <room> [--limit N]" << std::endl;
         return 1;
     }
     std::string room = resolveRoom(args.positional[0]);
@@ -210,7 +210,7 @@ int cmdThreads(const cli::Args& args) {
 int cmdSearchPublic(const cli::Args& args) {
     if (!pcore::requireSession()) return 1;
     if (args.positional.empty()) {
-        std::cerr << "Usage: matrixcli search-public <query> [--server hs]" << std::endl;
+        std::cerr << "Usage: progressive-cli search-public <query> [--server hs]" << std::endl;
         return 1;
     }
     std::string server = args.options.count("server") ? args.options.at("server") : "";
@@ -262,7 +262,7 @@ int cmdMarkdown(const cli::Args& args) {
         while (std::getline(std::cin, line)) { md += line; md += "\n"; }
     }
     if (md.empty()) {
-        std::cerr << "Usage: matrixcli markdown <text> | echo <text> | matrixcli markdown --json" << std::endl;
+        std::cerr << "Usage: progressive-cli markdown <text> | echo <text> | matrixcli markdown --json" << std::endl;
         return 1;
     }
 
@@ -366,7 +366,7 @@ int cmdAccounts(const cli::Args& args) {
         return 0;
     }
 
-    if (accounts.empty()) { std::cout << "No accounts. Run 'matrixcli login'." << std::endl; return 0; }
+    if (accounts.empty()) { std::cout << "No accounts. Run 'progressive-cli login'." << std::endl; return 0; }
     int shown = 0;
     for (auto& a : accounts) {
         if (isHidden(a) && !show_all) continue;

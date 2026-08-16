@@ -152,7 +152,7 @@ void DemoData::generate() {
     // ═══════════════════════════════════════════
     auto g = "!general:demo.local";
     auto m1 = msg(g, alice.user_id, alice.display_name,
-        "Welcome everyone! This is a demo of matrixcli — a terminal Matrix client.");
+        "Welcome everyone! This is a demo of progressive-cli — a terminal Matrix client.");
     auto m2 = msg(g, bob.user_id, bob.display_name,
         "Hey Alice! The C++ rewrite is impressive. Raw sockets + OpenSSL for HTTP, no libcurl dependency.");
     reaction(g, charlie.user_id, charlie.display_name, m2.event_id, "👍");
@@ -165,9 +165,9 @@ void DemoData::generate() {
     reaction(g, bob.user_id, bob.display_name, m5.event_id, "🔥");
     img(g, bob.user_id, bob.display_name, "Screenshot of matrixcli TUI in action", 1200, 800);
     auto m6 = msg(g, alice.user_id, alice.display_name,
-        "Also check out the demo mode — start with `matrixcli demo` and access everything without a Matrix account.");
+        "Also check out the demo mode — start with `progressive-cli demo` and access everything without a Matrix account.");
     edit(g, alice.user_id, alice.display_name,
-        "Also check out the demo mode — start with `matrixcli demo` and test everything without a real Matrix account.",
+        "Also check out the demo mode — start with `progressive-cli demo` and test everything without a real Matrix account.",
         m6.event_id);
     auto m7 = msg(g, dave.user_id, dave.display_name,
         "Can I use it with Tor?");
@@ -175,7 +175,7 @@ void DemoData::generate() {
         "Absolutely! You can route through Tor, I2P, or Yggdrasil. Just select the connection type at login.");
     reaction(g, dave.user_id, dave.display_name, m8.event_id, "🙏");
     auto m9 = msg(g, alice.user_id, alice.display_name,
-        "The TUI is built with ncurses — full terminal UI with room list, message view, and composer. Try `matrixcli tui`.");
+        "The TUI is built with ncurses — full terminal UI with room list, message view, and composer. Try `progressive-cli tui`.");
     fileMsg(g, charlie.user_id, charlie.display_name, "matrixcli-api-spec.md", "text/markdown", 4521);
     auto m10 = msg(g, eve.user_id, eve.display_name,
         "Just joined! This looks amazing. Can't wait to try the Gemini protocol output.");
@@ -234,7 +234,7 @@ void DemoData::generate() {
     msg(an, admin.user_id, admin.display_name,
         "📣 [ANN] Security: TLS certificate pinning now available for all connections.");
     msg(an, admin.user_id, admin.display_name,
-        "📣 [ANN] Demo mode released! Try `matrixcli demo` to explore without a Matrix account.");
+        "📣 [ANN] Demo mode released! Try `progressive-cli demo` to explore without a Matrix account.");
 
     // ═══════════════════════════════════════════
     // #security: encrypted room demo
@@ -276,7 +276,7 @@ void DemoData::generate() {
     msg(dmB, demo_user.user_id, demo_user.display_name,
         "Not yet! I'm testing through the HTTP API right now.");
     msg(dmB, bob.user_id, bob.display_name,
-        "Try `matrixcli tui` — it's the full terminal experience with room switching and message composer.");
+        "Try `progressive-cli tui` — it's the full terminal experience with room switching and message composer.");
     img(dmB, bob.user_id, bob.display_name, "tui-screenshot.png", 1920, 1080);
     reaction(dmB, demo_user.user_id, demo_user.display_name, msgs.back().event_id, "🔥");
 
@@ -284,9 +284,9 @@ void DemoData::generate() {
 
     // ── Rooms ──
     _rooms = {
-        makeRoom(g, "#general", "General discussion — welcome to matrixcli demo!",
+        makeRoom(g, "#general", "General discussion — welcome to progressive-cli demo!",
                  false, false, {alice, bob, charlie, dave, eve, demo_user},
-                 {stateEvt("m.room.topic", "", {{"topic","General discussion — welcome to matrixcli demo!"}}),
+                 {stateEvt("m.room.topic", "", {{"topic","General discussion — welcome to progressive-cli demo!"}}),
                   stateEvt("m.room.name", "", {{"name","#general"}}),
                   stateEvt("m.room.join_rules", "", {{"join_rule","public"}})}),
         makeRoom(dv, "#dev", "Development chat — C++, Matrix protocol, ncurses, E2EE",
@@ -311,7 +311,7 @@ void DemoData::generate() {
 
     // ── Devices ──
     _devices = {
-        {"DEMODEVICE", "matrixcli demo instance", "127.0.0.1", now - 60, true},
+        {"DEMODEVICE", "progressive-cli demo instance", "127.0.0.1", now - 60, true},
         {"ALICEPHONE", "Element Android", "10.0.1.42", now - 300, true},
         {"ALICELAPTOP", "Element Desktop", "10.0.1.10", now - 7200, true},
         {"BOBWEB", "Element Web", "192.168.1.5", now - 600, false},

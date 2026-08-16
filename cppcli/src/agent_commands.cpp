@@ -363,7 +363,7 @@ static int runLlmTurn(const cli::Args& args, const std::string& prompt) {
     if (args.options.count("tools")) return runLlmTurnTools(args, prompt);
     auto cfg = matrixAgentConfigFromArgs(args);
     if (cfg.key.empty()) {
-        std::cerr << "Error: no API key — run './matrixcli tui agent' for the interactive setup, or set it in ~/.config/matrixcli/agent.json, export OPENAI_API_KEY/ANTHROPIC_API_KEY, or pass --token" << std::endl;
+        std::cerr << "Error: no API key — run './progressive-cli tui agent' for the interactive setup, or set it in ~/.config/matrixcli/agent.json, export OPENAI_API_KEY/ANTHROPIC_API_KEY, or pass --token" << std::endl;
         return 1;
     }
     bool json_out = args.options.count("json");
@@ -437,7 +437,7 @@ int cmdLlm(const cli::Args& args) {
         }
     }
     if (prompt.empty()) {
-        std::cerr << "Usage: matrixcli llm <prompt> | llm continue <message> | llm chat"
+        std::cerr << "Usage: progressive-cli llm <prompt> | llm continue <message> | llm chat"
                      " | llm resume <N> [message] | llm models | llm history | llm sessions"
                      " [--session <name>] [--fresh] [--system s]"
                      " [--provider openai|anthropic|deepseek|mimo...] [--token t]"
@@ -454,7 +454,7 @@ int cmdLlm(const cli::Args& args) {
 int cmdLlmChat(const cli::Args& args) {
     auto cfg = matrixAgentConfigFromArgs(args);
     if (cfg.key.empty()) {
-        std::cerr << "Error: no API key — run './matrixcli tui agent' for the interactive setup, or set it in ~/.config/matrixcli/agent.json, export OPENAI_API_KEY/ANTHROPIC_API_KEY, or pass --token" << std::endl;
+        std::cerr << "Error: no API key — run './progressive-cli tui agent' for the interactive setup, or set it in ~/.config/matrixcli/agent.json, export OPENAI_API_KEY/ANTHROPIC_API_KEY, or pass --token" << std::endl;
         return 1;
     }
     bool rich = false;
@@ -692,7 +692,7 @@ int cmdLlmSessions(const cli::Args& args) {
     // positional[1:] ("sessions" itself is positional[0]).
     if (args.positional.size() >= 2 && args.positional[1] == "rm") {
         if (args.positional.size() < 3) {
-            std::cerr << "Usage: matrixcli llm sessions rm <name>" << std::endl;
+            std::cerr << "Usage: progressive-cli llm sessions rm <name>" << std::endl;
             return 1;
         }
         namespace fs = std::filesystem;
@@ -753,7 +753,7 @@ int cmdLlmSessions(const cli::Args& args) {
 int cmdLlmResume(const cli::Args& args) {
     namespace fs = std::filesystem;
     if (args.positional.size() < 2) {
-        std::cerr << "Usage: matrixcli llm resume <N> [\"message\"] "
+        std::cerr << "Usage: progressive-cli llm resume <N> [\"message\"] "
                      "(the numbers come from 'llm sessions')" << std::endl;
         return 1;
     }
@@ -762,7 +762,7 @@ int cmdLlmResume(const cli::Args& args) {
     auto entries = collectLlmSessions();
     if (n < 1 || n > static_cast<int>(entries.size())) {
         std::cerr << "No session #" << args.positional[1]
-                  << " — run 'matrixcli llm sessions' for the list." << std::endl;
+                  << " — run 'progressive-cli llm sessions' for the list." << std::endl;
         return 1;
     }
     const auto& target = entries[n - 1];
@@ -795,12 +795,12 @@ int cmdAgent(const cli::Args& args) {
     bool json_out = args.options.count("json");
     std::string task = readPrompt(args);
     if (task.empty()) {
-        std::cerr << "Usage: matrixcli agent <task> [--room <id|name>] [--provider openai|anthropic|deepseek|mimo...] [--token t] [--endpoint URL] [--model m] [--proxy host:port] [--max-iterations n] [--json] [--verbose]" << std::endl;
+        std::cerr << "Usage: progressive-cli agent <task> [--room <id|name>] [--provider openai|anthropic|deepseek|mimo...] [--token t] [--endpoint URL] [--model m] [--proxy host:port] [--max-iterations n] [--json] [--verbose]" << std::endl;
         return 1;
     }
     auto cfg = matrixAgentConfigFromArgs(args);
     if (cfg.key.empty()) {
-        std::cerr << "Error: no API key — run './matrixcli tui agent' for the interactive setup, or set it in ~/.config/matrixcli/agent.json, export OPENAI_API_KEY/ANTHROPIC_API_KEY, or pass --token" << std::endl;
+        std::cerr << "Error: no API key — run './progressive-cli tui agent' for the interactive setup, or set it in ~/.config/matrixcli/agent.json, export OPENAI_API_KEY/ANTHROPIC_API_KEY, or pass --token" << std::endl;
         return 1;
     }
     std::string roomId = args.options.count("room") ? args.options.at("room") : "";
@@ -833,7 +833,7 @@ int cmdAgent(const cli::Args& args) {
 int cmdTyping(const cli::Args& args) {
     if (!pcore::requireSession()) return 1;
     if (args.positional.empty()) {
-        std::cerr << "Usage: matrixcli typing <room>" << std::endl;
+        std::cerr << "Usage: progressive-cli typing <room>" << std::endl;
         return 1;
     }
     std::string target = args.positional[0];
@@ -889,7 +889,7 @@ int cmdTyping(const cli::Args& args) {
 static int cmdAgentCode(const cli::Args& args) {
     using namespace matrixcli::agenttools;
     if (args.positional.empty()) {
-        std::cerr << "Usage: matrixcli agent-code <prompt> [--provider openai|anthropic]"
+        std::cerr << "Usage: progressive-cli agent-code <prompt> [--provider openai|anthropic]"
                      " [--endpoint url] [--model m] [--key k]"
                      " [--trust allow|ask|deny] [--verbose]" << std::endl;
         return 1;

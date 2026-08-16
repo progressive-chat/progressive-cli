@@ -17,7 +17,7 @@ struct AgentSetupResult {
 };
 
 // The first-run agent API setup wizard. Shown when the TUI agent mode
-// (`matrixcli tui agent`) starts without a configured API key: pick a
+// (`progressive-cli tui agent`) starts without a configured API key: pick a
 // provider preset (opencode-style list), enter the key and optionally
 // override the model/endpoint/proxy. The caller persists the result into
 // ~/.config/matrixcli/agent.json.

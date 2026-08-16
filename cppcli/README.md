@@ -17,19 +17,19 @@ make -j$(nproc)
 ./matrixcli
 
 # Start API server
-./matrixcli serve --port 8080
+./progressive-cli serve --port 8080
 
 # Login (username accepts localpart "me" or full @me:matrix.org; --mxid alias)
-./matrixcli login --homeserver https://matrix.org --username me --password xxxxx
-./matrixcli login --homeserver https://matrix.org --mxid @me:matrix.org --password xxxxx
+./progressive-cli login --homeserver https://matrix.org --username me --password xxxxx
+./progressive-cli login --homeserver https://matrix.org --mxid @me:matrix.org --password xxxxx
 # ...or interactively (password hidden):
-./matrixcli login --homeserver https://matrix.org --interactive
+./progressive-cli login --homeserver https://matrix.org --interactive
 
 # Register a new account (m.login.dummy)
-./matrixcli login --register --homeserver https://matrix.org --username newuser --password xxxxx
+./progressive-cli login --register --homeserver https://matrix.org --username newuser --password xxxxx
 
 # Register with a registration token (m.login.registration_token)
-./matrixcli login --register --homeserver https://matrix.org --username newuser --password xxxxx --reg-token s3cret
+./progressive-cli login --register --homeserver https://matrix.org --username newuser --password xxxxx --reg-token s3cret
 
 # Route ALL traffic through Tor (SOCKS5, DNS resolved by the proxy — no leaks)
 ./matrixcli proxy on --host 127.0.0.1 --port 9050 --type socks5h

@@ -69,7 +69,7 @@ void stopSync() {
 
 bool requireSession() {
     if (!init() || !loadSavedSession()) {
-        std::fprintf(stderr, "Not logged in. Run 'matrixcli login' first.\n");
+        std::fprintf(stderr, "Not logged in. Run 'progressive-cli login' first.\n");
         return false;
     }
     return true;

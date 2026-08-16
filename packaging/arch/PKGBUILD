@@ -1,6 +1,6 @@
 # Maintainer: Progressive Chat Team <dev@progressive.chat>
 
-pkgname=matrixcli
+pkgname=progressive-cli
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="A terminal Matrix client with E2EE, multi-format REST API, and ncurses TUI"
@@ -49,7 +49,9 @@ build() {
 package() {
     cd "${srcdir}/${pkgname}"
 
-    install -Dm755 cppcli/build/src/matrixcli "${pkgdir}/usr/bin/matrixcli"
+    install -Dm755 cppcli/build/src/progressive-cli "${pkgdir}/usr/bin/progressive-cli"
+    # The compat symlink for the pre-rebrand scripts.
+    ln -s progressive-cli "${pkgdir}/usr/bin/matrixcli"
 
     install -Dm644 gomuks/LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
     install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"

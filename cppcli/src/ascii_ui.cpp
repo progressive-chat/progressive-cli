@@ -1,6 +1,6 @@
 // src/ascii_ui.cpp — ASCII-drawn client interface for the CLI (not the TUI).
 //
-// `matrixcli ui` draws a chat-client-like layout with plain characters:
+// `progressive-cli ui` draws a chat-client-like layout with plain characters:
 // a header, a left panel with the room list, the open room's messages in
 // the center and the member list on the right, panels separated by pipes.
 // It is a REPL: every command executes and the whole frame is redrawn —
@@ -2595,7 +2595,7 @@ std::string renderMarkdownAnsi(const std::string& body) {
 void printAbout(const std::string& proxyLabel, const std::string& accountLabel) {
     const char* X = "\x1b[0m";
     std::cout << "\x1b[1;31mprogressive-cli\x1b[0m"
-              << " — terminal Matrix client\n";
+              << " — the Matrix chat client and coding agent, designed to work in the terminal\n";
     std::cout << "(c) Progressive Chat contributors\n\n";
     const char* BR = "\x1b[1;31m";  // bold red
     std::cout << BR << "       /\n";
@@ -2689,7 +2689,7 @@ bool readLineWithHistory(std::vector<std::string>& history,
     return ok;
 }
 
-// One-shot 'matrixcli about' — the about screen without the ui.
+// One-shot 'progressive-cli about' — the about screen without the ui.
 int cmdAbout(const cli::Args&) {
     // No session/network init — the about screen must be clean and instant.
     printAbout("", "");
@@ -2699,7 +2699,7 @@ int cmdAbout(const cli::Args&) {
 int cmdAsciiUi(const cli::Args& args) {
     db::Database dbi;
     if (!dbi.open("matrixcli.db")) {
-        std::cerr << "Cannot open matrixcli.db — run 'matrixcli demo populate' first"
+        std::cerr << "Cannot open matrixcli.db — run 'progressive-cli demo populate' first"
                   << std::endl;
         return 1;
     }
@@ -2709,7 +2709,7 @@ int cmdAsciiUi(const cli::Args& args) {
     st.rooms = dbi.listRooms();
     sortRoomsByActivity(st);
     if (st.rooms.empty()) {
-        std::cerr << "No rooms cached. Run 'matrixcli demo populate' or sync first."
+        std::cerr << "No rooms cached. Run 'progressive-cli demo populate' or sync first."
                   << std::endl;
         return 1;
     }
@@ -3079,7 +3079,7 @@ int cmdAsciiUi(const cli::Args& args) {
     }
 
     // Pure CLI / non-interactive mode: draw the frame once and exit
-    // (pipe-friendly: matrixcli ui --static [room] | less).
+    // (pipe-friendly: progressive-cli ui --static [room] | less).
     if (args.options.count("static") || args.options.count("once") ||
         args.options.count("print")) {
         // Static mode: media previews only with --media (opt-in).
@@ -6560,7 +6560,7 @@ replyRef:
                 }
             }
             if (!st.messages.empty()) last = eventBody(st.messages.back());
-            std::string cmd = "notify-send 'matrixcli: " + rname + "' '" + clip(last, 80)
+            std::string cmd = "notify-send 'progressive-cli: " + rname + "' '" + clip(last, 80)
                             + "' 2>/dev/null || echo -e '\a'";
             std::system(cmd.c_str());
             st.statusNote = "notified for " + rname;

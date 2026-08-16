@@ -210,7 +210,7 @@ int cmdServe(const matrixcli::cli::Args& args) {
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
         std::cerr << "  Is the port already in use? Try a different one:"
-                  << " matrixcli serve --port <other>" << std::endl;
+                  << " progressive-cli serve --port <other>" << std::endl;
         pcore::stopSync();
         return 1;
     }
@@ -642,12 +642,12 @@ int cmdStatus(const matrixcli::cli::Args& args) {
         std::cout << ANSI_CYAN "\n  ── E2EE ──\n" ANSI_RESET;
         std::cout << "  Device keys: " << (e2ee ? ANSI_GREEN "● ready" ANSI_RESET : "○ not initialized") << std::endl;
         std::cout << ANSI_CYAN "\n  ── Sync ──\n" ANSI_RESET;
-        std::cout << "  Status:     " << (synced ? ANSI_GREEN "● synced" ANSI_RESET : "○ not synced — run 'matrixcli serve'") << std::endl;
+        std::cout << "  Status:     " << (synced ? ANSI_GREEN "● synced" ANSI_RESET : "○ not synced — run 'progressive-cli serve'") << std::endl;
         std::cout << ANSI_CYAN "\n  ── Cache ──\n" ANSI_RESET;
         std::cout << "  Rooms:      " << rooms_c << std::endl;
         std::cout << "  Messages:   " << msgs_c << std::endl;
         std::cout << "  Unread:     " << notif_c << std::endl;
-        std::cout << "\n  • Run " ANSI_BOLD "matrixcli serve" ANSI_RESET " to sync messages into the cache\n";
+        std::cout << "\n  • Run " ANSI_BOLD "progressive-cli serve" ANSI_RESET " to sync messages into the cache\n";
         return 0;
     }
 
@@ -846,8 +846,8 @@ int cmdStatus(const matrixcli::cli::Args& args) {
         std::cout << "Homeserver: " << Config::instance().homeserverURL() << std::endl;
         std::cout << "Device ID: " << Config::instance().deviceId() << std::endl;
     } else {
-        std::cout << "\n  Not logged in. Use 'matrixcli login' to authenticate.\n";
-        std::cout << "  Or try offline demo: matrixcli demo populate\n";
+        std::cout << "\n  Not logged in. Use 'progressive-cli login' to authenticate.\n";
+        std::cout << "  Or try offline demo: progressive-cli demo populate\n";
     }
 
     // Smart suggestions
@@ -856,14 +856,14 @@ int cmdStatus(const matrixcli::cli::Args& args) {
         bool synced = !acc.next_batch.empty();
         int notif = dbi.getNotificationCount();
         if (!synced && acc.is_logged_in())
-            std::cout << "  • Run " ANSI_BOLD "matrixcli serve" ANSI_RESET " to start syncing\n";
+            std::cout << "  • Run " ANSI_BOLD "progressive-cli serve" ANSI_RESET " to start syncing\n";
         if (notif > 0)
-            std::cout << "  • " << notif << " unread — " ANSI_BOLD "matrixcli view room" ANSI_RESET " to read\n";
+            std::cout << "  • " << notif << " unread — " ANSI_BOLD "progressive-cli view room" ANSI_RESET " to read\n";
         if (g_tdlib.isAvailable() && g_tdlib.authState() != tdlib::TdAuthState::Ready)
             std::cout << "  • TDLib ready — " ANSI_BOLD "matrixcli td login" ANSI_RESET " for Telegram\n";
         if (!g_lemmy.isLoggedIn())
             std::cout << "  • Lemmy available — " ANSI_BOLD "matrixcli lemmy login" ANSI_RESET "\n";
-        std::cout << "  • All commands: " ANSI_BOLD "matrixcli --help" ANSI_RESET "\n";
+        std::cout << "  • All commands: " ANSI_BOLD "progressive-cli --help" ANSI_RESET "\n";
     }
     }; // end printStatus lambda
 
@@ -909,8 +909,8 @@ int cmdRooms(const matrixcli::cli::Args& args) {
 
     if (rooms.empty()) {
         std::cout << "No rooms in cache." << std::endl;
-        std::cout << "  For demo:   matrixcli demo    (start demo server, then try again)" << std::endl;
-        std::cout << "  For real:   matrixcli login   (login to Matrix first)" << std::endl;
+        std::cout << "  For demo:   progressive-cli demo    (start demo server, then try again)" << std::endl;
+        std::cout << "  For real:   progressive-cli login   (login to Matrix first)" << std::endl;
         return 0;
     }
     for (auto& r : rooms) {
@@ -924,7 +924,7 @@ int cmdRooms(const matrixcli::cli::Args& args) {
 int cmdView(const matrixcli::cli::Args& args) {
     using namespace matrixcli;
     if (args.positional.empty()) {
-        std::cerr << "Usage: matrixcli view <room> [limit] [--thread event_id] [--before eid] [--from eid]\n"
+        std::cerr << "Usage: progressive-cli view <room> [limit] [--thread event_id] [--before eid] [--from eid]\n"
                      "       [--senders @u:h,@u2:h] [--hide @u:h] [--replies N|off] [--no-replies]\n"
                      "       [--no-filter] [--json] [--expand] [--verbose] [--ts]"
                   << std::endl;
@@ -1298,7 +1298,7 @@ namespace matrixcli {
 int cmdAttachFile(const cli::Args& args) {
     using namespace matrixcli;
     if (args.positional.size() < 2) {
-        std::cerr << "Usage: matrixcli attach <room> <file> [--caption text] [--thread event_id]" << std::endl;
+        std::cerr << "Usage: progressive-cli attach <room> <file> [--caption text] [--thread event_id]" << std::endl;
         return 1;
     }
     std::string query = args.positional[0];
@@ -1339,7 +1339,7 @@ int cmdAttachFile(const cli::Args& args) {
     std::string bodyName = caption.empty() ? fn : caption;
 
     if (!pcore::init() || !pcore::loadSavedSession()) {
-        std::cerr << "Not logged in. Run 'matrixcli login' first." << std::endl;
+        std::cerr << "Not logged in. Run 'progressive-cli login' first." << std::endl;
         return 1;
     }
     auto& core = pcore::core();
@@ -1508,7 +1508,7 @@ int cmdAttachFile(const cli::Args& args) {
 int cmdSendMsg(const matrixcli::cli::Args& args) {
     using namespace matrixcli;
     if (args.positional.size() < 2) {
-        std::cerr << "Usage: matrixcli send <room> [--thread event_id] <message>" << std::endl;
+        std::cerr << "Usage: progressive-cli send <room> [--thread event_id] <message>" << std::endl;
         return 1;
     }
     std::string query = args.positional[0];
@@ -1571,7 +1571,7 @@ int cmdSendMsg(const matrixcli::cli::Args& args) {
     if (!dbi.open("matrixcli.db")) return 1;
     auto acc = dbi.loadAccount();
     if (!acc.is_logged_in()) {
-        std::cerr << "Not logged in. Run 'matrixcli login' first." << std::endl;
+        std::cerr << "Not logged in. Run 'progressive-cli login' first." << std::endl;
         return 1;
     }
     client.setHomeserverURL(acc.homeserver_url);
@@ -1614,7 +1614,7 @@ int cmdSendMsg(const matrixcli::cli::Args& args) {
 int cmdSearch(const matrixcli::cli::Args& args) {
     using namespace matrixcli;
     if (args.positional.empty()) {
-        std::cerr << "Usage: matrixcli search <query> [--limit N|all]" << std::endl;
+        std::cerr << "Usage: progressive-cli search <query> [--limit N|all]" << std::endl;
         return 1;
     }
     std::string query = args.positional[0];
@@ -1631,7 +1631,7 @@ int cmdSearch(const matrixcli::cli::Args& args) {
     auto results = dbi.search(query, limit > 0 ? limit : 999999);
     if (results.empty()) {
         std::cout << "No results for: " << query << std::endl;
-        std::cout << "(Indexed during sync. Start: matrixcli serve, then sync populates FTS)" << std::endl;
+        std::cout << "(Indexed during sync. Start: progressive-cli serve, then sync populates FTS)" << std::endl;
         return 0;
     }
     std::cout << results.size() << " results for \"" << query << "\":" << std::endl;
@@ -1849,9 +1849,9 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
     int64_t ts = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
     struct { const char* room; const char* sender; const char* name; const char* body; } msgs[] = {
-        {"!general:demo.local","@alice","Alice","Welcome! This is matrixcli — a terminal Matrix client."},
+        {"!general:demo.local","@alice","Alice","Welcome! This is progressive-cli — a terminal Matrix client."},
         {"!general:demo.local","@bob","Bob","Supports E2EE, SQLite cache, multi-format REST API."},
-        {"!general:demo.local","@alice","Alice","Try: matrixcli tui, matrixcli view, matrixcli send"},
+        {"!general:demo.local","@alice","Alice","Try: progressive-cli tui, progressive-cli view, progressive-cli send"},
         {"!general:demo.local","@alice","Alice","Multiline demo message:\nline one\nline two\nline three"},
         {"!dev:demo.local","@charlie","Charlie","C++20, raw sockets + OpenSSL, no external HTTP libs."},
         {"!dev:demo.local","@alice","Alice","CMake build, 5 format renderers, full Matrix CS API."},
@@ -1859,7 +1859,7 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
         {"!dm_alice:demo.local","@alice","Alice","Hey! This is a private encrypted DM."},
         {"!dm_alice:demo.local","@you","You","Hi Alice! The ascii client is really nice."},
         {"!dm_alice:demo.local","@alice","Alice","Glad you like it — and the DMs work offline too."},
-        {"!dm_bob:demo.local","@bob","Bob","Try matrixcli view \"!dm_bob:demo.local\""},
+        {"!dm_bob:demo.local","@bob","Bob","Try progressive-cli view \"!dm_bob:demo.local\""},
         {"!dm_bob:demo.local","@you","You","Will do — I sent you a file by the way."},
         {"!dm_bob:demo.local","@bob","Bob","Got it, report.pdf looks good."},
     };
@@ -2582,7 +2582,7 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
         r1.room_id = "!general:demo.local"; r1.sender = "@bob";
         r1.type = "m.room.message";
         r1.content = {{"body",
-            "> <@alice:demo.local> Welcome! This is matrixcli — a terminal Matrix client.\n\n"
+            "> <@alice:demo.local> Welcome! This is progressive-cli — a terminal Matrix client.\n\n"
             "It even renders reply chains!"},
             {"msgtype", "m.text"},
             {"m.relates_to", {{"m.in_reply_to", {{"event_id", alice_welcome}}}}}};
@@ -2926,7 +2926,7 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
 
     std::cout << "Populated DB: " << (sizeof(rooms)/sizeof(rooms[0])) << " rooms, "
               << (sizeof(msgs)/sizeof(msgs[0])) + 2 + 4 << " messages (incl. a thread)." << std::endl;
-    std::cout << "Try:  matrixcli rooms | matrixcli view #general | matrixcli view #dev" << std::endl;
+    std::cout << "Try:  progressive-cli rooms | progressive-cli view #general | progressive-cli view #dev" << std::endl;
     return 0;
 }
 
@@ -2934,10 +2934,10 @@ static int populateDemoData(matrixcli::db::Database& dbi) {
 // ---- Interactive demo REPL (offline, no Matrix account needed) ----
 //
 // Replaces the old `demo` behavior (which started an HTTP API server on
-// port 8080). Now `matrixcli demo` drops the user into an interactive
+// port 8080). Now `progressive-cli demo` drops the user into an interactive
 // terminal session against the offline demo database: type commands, see
 // output, same handlers as the real CLI (rooms/view/search). The web demo
-// stays available as `matrixcli serve --demo`.
+// stays available as `progressive-cli serve --demo`.
 
 static void demoReplParseLine(const std::string& line, matrixcli::cli::Args& out) {
     std::istringstream iss(line);
@@ -2998,15 +2998,15 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
     using namespace matrixcli;
 
     // Pure CLI mode: populate the demo DB and exit — the user then runs the
-    // normal one-shot commands (matrixcli rooms / view / send / search).
+    // normal one-shot commands (progressive-cli rooms / view / send / search).
     auto runPureCli = []() {
         db::Database dbi;
         if (!dbi.open("matrixcli.db")) return 1;
         if (dbi.listRooms().empty()) populateDemoData(dbi);
         std::cout << "Demo data ready. Use the one-shot commands:\n"
-                     "  matrixcli rooms\n"
-                     "  matrixcli view \"#general\" 10\n"
-                     "  matrixcli send \"#general\" \"hello\"\n";
+                     "  progressive-cli rooms\n"
+                     "  progressive-cli view \"#general\" 10\n"
+                     "  progressive-cli send \"#general\" \"hello\"\n";
         return 0;
     };
     if (args.options.count("cli") || args.options.count("populate")) {
@@ -3072,7 +3072,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
                      "  1) interactive session (type commands at a prompt)\n"
                      "  2) populate demo data and exit (one-shot commands)\n"
                      "  3) ASCII client interface (rooms | chat | members)\n"
-                     "     (non-interactive: matrixcli demo --ui --static)\n"
+                     "     (non-interactive: progressive-cli demo --ui --static)\n"
                      "  4) terminal UI (ncurses TUI)\n"
                      "  5) ASCII client for smartphones (stacked, portrait)\n"
                      "Choice [1/2/3/4/5]: " << std::flush;
@@ -3109,7 +3109,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
         populateDemoData(dbi);
     }
 
-    std::cout << "matrixcli demo — interactive mode (offline, no account needed)" << std::endl;
+    std::cout << "progressive-cli demo — interactive mode (offline, no account needed)" << std::endl;
     std::cout << "Commands: help | rooms | view <room> [n] | search <query> |"
               << " send <room> <text> | ui | clear | quit" << std::endl;
     std::cout << "Demo rooms: #general  #dev  #random  #dm_alice  #dm_bob" << std::endl;
@@ -3216,7 +3216,7 @@ int cmdTUI(const matrixcli::cli::Args& args) {
         client.initCrypto(acc.user_id, acc.device_id);
     }
 
-    // Offline agent mode: `matrixcli tui agent [task]` — no Matrix login
+    // Offline agent mode: `progressive-cli tui agent [task]` — no Matrix login
     // needed. The TUI opens straight into the chat with a virtual #agent
     // room; /agent, /agent-code and /llm work (the live Matrix tools
     // answer "no matrix session", the cache-backed ones work offline).
@@ -3349,7 +3349,7 @@ int cmdTUI(const matrixcli::cli::Args& args) {
             chat.setQuitCheck([]() { return !matrixcli::g_interrupted.load(); });
 
             // The Matrix agent launcher — shared by the /agent slash
-            // command and the `matrixcli tui agent <task>` auto-start.
+            // command and the `progressive-cli tui agent <task>` auto-start.
             static std::atomic<bool> agentBusy{false};
             auto launchMatrixAgent = [&](const std::string& task) {
                 if (task.empty()) return;
@@ -3486,7 +3486,7 @@ int cmdTUI(const matrixcli::cli::Args& args) {
                     // verification in the chat: the emojis land here, the
                     // match is confirmed with /verify-confirm (cancelled
                     // with /verify-cancel). Uses the ecore session (run
-                    // 'matrixcli login' once for the crypto identity).
+                    // 'progressive-cli login' once for the crypto identity).
                     std::istringstream ss(args);
                     std::string user, device;
                     ss >> user >> device;
@@ -4371,7 +4371,7 @@ int cmdTUI(const matrixcli::cli::Args& args) {
             }  // !agentOnly
 
             // Offline agent mode with a task: fire the agent once on
-            // startup (`matrixcli tui agent <task>`).
+            // startup (`progressive-cli tui agent <task>`).
             if (agentOnly && !agentTask.empty()) launchMatrixAgent(agentTask);
 
             chat.run(screen);
@@ -4512,7 +4512,7 @@ int main(int argc, char* argv[]) {
         // matrixcli td <subcommand> [args...]
         using namespace matrixcli;
         if (args.positional.empty()) {
-            std::cerr << "Usage: matrixcli td <login|phone|code|password|chats|msg|history>" << std::endl;
+            std::cerr << "Usage: progressive-cli td <login|phone|code|password|chats|msg|history>" << std::endl;
             return 1;
         }
         std::string sub = args.positional[0];
@@ -4523,16 +4523,16 @@ int main(int argc, char* argv[]) {
             g_tdlib.setTdlibParams(94575, "a3406de8d171bb422bb6ddf3bbd8f4e2");
             std::cout << "TDLib initialized. Run: matrixcli td phone +123****7890" << std::endl;
         } else if (sub == "phone") {
-            if (args.positional.size() < 2) { std::cerr << "Usage: matrixcli td phone +123****7890" << std::endl; return 1; }
+            if (args.positional.size() < 2) { std::cerr << "Usage: progressive-cli td phone +123****7890" << std::endl; return 1; }
             if (!g_tdlib.isAvailable() && !g_tdlib.initialize()) { std::cerr << "TDLib not available" << std::endl; return 1; }
             g_tdlib.sendPhoneNumber(args.positional[1]);
             std::cout << "Code sent. Run: matrixcli td code XXXXX" << std::endl;
         } else if (sub == "code") {
-            if (args.positional.size() < 2) { std::cerr << "Usage: matrixcli td code XXXXX" << std::endl; return 1; }
+            if (args.positional.size() < 2) { std::cerr << "Usage: progressive-cli td code XXXXX" << std::endl; return 1; }
             g_tdlib.sendAuthCode(args.positional[1]);
             std::cout << "Code sent. If 2FA: matrixcli td password yourpassword" << std::endl;
         } else if (sub == "password" || sub == "2fa") {
-            if (args.positional.size() < 2) { std::cerr << "Usage: matrixcli td password your2fa" << std::endl; return 1; }
+            if (args.positional.size() < 2) { std::cerr << "Usage: progressive-cli td password your2fa" << std::endl; return 1; }
             g_tdlib.sendPassword(args.positional[1]);
             std::cout << "2FA sent. Run: matrixcli td chats" << std::endl;
         } else if (sub == "chats") {
@@ -4542,7 +4542,7 @@ int main(int argc, char* argv[]) {
                 std::cout << "  [" << c.id << "] " << c.title << " (" << c.type << ")" << " unread:" << c.unread_count << std::endl;
             }
         } else if (sub == "msg" || sub == "send") {
-            if (args.positional.size() < 3) { std::cerr << "Usage: matrixcli td msg <chat_id> <text>" << std::endl; return 1; }
+            if (args.positional.size() < 3) { std::cerr << "Usage: progressive-cli td msg <chat_id> <text>" << std::endl; return 1; }
             int64_t chatId = std::stoll(args.positional[1]);
             std::string text;
             for (size_t i = 2; i < args.positional.size(); i++) { if (i > 2) text += " "; text += args.positional[i]; }
@@ -4550,7 +4550,7 @@ int main(int argc, char* argv[]) {
             g_tdlib.sendMessage(chatId, text);
             std::cout << "Sent to chat " << chatId << std::endl;
         } else if (sub == "history" || sub == "view") {
-            if (args.positional.size() < 2) { std::cerr << "Usage: matrixcli td history <chat_id> [limit]" << std::endl; return 1; }
+            if (args.positional.size() < 2) { std::cerr << "Usage: progressive-cli td history <chat_id> [limit]" << std::endl; return 1; }
             int64_t chatId = std::stoll(args.positional[1]);
             int limit = args.positional.size() >= 3 ? std::stoi(args.positional[2]) : 20;
             if (g_tdlib.authState() != tdlib::TdAuthState::Ready) { std::cerr << "Not authorized" << std::endl; return 1; }
@@ -4573,7 +4573,7 @@ int main(int argc, char* argv[]) {
     if (args.command == "irc") {
         using namespace matrixcli;
         if (args.positional.empty()) {
-            std::cerr << "Usage: matrixcli irc <connect|join|msg|leave|whois|names>" << std::endl;
+            std::cerr << "Usage: progressive-cli irc <connect|join|msg|leave|whois|names>" << std::endl;
             return 1;
         }
         static irc::IrcClient ircClient;
@@ -4618,7 +4618,7 @@ int main(int argc, char* argv[]) {
     if (args.command == "lemmy") {
         using namespace matrixcli;
         if (args.positional.empty()) {
-            std::cerr << "Usage: matrixcli lemmy <login|posts|post|upvote|comments>" << std::endl;
+            std::cerr << "Usage: progressive-cli lemmy <login|posts|post|upvote|comments>" << std::endl;
             return 1;
         }
         std::string sub = args.positional[0];
@@ -4650,7 +4650,7 @@ int main(int argc, char* argv[]) {
 
     if (args.command == "dc" || args.command == "deltachat") {
         using namespace matrixcli;
-        if (args.positional.empty()) { std::cerr << "Usage: matrixcli dc <login|chats|msg|history>" << std::endl; return 1; }
+        if (args.positional.empty()) { std::cerr << "Usage: progressive-cli dc <login|chats|msg|history>" << std::endl; return 1; }
         std::string sub = args.positional[0];
         if (sub == "login") {
             g_dc.initialize();
@@ -4685,7 +4685,7 @@ int main(int argc, char* argv[]) {
     if (cliHandler) return cliHandler(args);
 
     std::cerr << "Unknown command: " << args.command << "\n"
-              << "Run 'matrixcli --help' for usage." << std::endl;
+              << "Run 'progressive-cli --help' for usage." << std::endl;
     return 1;
 }
 

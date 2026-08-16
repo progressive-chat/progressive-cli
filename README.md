@@ -1,9 +1,10 @@
-# matrixcli
+# progressive-cli
 
-**matrixcli** — a **CLI-first Matrix client in C++23**. The terminal is
-the primary interface; the ncurses TUI, the ASCII client and the REST API
-server are the other surfaces. Minimal dependencies (POSIX sockets +
-OpenSSL), maximum portability.
+**progressive-cli** is a **Matrix chat client and coding agent designed to
+work in the terminal** — built in C++23. The command line is the primary
+interface; the ncurses TUI, the ASCII client and the REST API server are
+the other surfaces. Minimal dependencies (POSIX sockets + OpenSSL),
+maximum portability.
 
 The project started its life as a gomuks fork (2024) and was rewritten in
 C++ from the ground up — the old Go implementation is retired (the

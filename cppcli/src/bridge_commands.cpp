@@ -187,7 +187,7 @@ void registerBuiltinCommands() {
         if (raw.find("M_FORBIDDEN") != std::string::npos && raw.find("not in room") != std::string::npos)
             return "You're not in this room. Join it first: matrixcli join <room>";
         if (raw.find("M_UNKNOWN_TOKEN") != std::string::npos)
-            return "Invalid access token. Login again: matrixcli login";
+            return "Invalid access token. Login again: progressive-cli login";
         if (raw.find("M_LIMIT_EXCEEDED") != std::string::npos)
             return "Rate limited. Wait a moment and try again.";
         if (raw.find("M_NOT_FOUND") != std::string::npos)
@@ -201,7 +201,7 @@ void registerBuiltinCommands() {
 
     // ── Room info ──
     reg.registerCli("info", [findRoom, friendlyError](const cli::Args& args) -> int {
-        if (args.positional.empty()) { std::cerr << "Usage: matrixcli info <room>" << std::endl; return 1; }
+        if (args.positional.empty()) { std::cerr << "Usage: progressive-cli info <room>" << std::endl; return 1; }
         using namespace matrixcli;
         db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
         std::string room_id = findRoom(args.positional[0]);
@@ -227,7 +227,7 @@ void registerBuiltinCommands() {
 
     // ── Quick reply (with fuzzy room) ──
     reg.registerCli("reply", [findRoom, friendlyError](const cli::Args& args) -> int {
-        if (args.positional.size() < 3) { std::cerr << "Usage: matrixcli reply <room> <event_id> <text>" << std::endl; return 1; }
+        if (args.positional.size() < 3) { std::cerr << "Usage: progressive-cli reply <room> <event_id> <text>" << std::endl; return 1; }
         using namespace matrixcli;
         matrix::Client client;
         db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
@@ -248,7 +248,7 @@ void registerBuiltinCommands() {
 
     // ── Edit message ──
     reg.registerCli("edit", [findRoom, friendlyError](const cli::Args& args) -> int {
-        if (args.positional.size() < 3) { std::cerr << "Usage: matrixcli edit <room> <event_id> <new_text>" << std::endl; return 1; }
+        if (args.positional.size() < 3) { std::cerr << "Usage: progressive-cli edit <room> <event_id> <new_text>" << std::endl; return 1; }
         using namespace matrixcli;
         matrix::Client client;
         db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
@@ -269,7 +269,7 @@ void registerBuiltinCommands() {
 
     // ── Redact message ──
     reg.registerCli("redact", [](const cli::Args& args) -> int {
-        if (args.positional.size() < 2) { std::cerr << "Usage: matrixcli redact <room> <event_id> [reason]" << std::endl; return 1; }
+        if (args.positional.size() < 2) { std::cerr << "Usage: progressive-cli redact <room> <event_id> [reason]" << std::endl; return 1; }
         using namespace matrixcli;
         matrix::Client client;
         db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
@@ -286,7 +286,7 @@ void registerBuiltinCommands() {
 
     // ── Knock on room ──
     reg.registerCli("knock", [](const cli::Args& args) -> int {
-        if (args.positional.empty()) { std::cerr << "Usage: matrixcli knock <room_id|alias> [reason]" << std::endl; return 1; }
+        if (args.positional.empty()) { std::cerr << "Usage: progressive-cli knock <room_id|alias> [reason]" << std::endl; return 1; }
         using namespace matrixcli;
         matrix::Client client;
         db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
@@ -368,14 +368,14 @@ void registerBuiltinCommands() {
                     room_count++;
                 }
                 std::cout << ANSI_GREEN "  ✓ " << room_count << " rooms found" ANSI_RESET << "\n\n";
-            } catch (...) { std::cout << "  (sync skipped — can run 'matrixcli serve' later)\n\n"; }
+            } catch (...) { std::cout << "  (sync skipped — can run 'progressive-cli serve' later)\n\n"; }
 
             std::cout << ANSI_BOLD "  What's next:\n" ANSI_RESET
-                      << "    matrixcli rooms               list your rooms\n"
-                      << "    matrixcli view \"#room\" --ts  read messages\n"
-                      << "    matrixcli send \"#room\" \"Hi\" send a message\n"
-                      << "    matrixcli serve                start API server + background sync\n"
-                      << "    matrixcli tui                  full terminal UI\n\n";
+                      << "    progressive-cli rooms               list your rooms\n"
+                      << "    progressive-cli view \"#room\" --ts  read messages\n"
+                      << "    progressive-cli send \"#room\" \"Hi\" send a message\n"
+                      << "    progressive-cli serve                start API server + background sync\n"
+                      << "    progressive-cli tui                  full terminal UI\n\n";
 
         } catch (const std::exception& e) {
             std::cerr << ANSI_RED "  ✗ Login failed: " << e.what() << ANSI_RESET << "\n";

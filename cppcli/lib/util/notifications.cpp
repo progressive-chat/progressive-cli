@@ -17,7 +17,7 @@ void Notifications::send(const std::string& title, const std::string& body) {
     // Try notify-send for desktop notification
     if (available()) {
         std::string cmd = "notify-send '" + title + "' '" + body +
-                          "' --app-name=matrixcli --icon=dialog-information &";
+                          "' --app-name=progressive-cli --icon=dialog-information &";
         system(cmd.c_str());
     }
 }

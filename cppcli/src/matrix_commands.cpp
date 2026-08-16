@@ -20,7 +20,7 @@ using namespace matrixcli;
 int cmdVote(const cli::Args& args) {
         // matrixcli vote room_id poll_event_id answer1,answer2
         if (args.positional.size() < 3) {
-            std::cerr << "Usage: matrixcli vote <room> <poll_event_id> <answer1>[,answer2...]" << std::endl;
+            std::cerr << "Usage: progressive-cli vote <room> <poll_event_id> <answer1>[,answer2...]" << std::endl;
             return 1;
         }
         using namespace matrixcli;
@@ -49,7 +49,7 @@ int cmdVote(const cli::Args& args) {
 
 int cmdReact(const cli::Args& args) {
         if (args.positional.size() < 3) {
-            std::cerr << "Usage: matrixcli react <room> <event_id> <emoji>" << std::endl;
+            std::cerr << "Usage: progressive-cli react <room> <event_id> <emoji>" << std::endl;
             return 1;
         }
         using namespace matrixcli;
@@ -73,7 +73,7 @@ int cmdReact(const cli::Args& args) {
 
 int cmdTopic(const cli::Args& args) {
         if (args.positional.size() < 2) {
-            std::cerr << "Usage: matrixcli topic <room> <topic>" << std::endl;
+            std::cerr << "Usage: progressive-cli topic <room> <topic>" << std::endl;
             return 1;
         }
         using namespace matrixcli;
@@ -101,7 +101,7 @@ int cmdTopic(const cli::Args& args) {
 
 int cmdRoomname(const cli::Args& args) {
         if (args.positional.size() < 2) {
-            std::cerr << "Usage: matrixcli roomname <room> <name>" << std::endl;
+            std::cerr << "Usage: progressive-cli roomname <room> <name>" << std::endl;
             return 1;
         }
         using namespace matrixcli;
@@ -123,7 +123,7 @@ int cmdRoomname(const cli::Args& args) {
 
 int cmdAvatar(const cli::Args& args) {
         if (args.positional.size() < 2) {
-            std::cerr << "Usage: matrixcli avatar <room> <file|mxc_url>" << std::endl;
+            std::cerr << "Usage: progressive-cli avatar <room> <file|mxc_url>" << std::endl;
             return 1;
         }
         using namespace matrixcli;
@@ -189,7 +189,7 @@ int cmdRead(const cli::Args& args) {
                           << " read (receipts off — the marker was NOT sent)."
                           << std::endl;
             }
-        } else { std::cerr << "Usage: matrixcli read <room> | matrixcli read --all" << std::endl; return 1; }
+        } else { std::cerr << "Usage: progressive-cli read <room> | progressive-cli read --all" << std::endl; return 1; }
         return 0;
 }
 
@@ -276,7 +276,7 @@ int cmdNotifications(const cli::Args& args) {
             bool hl = n.value("highlight", false);
             std::cout << (hl ? ANSI_BOLD "★ " ANSI_RESET : "  ") << ansiUser(n["sender"], "[" + sender + "]") << " #" << room << "  " << body << std::endl;
         }
-        std::cout << "\nMark read: matrixcli read <room> | matrixcli read --all" << std::endl;
+        std::cout << "\nMark read: progressive-cli read <room> | progressive-cli read --all" << std::endl;
         return 0;
 }
 

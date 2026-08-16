@@ -86,7 +86,7 @@ find_program(BASH_PROGRAM bash)
 if(BASH_PROGRAM)
     add_test(NAME cli_e2e
              COMMAND ${BASH_PROGRAM} ${CMAKE_CURRENT_SOURCE_DIR}/test_cli_e2e.sh
-                     $<TARGET_FILE:matrixcli>)
+                     $<TARGET_FILE:progressive-cli>)
 endif()
 
 # Ported progressive-desktop tests (vendored ecore E2EE/core suite)
