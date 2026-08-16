@@ -2660,6 +2660,10 @@ bool readLineWithHistory(std::vector<std::string>& history,
     bool ok = true;
     for (;;) {
         int c = getchar();
+        if (c == EOF) {  // the Ctrl+C EINTR (or the stream end)
+            ok = false;
+            break;
+        }
         if (c == '\x03') {  // Ctrl+C
             ok = false;
             break;
@@ -3201,7 +3205,7 @@ int cmdAsciiUi(const cli::Args& args) {
                          "  modredact on|off / invreason chat|menu on|off\n"
                          "  threads on|off / sendpreset original|compact|full\n"
                          "  nickname <name> / avatar <url> / presence online|away|offline\n"
-                         "  mobile on|off / theme / time / clock / names / emoji ...\n"
+                         "  mobile on|off / time / clock / names / emoji ...\n"
                          "\n"
                          "  the misc:\n"
                          "  dump <room> [--format json|txt|html|md]  export a room\n"
@@ -5851,9 +5855,17 @@ int cmdAsciiUi(const cli::Args& args) {
                 auto& client = pcore::core().client;
                 if (a.command == "nickname") client->setDisplayName(v);
                 else if (a.command == "avatar") client->setAvatarUrl(v);
-                // The presence is the local-only setting (the core has
-                // no setter yet; the TUI /online|away|offline uses its
-                // own client).
+            }
+            if (a.command == "presence") {
+                // The presence goes via the lib/matrix client (the
+                // config.json session — the same one the TUI uses).
+                matrix::Client cl;
+                db::StoredAccount sacc = dbi.loadAccount();
+                if (sacc.is_logged_in()) {
+                    cl.setHomeserverURL(sacc.homeserver_url);
+                    cl.setAccessToken(sacc.access_token);
+                    try { cl.setPresence(v); } catch (...) {}
+                }
             }
             st.statusNote = a.command + " set: " + v;
             std::cout << drawFrame(st) << std::flush;
