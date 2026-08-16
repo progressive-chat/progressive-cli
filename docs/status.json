@@ -1,8 +1,8 @@
 {
   "generated": {
-    "version": "v0.5.1-20-g142413b",
-    "commit": "142413bbe400c55856ba9aad095d8f638903388b",
-    "builtAt": "2026-08-16T19:11:10.623872+00:00",
+    "version": "v0.5.1-23-g12287c8",
+    "commit": "12287c80cc470e75ea3fb6f7e335c0070d1088f9",
+    "builtAt": "2026-08-16T21:46:14.321010+00:00",
     "generator": "docs/gen.mjs"
   },
   "note": "This file is generated. Edit docs/features.json instead.",
@@ -25,13 +25,13 @@
       "category": "cli",
       "status": "verified",
       "since": "0.5.1",
-      "screenshot": "assets/Screenshot_proxy_status.png",
-      "note": "on a real terminal: red status line with the enable hint, the deciding proxy_enabled line white-highlighted, the whole config.json in grey below",
+      "screenshot": "assets/Screenshot_proxy_status_disabled_displayed.png",
+      "note": "on a real terminal: red status line with the enable hint, the deciding proxy_active line white-highlighted, the whole config.json in grey below (proxy_presets + proxy_active only \u2014 no flat keys)",
       "anchor": {
         "file": "src/proxy_commands.cpp",
         "pattern": "proxy: disabled",
         "missing": false,
-        "line": 177
+        "line": 401
       }
     },
     {
@@ -43,9 +43,9 @@
       "note": "white line with socks5h://host:port and the auth flag when set \u2014 same layout as the disabled state; not captured on a screenshot yet",
       "anchor": {
         "file": "src/proxy_commands.cpp",
-        "pattern": "\"proxy: \" \\+ proxyTypeName",
+        "pattern": "proxy: enabled \\(proxied connections\\)",
         "missing": false,
-        "line": 181
+        "line": 408
       }
     },
     {
@@ -59,7 +59,7 @@
         "file": "src/proxy_commands.cpp",
         "pattern": "j\\[\"enabled\"\\]",
         "missing": false,
-        "line": 168
+        "line": 392
       }
     },
     {
@@ -73,7 +73,7 @@
         "file": "src/proxy_commands.cpp",
         "pattern": "j\\[\"enabled\"\\]",
         "missing": false,
-        "line": 168
+        "line": 392
       }
     },
     {
@@ -375,7 +375,7 @@
         "file": "src/demo_tui.cpp",
         "pattern": "runSasVerification",
         "missing": false,
-        "line": 90
+        "line": 84
       }
     },
     {

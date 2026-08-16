@@ -34,7 +34,7 @@
    "note": "white line with socks5h://host:port and the auth flag when set \u2014 same layout as the disabled state; not captured on a screenshot yet",
    "anchor": {
     "file": "src/proxy_commands.cpp",
-    "pattern": "\"proxy: \" \\+ proxyTypeName"
+    "pattern": "proxy: enabled \\(proxied connections\\)"
    }
   },
   {
