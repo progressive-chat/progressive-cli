@@ -1,8 +1,8 @@
 {
   "generated": {
-    "version": "v0.5.1-2-gdf65b95",
-    "commit": "df65b957bff7da466d473ddda10c1918b0c86124",
-    "builtAt": "2026-08-16T17:20:36.879539+00:00",
+    "version": "v0.5.1-11-g9a477b0",
+    "commit": "9a477b015a11e1a8a0149b6bf905b4195ec37041",
+    "builtAt": "2026-08-16T17:43:01.022438+00:00",
     "generator": "docs/gen.mjs"
   },
   "note": "This file is generated. Edit docs/features.json instead.",
