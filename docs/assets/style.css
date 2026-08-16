@@ -90,3 +90,23 @@ code {
     padding: 1px 5px;
     border-radius: 4px;
 }
+figure {
+    margin: 16px 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    background: var(--panel);
+    display: inline-block;
+}
+figure img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+}
+figcaption {
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 12px;
+    font-family: ui-monospace, monospace;
+}

@@ -41,6 +41,17 @@
     won't add: <span data-count-wontadd>0</span>
     — <a href="status.html">the full table</a>
   </p>
+  <h2>Proxy configuration</h2>
+  <p>
+    <code>proxy on|off|status</code> manages the Tor/I2P/SOCKS5 proxy for all
+    network traffic. The status command explains the current state and dumps
+    the relevant <code>config.json</code> settings, with the deciding line
+    highlighted:
+  </p>
+  <figure>
+    <img src="assets/Screenshot_proxy_status.png" alt="progressive-cli proxy status output">
+    <figcaption><code>progressive-cli proxy status</code> — disabled state, config.json below</figcaption>
+  </figure>
   <h2>Keeping the docs honest</h2>
   <p>
     The docs are generated from <code>docs/features.json</code>. Two node
