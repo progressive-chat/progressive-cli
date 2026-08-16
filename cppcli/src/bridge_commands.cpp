@@ -277,6 +277,18 @@ void registerBuiltinCommands() {
         if (!acc.is_logged_in()) { std::cerr << "Not logged in" << std::endl; return 1; }
         client.setHomeserverURL(acc.homeserver_url); client.setAccessToken(acc.access_token);
         std::string reason = args.positional.size() > 2 ? args.positional[2] : "";
+        // The moderation guard: the other users' messages are protected
+        // unless modredact is on (your own messages always redact).
+        {
+            matrix::Event target;
+            if (dbi.getEventById(args.positional[1], target) &&
+                target.sender != acc.user_id &&
+                dbi.getSetting("mod_redact", "0") == "0") {
+                std::cerr << "Redaction blocked: the message is not yours"
+                             " (modredact on to allow)" << std::endl;
+                return 1;
+            }
+        }
         try {
             auto eid = client.redactEvent(args.positional[0], args.positional[1], reason);
             std::cout << "Redacted [" << eid << "]" << std::endl;

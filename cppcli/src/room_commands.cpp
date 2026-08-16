@@ -9,8 +9,13 @@
 #include "../lib/util/string_utils.hpp"
 #include <progressive/markdown.hpp>
 #include <nlohmann/json.hpp>
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cctype>
+#include <ctime>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -380,6 +385,113 @@ int cmdAccounts(const cli::Args& args) {
     return 0;
 }
 
+
+// ---- dump: the room export from the cache (the ASCII UI parity) ----
+int cmdDump(const cli::Args& args) {
+    using namespace matrixcli;
+    db::Database dbi;
+    if (!dbi.open("matrixcli.db")) {
+        std::cerr << "Cannot open matrixcli.db" << std::endl;
+        return 1;
+    }
+    if (args.positional.empty()) {
+        std::cerr << "Usage: progressive-cli dump <room> [--format json|txt|html|md]"
+                     " [--out dir] [--limit N]\n"
+                     "  The export reads the offline cache; the full server-side"
+                     " pagination is the ASCII UI's 'dump --server'.\n";
+        return 1;
+    }
+    const std::string room = resolveRoom(args.positional[0]);
+    const std::string fmt = args.options.count("format") ? args.options.at("format") : "json";
+    const std::string outDir = args.options.count("out") ? args.options.at("out") : ".";
+    int limit = 0;
+    if (args.options.count("limit")) {
+        try { limit = std::stoi(args.options.at("limit")); } catch (...) {}
+    }
+    auto evs = dbi.getEvents(room, limit > 0 ? limit : 100000);
+
+    std::string name = room;
+    for (const auto& r : dbi.listRooms()) {
+        if (r.value("room_id", "") == room) {
+            name = r.value("name", room);
+            break;
+        }
+    }
+    std::string fileBase = name;
+    for (char& ch : fileBase) {
+        if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '-' && ch != '_')
+            ch = '_';
+    }
+    std::filesystem::create_directories(outDir);
+    const std::string path = outDir + "/" + fileBase + "." + fmt;
+
+    std::ofstream out(path, std::ios::trunc);
+    if (!out) {
+        std::cerr << "Cannot write " << path << std::endl;
+        return 1;
+    }
+    // The chronological order (the cache returns the newest first).
+    std::reverse(evs.begin(), evs.end());
+
+    if (fmt == "json") {
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& ev : evs) {
+            arr.push_back({{"event_id", ev.event_id},
+                           {"sender", ev.sender},
+                           {"type", ev.type},
+                           {"origin_server_ts", ev.origin_server_ts},
+                           {"content", ev.content}});
+        }
+        out << arr.dump(2) << "\n";
+    } else if (fmt == "txt") {
+        for (const auto& ev : evs) {
+            std::time_t t = ev.origin_server_ts / 1000;
+            char tbuf[24];
+            std::strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M",
+                          std::localtime(&t));
+            std::string sender = ev.sender;
+            const auto at = sender.find(':');
+            if (at != std::string::npos) sender = sender.substr(1, at - 1);
+            out << tbuf << "  " << sender << ": "
+                << ev.content.value("body", "") << "\n";
+        }
+    } else if (fmt == "html") {
+        out << "<!DOCTYPE html>\n<html><body>\n<h1>" << name << "</h1>\n<ul>\n";
+        for (const auto& ev : evs) {
+            out << "  <li><b>" << ev.sender << "</b>: "
+                << ev.content.value("body", "") << "</li>\n";
+        }
+        out << "</ul>\n</body></html>\n";
+    } else {  // md
+        out << "# " << name << "\n\n";
+        for (const auto& ev : evs) {
+            std::string sender = ev.sender;
+            const auto at = sender.find(':');
+            if (at != std::string::npos) sender = sender.substr(1, at - 1);
+            out << "**" << sender << "**: " << ev.content.value("body", "")
+                << "\n\n";
+        }
+    }
+
+    std::cout << "Dumped " << evs.size() << " events to " << path << std::endl;
+    return 0;
+}
+
+// ---- invite ----
+int cmdInvite(const cli::Args& args) {
+    if (!pcore::requireSession()) return 1;
+    if (args.positional.size() < 2) {
+        std::cerr << "Usage: progressive-cli invite <room> <@user> [--reason r]" << std::endl;
+        return 1;
+    }
+    const std::string room = resolveRoom(args.positional[0]);
+    const std::string user = args.positional[1];
+    const bool ok = pcore::core().client->inviteUser(room, user).ok;
+    std::cout << (ok ? ("\u2713 invited " + user + " to " + room)
+                     : ("invite failed: " + user + " / " + room)) << std::endl;
+    return ok ? 0 : 1;
+}
+
 void registerRoomCommands() {
     auto& reg = CommandRegistry::instance();
     reg.registerCli("sync", cmdSync, "One-shot sync into the offline cache");
@@ -392,5 +504,7 @@ void registerRoomCommands() {
     reg.registerCli("threads", cmdThreads, "List room threads: threads <room> [--limit N]");
     reg.registerCli("search-public", cmdSearchPublic, "Search public room directory: search-public <query> [--server hs]");
     reg.registerCli("accounts", cmdAccounts, "List logged-in accounts: accounts [--all] [--json] | --hide <mxid> | --show <mxid> | --temporary-hide <mxid>");
-    reg.registerCli("markdown", cmdMarkdown, "Render markdown to HTML: markdown <text> | echo <text> | matrixcli markdown");
+    reg.registerCli("markdown", cmdMarkdown, "Render markdown to HTML: markdown <text> | echo <text> | progressive-cli markdown");
+    reg.registerCli("dump", cmdDump, "Export a room from the cache: dump <room> [--format json|txt|html|md] [--out dir] [--limit N]");
+    reg.registerCli("invite", cmdInvite, "Invite a user: invite <room> <@user> [--reason r]");
 }

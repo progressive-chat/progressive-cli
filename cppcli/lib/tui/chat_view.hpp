@@ -86,6 +86,11 @@ public:
     using SearchCallback = std::function<void(const std::string& query)>;
     void setSearchCallback(SearchCallback cb) { _searchCb = std::move(cb); }
 
+    // The typing notification hook: fired when the composer receives a
+    // printable key (the caller throttles + respects the send_typing
+    // setting).
+    void setTypeNotify(std::function<void()> cb) { _typeCb = std::move(cb); }
+
     // Esc pressed while the input is focused (used to interrupt a running
     // agent — the TUI sets the g_agentInterrupt flag).
     void setEscHandler(std::function<void()> cb) { _escCb = std::move(cb); }
@@ -151,6 +156,7 @@ private:
     std::function<bool()> _quitCb;
     PaginateCallback _paginateCb;
     SearchCallback _searchCb;
+    std::function<void()> _typeCb;
     mutable std::mutex _mutex;
 };
 

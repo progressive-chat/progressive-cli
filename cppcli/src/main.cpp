@@ -3436,7 +3436,18 @@ int cmdTUI(const matrixcli::cli::Args& args) {
                     if (!args.empty()) client.setDisplayName(args);
                 } else if (cmd == "redact" || cmd == "delete") {
                     std::string roomId = chat.activeRoomId();
-                    if (!roomId.empty() && !args.empty()) client.redactEvent(roomId, args);
+                    if (!roomId.empty() && !args.empty()) {
+                        // The moderation guard: the others' messages are
+                        // protected unless modredact is on.
+                        matrix::Event target;
+                        if (dbi.getEventById(args, target) &&
+                            target.sender != client.userId() &&
+                            dbi.getSetting("mod_redact", "0") == "0") {
+                            chat.setConnectionStatus("redaction blocked (modredact off)");
+                        } else {
+                            client.redactEvent(roomId, args);
+                        }
+                    }
                 } else if (cmd == "edit") {
                     std::string roomId = chat.activeRoomId();
                     auto sp = args.find(' ');
@@ -4207,6 +4218,21 @@ int cmdTUI(const matrixcli::cli::Args& args) {
                                          + " results for \"" + query + "\"");
             });
 
+            // The typing notifications: the composer fires the hook on the
+            // printable keys; the throttle + the send_typing setting gate
+            // the actual sends.
+            static std::chrono::steady_clock::time_point lastTypingSent{};
+            chat.setTypeNotify([&]() {
+                if (dbi.getSetting("send_typing", "1") == "0") return;
+                const auto now = std::chrono::steady_clock::now();
+                if (now - lastTypingSent < std::chrono::seconds(10)) return;
+                lastTypingSent = now;
+                std::string roomId = chat.activeRoomId();
+                if (!roomId.empty()) {
+                    try { client.sendTyping(roomId, true, 20000); } catch (...) {}
+                }
+            });
+
             // Set up send callback with retry queue
             chat.setSendCallback([&](const std::string& body) {
                 std::string roomId = chat.activeRoomId();
@@ -4222,7 +4248,8 @@ int cmdTUI(const matrixcli::cli::Args& args) {
                     }
                     try {
                         client.sendTextMessage(roomId, body);
-                        client.sendTyping(roomId, false);
+                        if (dbi.getSetting("send_typing", "1") != "0")
+                            client.sendTyping(roomId, false);
                     } catch (...) {
                         // Queue for retry
                         std::lock_guard<std::mutex> lock(g_queueMutex);

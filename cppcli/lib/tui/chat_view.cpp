@@ -659,6 +659,7 @@ void ChatView::handleKey(Screen& screen, int key) {
                 _input.insert(_input.begin() + _cursorPos, (char)key);
                 _cursorPos++;
                 _needsRedraw = true;
+                if (_typeCb) _typeCb();  // the typing notification
             }
             break;
         }

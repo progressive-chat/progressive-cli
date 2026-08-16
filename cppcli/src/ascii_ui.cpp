@@ -27,6 +27,7 @@
 #include <cstdio>
 #include <ctime>
 #include <fstream>
+#include <iomanip>
 #include <cstring>
 #include <filesystem>
 #include <sstream>
@@ -671,6 +672,7 @@ struct UiState {
     int leftPanelW = -1;        // -1 = default width, 0 = hidden
     int rightPanelW = -1;       // -1 = default width, 0 = hidden
     std::map<std::string, int> powerLevels;  // member -> power level
+    nlohmann::json powerLevelsEvent;         // the full m.room.power_levels
     int eventsDefault = 0;               // the room's send permission level
     std::unordered_set<std::string> redactedIds;  // events that were redacted
     std::unordered_set<std::string> pinned;       // the room's pinned ids
@@ -862,6 +864,7 @@ void loadRoomIntoState(UiState& st, const std::string& query) {
             st.members.push_back(ev.sender);
         }
         if (ev.type == "m.room.power_levels" && ev.content.is_object()) {
+            st.powerLevelsEvent = ev.content;
             auto users = ev.content.find("users");
             if (users != ev.content.end() && users->is_object()) {
                 for (auto& [uid, lvl] : users->items()) {
@@ -1407,9 +1410,12 @@ std::string memberRowStr(const UiState& st, const std::string& mem,
     auto pl = st.powerLevels.find(mem);
     if (pl != st.powerLevels.end()) {
         // The crown carries its own wide glyph box; the narrow shield
-        // needs an explicit space so the letter isn't glued to it.
+        // needs an explicit space so the letter isn't glued to it. The
+        // CUSTOM levels (not 0/50/100) get the numeric badge.
         if (pl->second >= 100) m = "\xf0\x9f\x91\x91" + m;
         else if (pl->second >= 50) m = "\xf0\x9f\x9b\xa1 " + m;
+        else if (pl->second > 0)
+            m = "\x1b[90m[" + std::to_string(pl->second) + "]\x1b[0m " + m;
     }
     return m;
 }
@@ -3292,7 +3298,12 @@ int cmdAsciiUi(const cli::Args& args) {
             continue;
         }
         if (a.command == "rooms") {
+            if (st.mobile) {
+                st.mobileTab = 0;
+                st.scroll = 0;
+            }
             st.rooms = dbi.listRooms();
+            sortRoomsByActivity(st);
             loadRoomIntoState(st, std::string(st.currentRoomId));
             std::cout << drawFrame(st) << std::flush;
             continue;
@@ -3333,15 +3344,6 @@ int cmdAsciiUi(const cli::Args& args) {
             if (q != "all" && q != "-") {
                 st.activeSpace = resolveSpace(st.rooms, q);
             }
-        }
-        if (a.command == "rooms" && st.mobile) {
-            st.mobileTab = 0;
-            st.scroll = 0;
-            st.rooms = dbi.listRooms();
-            sortRoomsByActivity(st);
-            loadRoomIntoState(st, std::string(st.currentRoomId));
-            std::cout << drawFrame(st) << std::flush;
-            continue;
         }
         if (a.command == "chat" && st.mobile) {
             st.mobileTab = 1;
@@ -3476,6 +3478,76 @@ int cmdAsciiUi(const cli::Args& args) {
             }
             st.scroll = 0;
             std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- modredact on|off: whether the client may redact OTHER
+        // users' messages (the moderation) — off by default. Your OWN
+        // messages are always redactable. ----
+        if (a.command == "modredact") {
+            const bool on = a.positional.size() >= 1 && a.positional[0] == "on";
+            dbi.setSetting("mod_redact", on ? "1" : "0");
+            st.statusNote = std::string("moderation redactions: ") + (on ? "allowed" : "blocked");
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- powerlevels: the full power-level structure (the custom
+        // user levels, the event overrides, the defaults) ----
+        if (a.command == "powerlevels" || a.command == "pl") {
+            if (st.powerLevelsEvent.empty() || st.powerLevelsEvent.is_null()) {
+                std::cout << "No m.room.power_levels in the cache for this room."
+                          << std::endl;
+                continue;
+            }
+            const auto& pl = st.powerLevelsEvent;
+            std::string roomLabel = st.currentRoomId;
+            for (const auto& r : st.rooms) {
+                if (r.value("room_id", "") == st.currentRoomId) {
+                    roomLabel = roomDisplayName(r);
+                    break;
+                }
+            }
+            std::cout << "Power levels — " << roomLabel << std::endl;
+            std::cout << "  defaults: users " << pl.value("users_default", 0)
+                      << " · events " << pl.value("events_default", 50)
+                      << " · state " << pl.value("state_default", 50)
+                      << " · invite " << pl.value("invite", 0)
+                      << " · ban " << pl.value("ban", 50)
+                      << " · kick " << pl.value("kick", 50)
+                      << " · redact " << pl.value("redact", 50)
+                      << std::endl;
+            if (pl.contains("users") && pl["users"].is_object() &&
+                !pl["users"].empty()) {
+                std::vector<std::pair<int, std::string>> users;
+                for (auto& [uid, lvl] : pl["users"].items()) {
+                    if (lvl.is_number())
+                        users.push_back({lvl.get<int>(), uid});
+                }
+                std::sort(users.begin(), users.end(),
+                          [](const auto& x, const auto& y) { return x.first > y.first; });
+                std::cout << "  the user levels:" << std::endl;
+                for (const auto& [lvl, uid] : users) {
+                    std::string badge = lvl >= 100 ? "admin"
+                                      : lvl >= 50  ? "mod"
+                                      : lvl > 0    ? "custom"
+                                                   : "(none)";
+                    std::cout << "    " << std::setw(4) << lvl << "  "
+                              << (lvl > 0 && lvl < 50 ? "\x1b[36m" : "")
+                              << uid << "\x1b[0m"
+                              << (lvl > 0 && lvl < 50
+                                      ? "  [custom]"
+                                      : lvl > 0 ? "  [" + badge + "]" : "")
+                              << std::endl;
+                }
+            }
+            if (pl.contains("events") && pl["events"].is_object() &&
+                !pl["events"].empty()) {
+                std::cout << "  the event overrides:" << std::endl;
+                for (auto& [etype, lvl] : pl["events"].items()) {
+                    if (lvl.is_number())
+                        std::cout << "    " << std::setw(4) << lvl.get<int>()
+                                  << "  " << etype << std::endl;
+                }
+            }
             continue;
         }
         // ---- accounts / account: multi-account switching ----
@@ -5453,9 +5525,35 @@ int cmdAsciiUi(const cli::Args& args) {
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
-        // ---- receipts on|off: Element "show read receipts" ----
+        // ---- receipts: the display + the per-room SEND policy ----
         if (a.command == "receipts") {
-            if (a.positional.empty() || a.positional[0] == "on") st.showReceipts = true;
+            if (a.positional.empty()) {
+                std::cout << "receipts show: " << (st.showReceipts ? "on" : "off")
+                          << " | send (this room): "
+                          << (dbi.receiptsEnabled(st.currentRoomId) ? "on" : "off")
+                          << std::endl
+                          << "  receipts show on|off — whether to SHOW them\n"
+                          << "  receipts send on|off — whether to SEND them (this room)\n"
+                          << "  receipts on|off       — the display toggle (the Element habit)"
+                          << std::endl;
+                continue;
+            }
+            if (a.positional[0] == "send") {
+                const bool on = a.positional.size() < 2 || a.positional[1] != "off";
+                dbi.setReceiptsEnabled(st.currentRoomId, on);
+                st.statusNote = std::string("read receipts SENT: ") + (on ? "on" : "off")
+                              + " for " + st.currentRoomId;
+                std::cout << drawFrame(st) << std::flush;
+                continue;
+            }
+            if (a.positional[0] == "show") {
+                st.showReceipts = a.positional.size() < 2 || a.positional[1] != "off";
+                dbi.setSetting("receipts", st.showReceipts ? "1" : "0");
+                st.statusNote = std::string("read receipts ") + (st.showReceipts ? "shown" : "hidden");
+                std::cout << drawFrame(st) << std::flush;
+                continue;
+            }
+            if (a.positional[0] == "on") st.showReceipts = true;
             else if (a.positional[0] == "off") st.showReceipts = false;
             else if (a.positional[0] == "current") {
                 st.showReceipts = true;
@@ -5474,6 +5572,15 @@ int cmdAsciiUi(const cli::Args& args) {
             }
             dbi.setSetting("receipts", st.showReceipts ? "1" : "0");
             st.statusNote = std::string("read receipts ") + (st.showReceipts ? "shown" : "hidden");
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- sendtyping on|off: whether the client SENDS the typing
+        // notifications (the TUI composer) ----
+        if (a.command == "sendtyping") {
+            const bool on = a.positional.empty() || a.positional[0] != "off";
+            dbi.setSetting("send_typing", on ? "1" : "0");
+            st.statusNote = std::string("typing notifications SENT: ") + (on ? "on" : "off");
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
@@ -5591,6 +5698,15 @@ int cmdAsciiUi(const cli::Args& args) {
             std::cout << "  receipts  " << (st.showReceipts ? "shown" : "hidden")
                       << "  (receipts on / receipts off)"
                       << "  [Element: show read receipts]" << std::endl;
+            std::cout << "  sendrcpts " << (dbi.receiptsEnabled(st.currentRoomId) ? "on" : "off")
+                      << " (this room)  (receipts send on / receipts send off)"
+                      << "  [Element: send read receipts]" << std::endl;
+            std::cout << "  modredact " << (dbi.getSetting("mod_redact", "0") == "1" ? "allowed" : "blocked")
+                      << "  (modredact on / modredact off)"
+                      << "  [redact others' messages]" << std::endl;
+            std::cout << "  sendtyping " << (dbi.getSetting("send_typing", "1") != "0" ? "on" : "off")
+                      << "       (sendtyping on / sendtyping off)"
+                      << "  [Element: send typing notifications]" << std::endl;
             std::cout << "  joins     " << (st.showJoins ? "shown" : "hidden")
                       << "       (joins on / joins off)"
                       << "  [Element: show join/leave messages]" << std::endl;
@@ -5964,40 +6080,6 @@ int cmdAsciiUi(const cli::Args& args) {
             }
             dbi.setSetting("muted", saved);
             st.statusNote = roomId + (on ? " muted (no indicators)" : " unmuted");
-            std::cout << drawFrame(st) << std::flush;
-            continue;
-        }
-        // ---- receipts [<room>] [on|off]: the per-room read-receipt policy ----
-        if (a.command == "receipts") {
-            std::string roomId = st.currentRoomId;
-            if (!a.positional.empty() && a.positional[0] != "on" &&
-                a.positional[0] != "off") {
-                std::string q = a.positional[0];
-                for (const auto& r : st.rooms) {
-                    std::string id = r.value("room_id", "");
-                    if (id == q || id.find(q) != std::string::npos ||
-                        r.value("name", "") == q) {
-                        roomId = id;
-                        break;
-                    }
-                }
-            }
-            if (roomId.empty()) {
-                std::cout << "No room selected." << std::endl;
-                continue;
-            }
-            std::string act = a.positional.empty() ? ""
-                              : (a.positional.back() == "off" ? "off"
-                                 : a.positional.back() == "on" ? "on" : "");
-            bool enable = act != "off";
-            if (act.empty()) {
-                std::cout << "receipts: " << (st.db->receiptsEnabled(roomId) ? "on" : "off")
-                          << "  (receipts <room> on|off)" << std::endl;
-                continue;
-            }
-            st.db->setReceiptsEnabled(roomId, enable);
-            st.statusNote = std::string("receipts ") + (enable ? "on" : "off")
-                          + " for " + roomId;
             std::cout << drawFrame(st) << std::flush;
             continue;
         }
