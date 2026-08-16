@@ -1,29 +1,39 @@
 # matrixcli
 
-A **CLI-first** Matrix client in **C++23** — the terminal is the primary
-interface (the ncurses TUI, the ASCII client and the REST API server are
-the other surfaces). The codebase grew out of a fork of
-[gomuks](https://github.com/tulir/gomuks); the Go implementation was
-retired in favour of the C++ rewrite and lives in the `go-legacy` tag.
+**matrixcli** — a **CLI-first Matrix client in C++23**. The terminal is
+the primary interface; the ncurses TUI, the ASCII client and the REST API
+server are the other surfaces. Minimal dependencies (POSIX sockets +
+OpenSSL), maximum portability.
 
-> **Note:** This is an independent project in the Progressive Chat ecosystem.
-> The Android client lives in
-> [progressive-android](https://github.com/progressive-chat/progressive-android).
+The project started its life as a gomuks fork (2024) and was rewritten in
+C++ from the ground up — the old Go implementation is retired (the
+`go-legacy` tag keeps it for the history).
+
+> **Note:** This is an independent project in the Progressive Chat
+> ecosystem. The Android client lives in
+> [progressive-android](https://github.com/progressive-chat/progressive-android),
+> the shared Qt-free core in
+> [progressive-core](https://github.com/progressive-chat/progressive-core).
 
 ## Highlights
 
 - **The full CLI client** — rooms, messages, threads, polls, reactions,
-  E2EE (Olm/Megolm, device verification), key backup, spaces
+  E2EE (Olm/Megolm, the SAS device verification, key backup), spaces,
+  the per-room read receipts and the last-read markers
 - **Multi-format REST API** — JSON, plain text, Markdown, Gemtext
   (Gemini protocol), or HTML (`matrixcli serve`)
-- **Onion/I2P/Yggdrasil transport** — built-in proxy support for anonymous
-  and mesh networks (SOCKS5 for Tor, HTTP for I2P, native Yggdrasil IPv6)
+- **Onion/I2P/Yggdrasil transport** — SOCKS5 for Tor, HTTP for I2P, the
+  native Yggdrasil IPv6 — the connection is chosen at the login
 - **The LLM conversations + the agents** — the streaming chat with the
-  sessions (`llm`, `llm chat`, `llm continue`), the tool access
-  (`--tools`: the filesystem/shell, the PTY `process` tool, subagents,
-  MCP), the Matrix-tools agent and the coding agent
-- **The VoIP signaling** — `matrixcli call` (the m.call.* state machine)
-- **POSIX sockets + OpenSSL** — minimal dependencies, maximum portability
+  persistent sessions (`llm`, `llm chat`, `llm continue`, `llm resume`),
+  the tool access (`--tools`: the filesystem/shell, the PTY `process`
+  tool for the interactive debugging, subagents, MCP), the Matrix-tools
+  agent and the coding agent
+- **The VoIP signaling** — `matrixcli call` (the m.call.* state machine;
+  the WebRTC media plane is the next stage)
+- **The tests + the CI** — the unit tests for the LLM plumbing, the
+  sessions and the db, the agent-loop integration test, the CI with the
+  ASan/UBSan job
 
 ## Project structure
 
@@ -44,7 +54,6 @@ The dependencies (libolm 3.2.16, nlohmann/json, simdjson) are fetched at
 the build time via FetchContent and cached in the build tree — the repo
 itself stays dependency-free.
 
-
 ### Terminal TUI login
 
 The login screen supports connection types:
@@ -57,11 +66,11 @@ The login screen supports connection types:
 | Yggdrasil | Mesh network (200::/7, .ygg domains) | URL rewrite |
 | Custom | User-specified proxy | Configurable host/port/credentials |
 
-### REST API (C++ `matrixcli serve` / `matrixcli demo`)
+### REST API (`matrixcli serve` / `matrixcli demo`)
 
-The C++ server exposes a format-aware REST API under `/api/` (default port 8080,
-`--port` to change). Demo mode (`matrixcli demo`) serves the same API with
-synthetic data and no account:
+The server exposes a format-aware REST API under `/api/` (default port
+8080, `--port` to change). Demo mode (`matrixcli demo`) serves the same
+API with synthetic data and no account:
 
 ```bash
 # Start the API server (demo mode, no account needed)
@@ -84,20 +93,19 @@ curl "http://localhost:8080/api/rooms/!roomid:server/messages?format=gemini"
 ```
 
 Available formats: `json` (default), `text`, `markdown`, `gemini`, `html`.
+The format can also be selected via the `Accept:` header:
 
-Format can also be selected via the `Accept:` header:
 ```bash
 curl -H "Accept: text/markdown" http://localhost:8080/api/status
 ```
 
-Full endpoint list is returned by `/api/status` itself.
-
-> Note: the Go gomuks fork exposes its own API under `/_gomuks/api/v1/`.
-> The C++ server intentionally uses plain `/api/` paths.
+The full endpoint list is returned by `/api/status` itself.
 
 ## C++ build (cppcli/)
 
-Requires: CMake 3.20+, C++23 compiler, OpenSSL, libolm, ncurses.
+Requires: CMake 3.20+, a C++23 compiler, OpenSSL, ncurses. The rest
+(libolm, nlohmann/json, simdjson, the E2EE core) is fetched by
+FetchContent.
 
 ```bash
 cd cppcli
@@ -126,7 +134,7 @@ matrixcli llm --fresh "..."              # archive + start anew
 
 matrixcli llm "..." --tools              # the agent with the tool access
 matrixcli llm chat --tools               # interactive + tools per turn
-matrixcli agent-code "fix the build"     # the coding agent (open-code style)
+matrixcli agent-code "fix the build"     # the coding agent (opencode-style)
 matrixcli agent "summarize #general"     # the Matrix-tools agent
 ```
 
@@ -148,25 +156,26 @@ matrixcli agent "summarize #general"     # the Matrix-tools agent
 
 ## Features
 
-- [x] Matrix client with terminal TUI
-- [x] Multi-format REST API (JSON, text, Markdown, Gemtext, HTML)
+- [x] The Matrix client with the terminal TUI (markdown, threads, polls,
+      reactions, the Ctrl+F search, the link previews, the read receipts)
+- [x] The ASCII client and the multi-format REST API
 - [x] Tor / I2P / Yggdrasil proxy support
 - [x] Enhanced login: well-known discovery, SSO URL, token auth
-- [x] End-to-end encryption (Olm + Megolm via mautrix-go / libolm)
-- [x] SQLite-backed offline event store
-- [x] LLM conversations, streaming, tools, the coding/Matrix agents
-- [x] Per-room read receipts and the last-read markers
-- [x] C++23 rewrite with POSIX sockets and OpenSSL (in progress)
-- [ ] Full C++ TUI parity with Go TUI
-- [ ] C++ E2EE device verification UI
-- [~] VoIP signaling (the m.call.* state machine; the WebRTC media plane is next) — `matrixcli call`
+- [x] End-to-end encryption (Olm + Megolm, the SAS device verification,
+      key backup)
+- [x] The SQLite-backed offline event store
+- [x] The LLM conversations, the streaming, the tools, the agents
+- [x] The per-room read receipts and the last-read markers
+- [~] The VoIP signaling (the m.call.* state machine; the WebRTC media
+      plane is the next stage) — `matrixcli call`
 
 ## License
 
 Licensed under the **GNU Affero General Public License v3.0** (AGPLv3).
+The full text: [LICENSE](LICENSE).
 
 ```
-Copyright (C) 2024-2025 Tulir Asokan (the original gomuks)
+Copyright (C) 2024-2025 Tulir Asokan (the gomuks portions)
 Copyright (C) 2026 Progressive Matrix Client contributors
 
 This program is free software: you can redistribute it and/or modify
@@ -180,15 +189,16 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU Affero General Public License for more details.
 ```
 
-Full text: [LICENSE](gomuks/LICENSE)
-
 ## Links
 
 - Website: [progressive.chat](https://progressive.chat)
 - Matrix room: [#community:progressive.chat](https://matrix.to/#/#community:progressive.chat)
 
-## Upstream
+## Related projects
 
-- [gomuks](https://github.com/tulir/gomuks) — original Matrix client in Go
-- [mautrix-go](https://github.com/mautrix/go) — Matrix Go SDK
-- [libolm](https://gitlab.matrix.org/matrix-org/olm) — E2EE cryptographic library
+- [progressive-android](https://github.com/progressive-chat/progressive-android) —
+  the Android client
+- [progressive-core](https://github.com/progressive-chat/progressive-core) —
+  the shared Qt-free Matrix core (fetched by this build)
+- [gomuks](https://github.com/tulir/gomuks) — the Go client this project
+  started from (the `go-legacy` tag here)
