@@ -3455,7 +3455,9 @@ int cmdAsciiUi(const cli::Args& args) {
             continue;
         }
         // ---- find: filter the room list ----
-        if (a.command == "find" || a.command == "filter") {
+        if (a.command == "filter") {
+            // The room-name filter (the left panel) — `find` is now the
+            // message search.
             if (a.positional.empty()) {
                 st.roomFilter.clear();
                 st.statusNote = "room filter cleared";
@@ -5482,41 +5484,80 @@ int cmdAsciiUi(const cli::Args& args) {
             continue;
         }
         // ---- search filters: --sender, --since, --until ----
-        if (a.command == "search") {
+        if (a.command == "search" || a.command == "find") {
             if (a.positional.empty()) {
-                std::cout << "Usage: search <query> [--limit N] [--sender @u]"
-                             " [--since YYYY-MM-DD] [--until YYYY-MM-DD]" << std::endl;
+                std::cout << "Usage: find <query> [--limit N] [--sender @u]"
+                             " [--since YYYY-MM-DD] [--until YYYY-MM-DD]\n"
+                             "  The full-text search over the cached messages"
+                             " — the bodies, the mxids, the reply context and"
+                             " the matrix.to links.\n";
                 continue;
             }
-            int limit = 20;
+            int limit = 10;
             if (a.options.count("limit")) {
                 try { limit = std::stoi(a.options.at("limit")); } catch (...) {}
             }
             int64_t sinceMs = a.options.count("since") ? parseDayMs(a.options.at("since")) : -1;
             int64_t untilMs = a.options.count("until") ? parseDayMs(a.options.at("until")) : -1;
             std::string senderF = a.options.count("sender") ? a.options.at("sender") : "";
-            auto hits = dbi.search(a.positional[0], limit * 4);
+            auto hits = dbi.search(a.positional[0], std::max(limit, 5) * 8);
             int shown = 0;
+            std::cout << std::endl;
             for (const auto& h : hits) {
                 if (shown >= limit) break;
                 if (!senderF.empty() && h.value("sender", "") != senderF) continue;
-                int64_t ts = h.value("ts", h.value("origin_server_ts", 0LL));
+                const int64_t ts = h.value("origin_server_ts", 0LL);
                 if (sinceMs > 0 && ts < sinceMs) continue;
                 if (untilMs > 0 && ts > untilMs) continue;
-                std::string rid = h.value("room_id", "");
-                std::string sender = h.value("sender", "");
-                std::string body = h.value("body", "");
-                std::cout << "  [" << senderShort(sender) << "] "
-                          << clip(rid, 24) << ": " << clip(body, 60) << std::endl;
+                const std::string roomId = h.value("room_id", "");
+                const std::string roomName = h.value("room_name", roomId);
+                const std::string mxid = h.value("sender", "?");
+                const std::string body =
+                    h.value("content", nlohmann::json::object()).value("body", "");
+
+                std::time_t t = ts / 1000;
+                char tbuf[24];
+                std::strftime(tbuf, sizeof(tbuf), "%m-%d %H:%M", std::localtime(&t));
+                std::cout << "  \x1b[1m" << roomName << "\x1b[0m  "
+                          << senderShort(mxid) << "  (\x1b[36m" << mxid
+                          << "\x1b[0m)  " << tbuf << std::endl;
+                // The full body, wrapped to the terminal.
+                auto lines = wrapText(body, terminalWidth() - 6);
+                for (const auto& l : lines) std::cout << "    " << l << std::endl;
+
+                // The reply context: the parent message when present.
+                matrix::Event ev;
+                if (dbi.getEventById(h.value("event_id", ""), ev) &&
+                    ev.content.contains("m.relates_to")) {
+                    const auto& rel = ev.content["m.relates_to"];
+                    const std::string relType = rel.value("rel_type", "");
+                    if (relType == "m.in_reply_to") {
+                        const std::string parentId = rel.value("event_id", "");
+                        matrix::Event parent;
+                        if (dbi.getEventById(parentId, parent)) {
+                            std::string pbody = parent.content.value("body", "");
+                            if (pbody.size() > 120) pbody = pbody.substr(0, 120) + "...";
+                            std::cout << "    \x1b[90m\u21b3 reply to "
+                                      << senderShort(parent.sender) << ": "
+                                      << pbody << "\x1b[0m" << std::endl;
+                        }
+                    }
+                }
+                std::cout << "    \x1b[90m\U0001F517 https://matrix.to/#/"
+                          << roomId << "/$" << h.value("event_id", "")
+                          << "\x1b[0m" << std::endl << std::endl;
                 shown++;
             }
             if (shown == 0) {
                 std::cout << "No matches for '" << a.positional[0] << "'"
                           << (senderF.empty() ? "" : " from " + senderF) << std::endl;
+            } else {
+                std::cout << shown << " match" << (shown == 1 ? "" : "es")
+                          << " for '" << a.positional[0] << "'"
+                          << (senderF.empty() ? "" : " from " + senderF) << std::endl;
             }
             continue;
         }
-        // ---- names on|off: Element "show sender display names" ----
         if (a.command == "names") {
             if (a.positional.empty() || a.positional[0] == "on") st.showNames = true;
             else st.showNames = false;

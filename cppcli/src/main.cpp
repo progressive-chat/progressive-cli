@@ -3009,6 +3009,30 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
                      "  progressive-cli send \"#general\" \"hello\"\n";
         return 0;
     };
+    // The positional shortcuts: demo tui | ui | mobile | cli — no menu.
+    if (!args.positional.empty()) {
+        const std::string mode = args.positional[0];
+        cli::Args sub = args;
+        sub.positional.erase(sub.positional.begin());
+        if (mode == "tui") {
+            sub.options["tui"] = "true";
+            return cmdDemoRepl(sub);
+        }
+        if (mode == "ui" || mode == "ascii") {
+            sub.options["ui"] = "true";
+            return cmdDemoRepl(sub);
+        }
+        if (mode == "mobile" || mode == "phone") {
+            sub.options["ui"] = "true";
+            sub.options["mobile"] = "true";
+            return cmdDemoRepl(sub);
+        }
+        if (mode == "cli" || mode == "populate") {
+            sub.options["cli"] = "true";
+            return cmdDemoRepl(sub);
+        }
+    }
+
     if (args.options.count("cli") || args.options.count("populate")) {
         return runPureCli();
     }
