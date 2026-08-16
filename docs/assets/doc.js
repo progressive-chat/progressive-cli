@@ -30,6 +30,14 @@ async function boot() {
         el.textContent = builtAt ? new Date(builtAt).toUTCString() : 'n/a';
     });
 
+    const counts = {};
+    for (const f of status.features) counts[f.status] = (counts[f.status] || 0) + 1;
+    STATUS_ORDER.forEach((s) => {
+        document.querySelectorAll(`[data-count-${s}]`).forEach((el) => {
+            el.textContent = counts[s] || 0;
+        });
+    });
+
     const tbody = document.getElementById('rows');
     if (!tbody) return;
     const rows = status.features.map((f) => ({ f, tr: document.createElement('tr') }));
@@ -100,13 +108,6 @@ async function boot() {
         });
     });
 
-    const counts = {};
-    for (const f of status.features) counts[f.status] = (counts[f.status] || 0) + 1;
-    STATUS_ORDER.forEach((s) => {
-        document.querySelectorAll(`[data-count-${s}]`).forEach((el) => {
-            el.textContent = counts[s] || 0;
-        });
-    });
 }
 
 document.addEventListener('DOMContentLoaded', boot);
