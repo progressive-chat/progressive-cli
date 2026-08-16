@@ -1,8 +1,8 @@
 {
   "generated": {
-    "version": "v0.5.1-18-g2681860",
-    "commit": "26818602bed462d2fe48335d20191bd6463da571",
-    "builtAt": "2026-08-16T19:04:31.956563+00:00",
+    "version": "v0.5.1-19-g6e45750",
+    "commit": "6e45750ca94032b79e05af77637e4234366aafaa",
+    "builtAt": "2026-08-16T19:08:44.011996+00:00",
     "generator": "docs/gen.mjs"
   },
   "note": "This file is generated. Edit docs/features.json instead.",
@@ -38,9 +38,9 @@
       "id": "proxy-status-truthful",
       "name": "Proxy status \u2014 reported state is truthful",
       "category": "cli",
-      "status": "verified",
+      "status": "implemented",
       "since": "0.5.1",
-      "note": "'proxy on' flips the line to the enabled state (socks5h://host:port + auth flag when set), 'proxy off' back to disabled, and --json prints the same state machine-readable \u2014 the report always matches config.json",
+      "note": "'proxy on' flips the line to the enabled state (socks5h://host:port + auth flag when set), 'proxy off' back to disabled, --json prints the same state machine-readable. NOT manually verified yet \u2014 whether the reported state always matches config.json still needs a manual test (the user will do it later).",
       "anchor": {
         "file": "src/proxy_commands.cpp",
         "pattern": "j\\[\"enabled\"\\]",
