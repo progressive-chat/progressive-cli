@@ -1,8 +1,8 @@
 {
   "generated": {
-    "version": "v0.5.1-17-gf229454",
-    "commit": "f22945480fbaa1dbadca5276cda3a5305200dea0",
-    "builtAt": "2026-08-16T19:01:07.792616+00:00",
+    "version": "v0.5.1-18-g2681860",
+    "commit": "26818602bed462d2fe48335d20191bd6463da571",
+    "builtAt": "2026-08-16T19:04:31.956563+00:00",
     "generator": "docs/gen.mjs"
   },
   "note": "This file is generated. Edit docs/features.json instead.",
@@ -20,18 +20,32 @@
   ],
   "features": [
     {
-      "id": "proxy-status",
-      "name": "Proxy status display (colored state + config.json reason)",
+      "id": "proxy-status-output",
+      "name": "Proxy status display \u2014 output renders",
       "category": "cli",
       "status": "verified",
       "since": "0.5.1",
       "screenshot": "assets/Screenshot_proxy_status.png",
-      "note": "Two things are proved, separately: (1) the output renders \u2014 colored status line, the deciding proxy_enabled line white-highlighted, the whole config.json in grey below; (2) the reported state is truthful \u2014 with 'proxy on' the line switches to the enabled state (socks5h://host:port + auth flag when set), with 'proxy off' back to disabled, and --json prints the same state machine-readable. The screenshot shows the disabled case; the enabled case uses the same layout.",
+      "note": "the disabled case on a real terminal: red status line with the enable hint, the deciding proxy_enabled line white-highlighted, the whole config.json in grey below",
       "anchor": {
         "file": "src/proxy_commands.cpp",
         "pattern": "proxy: disabled",
         "missing": false,
         "line": 177
+      }
+    },
+    {
+      "id": "proxy-status-truthful",
+      "name": "Proxy status \u2014 reported state is truthful",
+      "category": "cli",
+      "status": "verified",
+      "since": "0.5.1",
+      "note": "'proxy on' flips the line to the enabled state (socks5h://host:port + auth flag when set), 'proxy off' back to disabled, and --json prints the same state machine-readable \u2014 the report always matches config.json",
+      "anchor": {
+        "file": "src/proxy_commands.cpp",
+        "pattern": "j\\[\"enabled\"\\]",
+        "missing": false,
+        "line": 168
       }
     },
     {

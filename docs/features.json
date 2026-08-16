@@ -13,16 +13,28 @@
  ],
  "features": [
   {
-   "id": "proxy-status",
-   "name": "Proxy status display (colored state + config.json reason)",
+   "id": "proxy-status-output",
+   "name": "Proxy status display \u2014 output renders",
    "category": "cli",
    "status": "verified",
    "since": "0.5.1",
    "screenshot": "assets/Screenshot_proxy_status.png",
-   "note": "Two things are proved, separately: (1) the output renders \u2014 colored status line, the deciding proxy_enabled line white-highlighted, the whole config.json in grey below; (2) the reported state is truthful \u2014 with 'proxy on' the line switches to the enabled state (socks5h://host:port + auth flag when set), with 'proxy off' back to disabled, and --json prints the same state machine-readable. The screenshot shows the disabled case; the enabled case uses the same layout.",
+   "note": "the disabled case on a real terminal: red status line with the enable hint, the deciding proxy_enabled line white-highlighted, the whole config.json in grey below",
    "anchor": {
     "file": "src/proxy_commands.cpp",
     "pattern": "proxy: disabled"
+   }
+  },
+  {
+   "id": "proxy-status-truthful",
+   "name": "Proxy status \u2014 reported state is truthful",
+   "category": "cli",
+   "status": "verified",
+   "since": "0.5.1",
+   "note": "'proxy on' flips the line to the enabled state (socks5h://host:port + auth flag when set), 'proxy off' back to disabled, and --json prints the same state machine-readable \u2014 the report always matches config.json",
+   "anchor": {
+    "file": "src/proxy_commands.cpp",
+    "pattern": "j\\[\"enabled\"\\]"
    }
   },
   {
