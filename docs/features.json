@@ -19,7 +19,7 @@
    "status": "verified",
    "since": "0.5.1",
    "screenshot": "assets/Screenshot_proxy_status.png",
-   "note": "on a real terminal: red status line with the enable hint, the deciding proxy_enabled line white-highlighted, the whole config.json in grey below",
+   "note": "on a real terminal: red status line with the enable hint, the deciding proxy_active line white-highlighted, the whole config.json in grey below (the screenshot predates the presets refactor \u2014 proxy_enabled flat keys are now gone, the config holds only proxy_presets + proxy_active)",
    "anchor": {
     "file": "src/proxy_commands.cpp",
     "pattern": "proxy: disabled"

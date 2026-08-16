@@ -22,6 +22,8 @@
 #include "../lib/tui/main_view.hpp"
 #include "../lib/tui/chat_view.hpp"
 #include "../lib/tui/config.hpp"
+
+extern void persistActiveProxy(const progressive::desktop::ProxyConfig& cfg);
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <chrono>
@@ -38,7 +40,6 @@ static void applyConnectionChoice(matrixcli::matrix::Client& client,
                                   const std::string& connection) {
     const std::string c = connection.empty() ? "direct" : connection;
     matrixcli::http::ProxyConfig pc;
-    std::string persistType = "socks5h";
     bool enabled = false;
     if (c == "tor") {
         pc.type = matrixcli::http::ProxyType::SOCKS5;
@@ -49,7 +50,6 @@ static void applyConnectionChoice(matrixcli::matrix::Client& client,
         pc.type = matrixcli::http::ProxyType::HTTP;
         pc.host = "127.0.0.1";
         pc.port = 4444;
-        persistType = "http";
         enabled = true;
     } else if (c.rfind("custom ", 0) == 0) {
         pc.type = matrixcli::http::ProxyType::SOCKS5;
@@ -67,13 +67,6 @@ static void applyConnectionChoice(matrixcli::matrix::Client& client,
     // "direct" and "yggdrasil" (the native IPv6 mesh routing) stay direct.
 
     client.setProxy(enabled ? pc : matrixcli::http::ProxyConfig{});
-    matrixcli::Config::instance().set("proxy_enabled", enabled ? "true" : "false");
-    if (enabled) {
-        matrixcli::Config::instance().set("proxy_host", pc.host);
-        matrixcli::Config::instance().set("proxy_port", std::to_string(pc.port));
-        matrixcli::Config::instance().set("proxy_type", persistType);
-    }
-    matrixcli::Config::instance().save();
 
     progressive::desktop::ProxyConfig gp;
     gp.enabled = enabled;
@@ -83,6 +76,7 @@ static void applyConnectionChoice(matrixcli::matrix::Client& client,
                   ? progressive::desktop::ProxyConfig::Type::Http
                   : progressive::desktop::ProxyConfig::Type::Socks5Hostname;
     progressive::desktop::setGlobalProxy(gp);
+    persistActiveProxy(gp);
 }
 
 #include "demo_tui.hpp"

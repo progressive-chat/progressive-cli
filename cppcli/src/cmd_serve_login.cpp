@@ -431,15 +431,16 @@ int cmdServe(const matrixcli::cli::Args& args) {
     matrix::Client client;
     client.setHomeserverURL(homeserver);
     // Route the legacy client through the same proxy as the core (if set).
-    if (Config::instance().get("proxy_enabled") == "true") {
+    extern bool activeProxyConfig(progressive::desktop::ProxyConfig* out);
+    progressive::desktop::ProxyConfig activeProxy;
+    if (activeProxyConfig(&activeProxy)) {
         http::ProxyConfig legacyProxy;
-        legacyProxy.host = Config::instance().get("proxy_host");
-        legacyProxy.port = std::stoi(Config::instance().get("proxy_port").empty()
-                                         ? "0" : Config::instance().get("proxy_port"));
-        std::string ptype = Config::instance().get("proxy_type");
-        legacyProxy.type = (ptype == "http") ? http::ProxyType::HTTP : http::ProxyType::SOCKS5;
-        legacyProxy.username = Config::instance().get("proxy_user");
-        legacyProxy.password = Config::instance().get("proxy_pass");
+        legacyProxy.host = activeProxy.host;
+        legacyProxy.port = activeProxy.port;
+        legacyProxy.type = (activeProxy.type == progressive::desktop::ProxyConfig::Type::Http)
+                               ? http::ProxyType::HTTP : http::ProxyType::SOCKS5;
+        legacyProxy.username = activeProxy.username;
+        legacyProxy.password = activeProxy.password;
         client.setProxy(legacyProxy);
     }
 
