@@ -1455,7 +1455,8 @@ std::string drawFrame(const UiState& st) {
                 std::string last = roomLastMsg(st.db, rid, st.rooms);
                 if (!last.empty()) w += 3 + displayWidth(last);  // " · preview"
             }
-            if (roomThreadCount(st.db, rid) > 0) w += 4;  // " 🧵N"
+            if (st.db->getSetting("threads_off", "0") == "0" &&
+                roomThreadCount(st.db, rid) > 0) w += 4;  // " 🧵N"
             if (w > longestRoom) longestRoom = w;
         }
         leftW = std::max(24, std::min(56, longestRoom + 2));
@@ -1723,8 +1724,9 @@ std::string drawFrame(const UiState& st) {
                         std::string reason = ev.content.value("reason", "");
                         center = "[" + who + "] invited "
                                + (target.empty() ? "someone" : target);
-                        if (!reason.empty()) {
-                            center += " — " + reason;  // — reason
+                        if (!reason.empty() &&
+                            st.db->getSetting("invreason_chat", "1") != "0") {
+                            center += " — " + reason;
                         }
                     }
                     else if (ms == "ban") center = "[" + who + "] was banned";
@@ -2396,6 +2398,10 @@ std::string drawFrame(const UiState& st) {
                     auto invIt = st.inviteByRoom.find(rid);
                     if (invIt != st.inviteByRoom.end() && invIt->second.ts > 0) {
                         ltime = "invited " + relativeTime(invIt->second.ts);
+                        if (st.db->getSetting("invreason_menu", "0") != "0" &&
+                            !invIt->second.reason.empty()) {
+                            ltime += " — " + invIt->second.reason;
+                        }
                     }
                 }
                 if (!ltime.empty()) {
@@ -2405,7 +2411,8 @@ std::string drawFrame(const UiState& st) {
                     row += std::string(std::max(1, W - baseW - tl), ' ')
                          + "[90m" + ltime + "[0m";
                 }
-                int thr = roomThreadCount(st.db, rid);
+                int thr = st.db->getSetting("threads_off", "0") == "0"
+                              ? roomThreadCount(st.db, rid) : 0;
                 if (thr > 0) {
                     row += (st.showEmoji ? " 🧵" : " (threads ")
                          + std::to_string(thr) + (st.showEmoji ? "" : ")");
@@ -2518,7 +2525,8 @@ std::string drawFrame(const UiState& st) {
             if (st.starredRooms.count(rid)) {
                 left += " ★";  // ★
             }
-            int thr = roomThreadCount(st.db, rid);
+            int thr = st.db->getSetting("threads_off", "0") == "0"
+                          ? roomThreadCount(st.db, rid) : 0;
             if (thr > 0) {
                 left += (st.showEmoji ? " 🧵" : " (threads ") + std::to_string(thr)
                       + (st.showEmoji ? "" : ")");
@@ -3173,16 +3181,33 @@ int cmdAsciiUi(const cli::Args& args) {
 
         if (a.command == "quit" || a.command == "exit") break;
         if (a.command == "help") {
-            std::cout << "  open <room>       switch the center panel to a room\n"
-                         "  view [room]       show a room (same as open)\n"
-                         "  send <room> <text>  append a message (offline demo)\n"
-                         "  thread <room> [root]  list threads / show one thread\n"
-                         "  up / down [n]     scroll the viewport (default 5 rows)\n"
-                         "  top / bottom      jump to the top / bottom\n"
-                         "  scroll <n>        scroll down by n rows\n"
-                         "  rooms             reload the room list from the cache\n"
-                         "  refresh           redraw the frame\n"
-                         "  quit / exit       leave the ui mode\n";
+            std::cout << "  the chat:\n"
+                         "  open <room> / view [room]  open a room\n"
+                         "  send <room> <text>   send a message\n"
+                         "  find <query> / search <query>  the message search (bodies, mxids, links)\n"
+                         "  thread <room> [root]  the threads\n"
+                         "  up / down [n] / top / bottom / scroll <n>  the viewport\n"
+                         "  goto <event_id> | lastread | newest   jump to a place\n"
+                         "  rooms / refresh    the cache + the redraw\n"
+                         "\n"
+                         "  the rooms + the members:\n"
+                         "  mute <room> on|off  the indicators\n"
+                         "  invite <room> <@user>  invite someone\n"
+                         "  powerlevels  the full power levels (incl. the custom ones)\n"
+                         "  nick <room> <@user> <name>  the per-room names\n"
+                         "\n"
+                         "  the settings (settings [keyword] filters them):\n"
+                         "  settings / receipts show|send on|off / sendtyping on|off\n"
+                         "  modredact on|off / invreason chat|menu on|off\n"
+                         "  threads on|off / sendpreset original|compact|full\n"
+                         "  nickname <name> / avatar <url> / presence online|away|offline\n"
+                         "  mobile on|off / theme / time / clock / names / emoji ...\n"
+                         "\n"
+                         "  the misc:\n"
+                         "  dump <room> [--format json|txt|html|md]  export a room\n"
+                         "  account <@user> / accounts / spaces / space <name>\n"
+                         "  agent ...  the coding agent / llm ... the LLM chat\n"
+                         "  help / quit / exit\n";
             continue;
         }
         if (a.command == "open" || a.command == "view") {
@@ -5543,8 +5568,10 @@ int cmdAsciiUi(const cli::Args& args) {
                         }
                     }
                 }
+                std::string eid = h.value("event_id", "");
+                if (!eid.empty() && eid[0] == '$') eid = eid.substr(1);
                 std::cout << "    \x1b[90m\U0001F517 https://matrix.to/#/"
-                          << roomId << "/$" << h.value("event_id", "")
+                          << roomId << "/$" << eid
                           << "\x1b[0m" << std::endl << std::endl;
                 shown++;
             }
@@ -5716,96 +5743,123 @@ int cmdAsciiUi(const cli::Args& args) {
         }
         // ---- settings: the current client settings ----
         if (a.command == "settings") {
-            std::cout << "Settings — Element equivalents in parentheses:" << std::endl;
-            std::cout << "  time      " << (st.showSeconds ? "HH:MM:SS" : "HH:MM")
-                      << "       (time full / time off)" << std::endl;
-            std::cout << "  clock     " << (st.clock12h ? "12h (AM/PM)" : "24h")
-                      << "       (clock 12h / clock 24h)  [Element: 24-hour clock]"
-                      << std::endl;
-            std::cout << "  timeside  " << (st.timeRight ? "right" : "left")
-                      << "      (timeside left / timeside right)" << std::endl;
-            std::cout << "  msgline   " << (st.msgNewline ? "newline (message below)"
-                                                           : "inline (same line)")
-                      << "  (msgline inline / msgline newline)" << std::endl;
-            std::cout << "  agent     "
-                      << dbi.getSetting("agent_provider", "openai") << " / "
-                      << dbi.getSetting("agent_model", "(default model)")
-                      << " / trust: " << dbi.getSetting("agent_trust", "ask")
-                      << "  (agent config <k> <v> / agent trust <allow|ask|deny>)"
-                      << std::endl;
-            std::cout << "  names     " << (st.showNames ? "shown" : "hidden")
-                      << "       (names on / names off)"
-                      << "  [Element: show sender display names]" << std::endl;
-            std::cout << "  receipts  " << (st.showReceipts ? "shown" : "hidden")
-                      << "  (receipts on / receipts off)"
-                      << "  [Element: show read receipts]" << std::endl;
-            std::cout << "  sendrcpts " << (dbi.receiptsEnabled(st.currentRoomId) ? "on" : "off")
-                      << " (this room)  (receipts send on / receipts send off)"
-                      << "  [Element: send read receipts]" << std::endl;
-            std::cout << "  modredact " << (dbi.getSetting("mod_redact", "0") == "1" ? "allowed" : "blocked")
-                      << "  (modredact on / modredact off)"
-                      << "  [redact others' messages]" << std::endl;
-            std::cout << "  sendtyping " << (dbi.getSetting("send_typing", "1") != "0" ? "on" : "off")
-                      << "       (sendtyping on / sendtyping off)"
-                      << "  [Element: send typing notifications]" << std::endl;
-            std::cout << "  joins     " << (st.showJoins ? "shown" : "hidden")
-                      << "       (joins on / joins off)"
-                      << "  [Element: show join/leave messages]" << std::endl;
-            std::cout << "  links     " << (st.showLinks ? "pills" : "raw URLs")
-                      << "      (links on / links off)"
-                      << "  [Element: URL previews]" << std::endl;
-            std::cout << "  ids       " << (st.showIds ? "shown" : "hidden")
-                      << "       (ids on / ids off)"
-                      << "  [Element: developer mode]" << std::endl;
-            std::cout << "  images    " << (st.showImages ? "full cards" : "compact")
-                      << "  (images on / images off)"
-                      << "  [Element: show images & videos]" << std::endl;
-            std::cout << "  emoji     " << (st.showEmoji ? "on" : "off (ASCII)")
-                      << "       (emoji on / emoji off)" << std::endl;
-            std::cout << "  rows      " << (st.limitRows > 0
-                        ? std::to_string(st.limitRows) : "auto (terminal)")
-                      << "  (rows <n> / rows 0)" << std::endl;
-            std::cout << "  panel L   " << (st.leftPanelW == 0 ? "off"
-                        : st.leftPanelW > 0 ? std::to_string(st.leftPanelW) : "default")
-                      << "  (panel left <off|on|width>)" << std::endl;
-            std::cout << "  panel R   " << (st.rightPanelW == 0 ? "off"
-                        : st.rightPanelW > 0 ? std::to_string(st.rightPanelW) : "default")
-                      << "  (panel right <off|on|width>)" << std::endl;
-            std::cout << "  panels    " << (st.autoPanels ? "auto (sized to content)"
-                                                          : "fixed")
-                      << "  (panel auto on / panel auto off)" << std::endl;
-            std::cout << "  members   "
-                      << (st.membersMode == 1 ? "horizontal" :
-                          st.membersMode == 2 ? "vertical list" : "auto")
-                      << "  (members <horizontal|list|auto>)" << std::endl;
-            std::cout << "  threads   "
-                      << (st.showThreadsBottom ? "bottom list" : "hidden")
-                      << "  (threads bottom on / threads bottom off)" << std::endl;
-            std::cout << "  via       "
-                      << (st.viaLimit == 0 ? "unlimited (all servers)"
-                                           : std::to_string(st.viaLimit))
-                      << "  (via <n> / via 0) [Element: 3]" << std::endl;
-            std::cout << "  timezone  " << (st.tzOffset >= 0 ? "+" : "")
-                      << st.tzOffset << "h  (timezone <N>)" << std::endl;
-            std::cout << "  hide      " << st.hiddenSeconds
-                      << "s  (hide <room> [seconds])" << std::endl;
-            std::cout << "  from      "
-                      << (st.senderFilter.empty() ? "all" : st.senderFilter)
-                      << "  (from <@user> / from off)" << std::endl;
-            std::cout << "  muted     " << st.mutedRooms.size()
-                      << " rooms  (mute <room> on|off)" << std::endl;
-            std::cout << "  layout    " << (st.mobile ? "smartphone (stacked)"
-                                                      : "desktop (three columns)")
-                      << "  (mobile on / mobile off)" << std::endl;
-            std::cout << "  account   " << st.accountLabel << std::endl;
-            std::cout << "  proxy     " << st.proxyLabel << std::endl;
-            std::cout << "  invites   " << st.invites << std::endl;
-            std::cout << "  space     "
-                      << (st.activeSpace.empty() ? "all rooms" : st.activeSpace)
-                      << "  (space <name> / space all)" << std::endl;
+            // The optional keyword filters the list (settings <keyword>).
+            std::string kw;
+            for (const auto& w : a.positional) kw += (kw.empty() ? "" : " ") + w;
+            auto kwMatch = [&](const std::string& line) {
+                if (kw.empty()) return true;
+                std::string l = line, k = kw;
+                std::transform(l.begin(), l.end(), l.begin(), ::tolower);
+                std::transform(k.begin(), k.end(), k.begin(), ::tolower);
+                return l.find(k) != std::string::npos;
+            };
+            std::vector<std::string> lines;
+            auto add = [&](const std::string& line) {
+                if (kwMatch(line)) lines.push_back(line);
+            };
+            add("Settings — Element equivalents in parentheses:");
+            add("  time      " + std::string(st.showSeconds ? "HH:MM:SS" : "HH:MM") + "       (time full / time off)");
+            add("  clock     " + std::string(st.clock12h ? "12h (AM/PM)" : "24h") + "       (clock 12h / clock 24h)  [Element: 24-hour clock]");
+            add("  timeside  " + std::string(st.timeRight ? "right" : "left") + "      (timeside left / timeside right)");
+            add("  msgline   " + std::string(st.msgNewline ? "newline (message below)" : "inline (same line)") + "  (msgline inline / msgline newline)");
+            add("  agent     " + dbi.getSetting("agent_provider", "openai") + " / " + dbi.getSetting("agent_model", "(default model)") + " / trust: " + dbi.getSetting("agent_trust", "ask") + "  (agent config <k> <v> / agent trust <allow|ask|deny>)");
+            add("  nickname  " + dbi.getSetting("displayname", "(unset)") + "  (nickname <name>)");
+            add("  avatar    " + dbi.getSetting("avatar_url", "(unset)") + "  (avatar <url>)");
+            add("  presence  " + dbi.getSetting("presence", "online") + "  (presence online|away|offline)");
+            add("  names     " + std::string(st.showNames ? "shown" : "hidden") + "       (names on / names off)  [Element: show sender display names]");
+            add("  receipts  " + std::string(st.showReceipts ? "shown" : "hidden") + "  (receipts on / receipts off)  [Element: show read receipts]");
+            add("  sendrcpts " + std::string(dbi.receiptsEnabled(st.currentRoomId) ? "on" : "off") + " (this room)  (receipts send on / receipts send off)  [Element: send read receipts]");
+            add("  modredact " + std::string(dbi.getSetting("mod_redact", "0") == "1" ? "allowed" : "blocked") + "  (modredact on / modredact off)  [redact others' messages]");
+            add("  sendtyping " + std::string(dbi.getSetting("send_typing", "1") != "0" ? "on" : "off") + "       (sendtyping on / sendtyping off)  [Element: send typing notifications]");
+            add("  invreason chat " + std::string(dbi.getSetting("invreason_chat", "1") != "0" ? "shown" : "hidden") + "  (invreason chat on|off)");
+            add("  invreason menu " + std::string(dbi.getSetting("invreason_menu", "0") != "0" ? "shown" : "hidden") + "  (invreason menu on|off)");
+            add("  joins     " + std::string(st.showJoins ? "shown" : "hidden") + "       (joins on / joins off)  [Element: show join/leave messages]");
+            add("  links     " + std::string(st.showLinks ? "pills" : "raw URLs") + "      (links on / links off)  [Element: URL previews]");
+            add("  ids       " + std::string(st.showIds ? "shown" : "hidden") + "       (ids on / ids off)  [Element: developer mode]");
+            add("  images    " + std::string(st.showImages ? "full cards" : "compact") + "  (images on / images off)  [Element: show images & videos]");
+            add("  sendpreset " + dbi.getSetting("send_preset", "original") + "  (sendpreset original|compact|full)");
+            add("  emoji     " + std::string(st.showEmoji ? "on" : "off (ASCII)") + "       (emoji on / emoji off)");
+            add("  threads   " + std::string(dbi.getSetting("threads_off", "0") == "0" ? "enabled" : "disabled") + "  (threads on / threads off)");
+            add("  rows      " + (st.limitRows > 0 ? std::to_string(st.limitRows) : "auto (terminal)") + "  (rows <n> / rows 0)");
+            add("  panel L   " + (st.leftPanelW == 0 ? "off" : st.leftPanelW > 0 ? std::to_string(st.leftPanelW) : "default") + "  (panel left <off|on|width>)");
+            add("  panel R   " + (st.rightPanelW == 0 ? "off" : st.rightPanelW > 0 ? std::to_string(st.rightPanelW) : "default") + "  (panel right <off|on|width>)");
+            add("  panels    " + std::string(st.autoPanels ? "auto (sized to content)" : "fixed") + "  (panel auto on / panel auto off)");
+            add("  members   " + std::string(st.membersMode == 1 ? "horizontal" : st.membersMode == 2 ? "vertical list" : "auto") + "  (members <horizontal|list|auto>)");
+            add("  via       " + (st.viaLimit == 0 ? "unlimited (all servers)" : std::to_string(st.viaLimit)) + "  (via <n> / via 0) [Element: 3]");
+            add("  timezone  " + std::string(st.tzOffset >= 0 ? "+" : "") + std::to_string(st.tzOffset) + "h  (timezone <N>)");
+            add("  hide      " + std::to_string(st.hiddenSeconds) + "s  (hide <room> [seconds])");
+            add("  from      " + (st.senderFilter.empty() ? "all" : st.senderFilter) + "  (from <@user> / from off)");
+            add("  muted     " + std::to_string(st.mutedRooms.size()) + " rooms  (mute <room> on|off)");
+            add("  layout    " + std::string(st.mobile ? "smartphone (stacked)" : "desktop (three columns)") + "  (mobile on / mobile off)");
+            add("  account   " + st.accountLabel);
+            add("  proxy     " + st.proxyLabel);
+            add("  invites   " + std::to_string(st.invites));
+            add("  space     " + (st.activeSpace.empty() ? "all rooms" : st.activeSpace) + "  (space <name> / space all)");
+            for (const auto& l : lines) std::cout << l << std::endl;
             continue;
         }
-        // ---- goto: jump the chat viewport to an event ----
+        // ---- threads on|off: disable the thread UI entirely ----
+        if (a.command == "threads") {
+            if (!a.positional.empty() &&
+                (a.positional[0] == "bottom" || a.positional[0] == "panel")) {
+                st.showThreadsBottom = a.positional.size() < 2 || a.positional[1] != "off";
+                dbi.setSetting("threads_bottom", st.showThreadsBottom ? "1" : "0");
+                st.statusNote = std::string("the threads bottom list: ") + (st.showThreadsBottom ? "on" : "off");
+            } else {
+                const bool on = !a.positional.empty() && a.positional[0] == "on";
+                dbi.setSetting("threads_off", on ? "0" : "1");
+                st.statusNote = std::string("threads: ") + (on ? "enabled" : "disabled (the markers hidden)");
+            }
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- invreason chat|menu on|off: where the invitation reasons show ----
+        if (a.command == "invreason") {
+            if (a.positional.size() >= 2 &&
+                (a.positional[0] == "chat" || a.positional[0] == "menu")) {
+                const std::string key = std::string("invreason_") + a.positional[0];
+                const bool on = a.positional[1] != "off";
+                dbi.setSetting(key, on ? "1" : "0");
+                st.statusNote = std::string("the invite reason (") + a.positional[0]
+                              + "): " + (on ? "shown" : "hidden");
+            } else {
+                std::cout << "Usage: invreason <chat|menu> <on|off>" << std::endl;
+            }
+            continue;
+        }
+        // ---- sendpreset original|compact|full: the media sending preset ----
+        if (a.command == "sendpreset") {
+            std::string v = a.positional.empty() ? "original" : a.positional[0];
+            if (v != "original" && v != "compact" && v != "full") v = "original";
+            dbi.setSetting("send_preset", v);
+            st.statusNote = "the send preset: " + v;
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- nickname / avatar / presence: the account options ----
+        if (a.command == "nickname" || a.command == "avatar" || a.command == "presence") {
+            if (a.positional.empty()) {
+                std::cout << "Usage: " << a.command
+                          << (a.command == "nickname" ? " <name>" : a.command == "avatar" ? " <url>" : " <online|away|offline>")
+                          << std::endl;
+                continue;
+            }
+            const std::string v = a.positional[0];
+            dbi.setSetting(a.command == "nickname" ? "displayname"
+                           : a.command == "avatar" ? "avatar_url" : "presence", v);
+            if (pcore::init() && pcore::loadSavedSession()) {
+                auto& client = pcore::core().client;
+                if (a.command == "nickname") client->setDisplayName(v);
+                else if (a.command == "avatar") client->setAvatarUrl(v);
+                // The presence is the local-only setting (the core has
+                // no setter yet; the TUI /online|away|offline uses its
+                // own client).
+            }
+            st.statusNote = a.command + " set: " + v;
+            std::cout << drawFrame(st) << std::flush;
+            continue;
+        }
+        // ---- goto: jump the chat viewport to an event ----        // ---- goto: jump the chat viewport to an event ----
         if (a.command == "goto") {
             if (a.positional.empty()) {
                 std::cout << "Usage: goto <event_id> | lastread | newest (back to the latest)"
