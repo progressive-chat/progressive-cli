@@ -1,5 +1,6 @@
 add_library(matrixcli_matrix STATIC
     client.cpp
+    client_sync.cpp
     events.cpp
     error.cpp
     auth.cpp

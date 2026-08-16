@@ -1,8 +1,8 @@
 {
   "generated": {
-    "version": "v0.5.1-5-g308db37",
-    "commit": "308db377136823b57205065cc61e35591b0c5bc5",
-    "builtAt": "2026-08-16T12:14:48.376016+00:00",
+    "version": "v0.5.1-2-gdf65b95",
+    "commit": "df65b957bff7da466d473ddda10c1918b0c86124",
+    "builtAt": "2026-08-16T17:20:36.879539+00:00",
     "generator": "docs/gen.mjs"
   },
   "note": "This file is generated. Edit docs/features.json instead.",
@@ -27,10 +27,10 @@
       "since": "0.1",
       "test": "cli_e2e",
       "anchor": {
-        "file": "src/main.cpp",
+        "file": "src/cmd_view_attach.cpp",
         "pattern": "progressive-cli login",
         "missing": false,
-        "line": 764
+        "line": 471
       }
     },
     {
@@ -79,10 +79,10 @@
       "status": "implemented",
       "since": "0.5.1",
       "anchor": {
-        "file": "src/ascii_ui.cpp",
+        "file": "src/ascii_ui_repl_a.cpp",
         "pattern": "invreason",
         "missing": false,
-        "line": 1662
+        "line": 72
       }
     },
     {
@@ -105,10 +105,10 @@
       "status": "implemented",
       "since": "0.5.1",
       "anchor": {
-        "file": "src/ascii_ui.cpp",
+        "file": "src/ascii_ui_repl_g.cpp",
         "pattern": "m.fully_read",
         "missing": false,
-        "line": 1926
+        "line": 391
       }
     },
     {
@@ -118,10 +118,10 @@
       "status": "implemented",
       "since": "0.5.1",
       "anchor": {
-        "file": "lib/matrix/client.cpp",
+        "file": "lib/matrix/client_sync.cpp",
         "pattern": "read_marker",
         "missing": false,
-        "line": 1043
+        "line": 80
       }
     },
     {
@@ -131,10 +131,10 @@
       "status": "implemented",
       "since": "0.5.1",
       "anchor": {
-        "file": "src/ascii_ui.cpp",
+        "file": "src/ascii_ui_repl_a.cpp",
         "pattern": "sendtyping",
         "missing": false,
-        "line": 3160
+        "line": 71
       }
     },
     {
@@ -158,10 +158,10 @@
       "status": "implemented",
       "since": "0.5.1",
       "anchor": {
-        "file": "src/main.cpp",
+        "file": "src/cmd_view_attach.cpp",
         "pattern": "uploadMedia",
         "missing": false,
-        "line": 1321
+        "line": 524
       }
     },
     {
@@ -171,10 +171,10 @@
       "status": "implemented",
       "since": "0.5.1",
       "anchor": {
-        "file": "src/ascii_ui.cpp",
+        "file": "src/ascii_ui_repl_g.cpp",
         "pattern": "m.room.power_levels",
         "missing": false,
-        "line": 800
+        "line": 717
       }
     },
     {
@@ -197,10 +197,10 @@
       "status": "implemented",
       "since": "0.5.1",
       "anchor": {
-        "file": "src/demo_tui.cpp",
+        "file": "src/cmd_tui_commands.cpp",
         "pattern": "queueUrlPreview",
         "missing": false,
-        "line": 65
+        "line": 44
       }
     },
     {
@@ -218,10 +218,10 @@
       "status": "implemented",
       "since": "0.5.1",
       "anchor": {
-        "file": "src/ascii_ui.cpp",
+        "file": "src/ascii_ui_repl_a.cpp",
         "pattern": "presence fetched",
         "missing": false,
-        "line": 3614
+        "line": 531
       }
     },
     {
@@ -264,10 +264,10 @@
       "status": "verified",
       "since": "0.5.1",
       "anchor": {
-        "file": "src/demo_tui.cpp",
+        "file": "src/demo_repl.cpp",
         "pattern": "cmdDemoRepl",
         "missing": false,
-        "line": 1431
+        "line": 106
       }
     },
     {
@@ -278,10 +278,10 @@
       "since": "0.5.1",
       "test": "cli_e2e",
       "anchor": {
-        "file": "src/ascii_ui.cpp",
-        "pattern": "Ctrl\\+C EINTR",
+        "file": "src/ascii_ui_repl.cpp",
+        "pattern": "readLineWithHistory",
         "missing": false,
-        "line": 2619
+        "line": 483
       }
     },
     {
@@ -318,7 +318,7 @@
         "file": "src/demo_tui.cpp",
         "pattern": "runSasVerification",
         "missing": false,
-        "line": 56
+        "line": 90
       }
     },
     {
@@ -337,10 +337,10 @@
       "since": "0.5.1",
       "test": "media_send",
       "anchor": {
-        "file": "src/main.cpp",
+        "file": "src/cmd_view_attach.cpp",
         "pattern": "aesCtrCrypt",
         "missing": false,
-        "line": 1348
+        "line": 551
       }
     },
     {

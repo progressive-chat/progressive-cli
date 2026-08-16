@@ -1,6 +1,17 @@
 set(SOURCES
     main.cpp
+    main_commands.hpp
+    cmd_serve_login.cpp
+    cmd_status.cpp
+    cmd_view_attach.cpp
+    cmd_bridges.cpp
     demo_tui.cpp
+    demo_tui.hpp
+    demo_data.cpp
+    demo_data_extras.cpp
+    demo_repl.cpp
+    cmd_tui_commands.cpp
+    cmd_tui_events.cpp
     config.cpp
     commands.cpp
     bridge_commands.cpp
@@ -9,11 +20,25 @@ set(SOURCES
     room_commands.cpp
     matrix_commands.cpp
     agent_commands.cpp
-    agent_tools.cpp
+    agent_tools_file.cpp
+    agent_tools_proc.cpp
+    agent_tools_llm.cpp
+    agent_tools_state.cpp
+    agent_tools_run.cpp
     matrix_agent.cpp
     call_commands.cpp
     proxy_commands.cpp
     ascii_ui.cpp
+    ascii_ui_impl.hpp
+    ascii_ui_about.cpp
+    ascii_ui_helpers.cpp
+    ascii_ui_draw.cpp
+    ascii_ui_repl.cpp
+    ascii_ui_repl_a.cpp
+    ascii_ui_repl_b.cpp
+    ascii_ui_repl_g.cpp
+    ascii_ui_agent_repl.cpp
+    ascii_ui_repl_e.cpp
     ascii_settings.cpp
     ascii_commands.cpp
     media_send.cpp
