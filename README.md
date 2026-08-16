@@ -20,7 +20,8 @@ C++ from the ground up — the old Go implementation is retired (the
 
 - **The full CLI client** — rooms, messages, threads, polls, reactions,
   E2EE (Olm/Megolm, the SAS device verification, key backup), spaces,
-  the per-room read receipts and the last-read markers
+  the per-room read receipts, the last-read markers, the media send
+  presets (`attach` + `sendpreset original|compact|full`)
 - **Multi-format REST API** — JSON, plain text, Markdown, Gemtext
   (Gemini protocol), or HTML (`matrixcli serve`)
 - **Onion/I2P/Yggdrasil transport** — SOCKS5 for Tor, HTTP for I2P, the

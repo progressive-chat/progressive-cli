@@ -1209,6 +1209,46 @@ int cmdView(const matrixcli::cli::Args& args) {
 // the file is AES-CTR-encrypted client-side and sent as the m.encrypted
 // "file" block (Element-compatible). Determines msgtype from the extension.
 namespace matrixcli {
+// The image size straight from the file header (PNG/JPEG/GIF); no
+// libraries. Returns false when the format is not one of the three.
+static bool imageDimensions(const std::vector<uint8_t>& b, const std::string& ext,
+                            int& w, int& h) {
+    auto be16 = [&b](size_t o) { return b.size() > o + 1 ? (b[o] << 8) | b[o + 1] : 0; };
+    auto be32 = [&b](size_t o) {
+        return b.size() > o + 3 ? (b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3] : 0;
+    };
+    if (ext == "png" && b.size() >= 24 && b[0] == 0x89 && b[1] == 'P') {
+        w = static_cast<int>(be32(16));
+        h = static_cast<int>(be32(20));
+        return w > 0 && h > 0;
+    }
+    if (ext == "gif" && b.size() >= 10 && b[0] == 'G' && b[1] == 'I' && b[2] == 'F') {
+        w = be16(6);
+        h = be16(8);
+        return w > 0 && h > 0;
+    }
+    if ((ext == "jpg" || ext == "jpeg") && b.size() >= 4 && b[0] == 0xFF && b[1] == 0xD8) {
+        // Walk the JPEG segments to the first SOF marker.
+        size_t i = 2;
+        while (i + 9 < b.size()) {
+            if (b[i] != 0xFF) { i++; continue; }
+            uint8_t marker = b[i + 1];
+            if (marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 &&
+                marker != 0xCC) {
+                h = static_cast<int>(be16(i + 5));
+                w = static_cast<int>(be16(i + 7));
+                return w > 0 && h > 0;
+            }
+            if (marker == 0xD8 || marker == 0xD9) { i += 2; continue; }
+            if (marker == 0xDA || marker == 0x01) break;  // no more SOFs after the scan
+            size_t len = be16(i + 2);
+            if (len < 2) break;
+            i += 2 + len;
+        }
+    }
+    return false;
+}
+
 int cmdAttachFile(const cli::Args& args) {
     using namespace matrixcli;
     if (args.positional.size() < 2) {
@@ -1251,6 +1291,17 @@ int cmdAttachFile(const cli::Args& args) {
         ct = "application/octet-stream";
     }
     std::string bodyName = caption.empty() ? fn : caption;
+
+    // The send preset: original (as-is), compact (the minimal event),
+    // full (plus the info block: size, and the image dimensions).
+    std::string preset = "original";
+    {
+        db::Database dbi;
+        if (dbi.open("matrixcli.db")) preset = dbi.getSetting("send_preset", "original");
+        if (preset != "compact" && preset != "full") preset = "original";
+    }
+    int imgW = 0, imgH = 0;
+    bool hasImgDim = mt == "m.image" && imageDimensions(bytes, ext, imgW, imgH);
 
     if (!pcore::init() || !pcore::loadSavedSession()) {
         std::cerr << "Not logged in. Run 'progressive-cli login' first." << std::endl;
@@ -1316,8 +1367,16 @@ int cmdAttachFile(const cli::Args& args) {
 
     if (!encrypted) {
         std::ostringstream content;
-        content << "{\"msgtype\":\"" << mt << "\",\"body\":\"" << bodyName
-                << "\",\"filename\":\"" << fn << "\",\"url\":\"" << mxc << "\"";
+        content << "{\"msgtype\":\"" << mt << "\",\"body\":\"" << bodyName << "\"";
+        if (preset != "compact") {
+            content << ",\"filename\":\"" << fn << "\",\"url\":\"" << mxc << "\"";
+        }
+        if (preset == "full") {
+            content << ",\"info\":{\"mimetype\":\"" << ct << "\",\"size\":"
+                    << bytes.size();
+            if (hasImgDim) content << ",\"w\":" << imgW << ",\"h\":" << imgH;
+            content << "}";
+        }
         if (!thread_root.empty()) {
             content << ",\"m.relates_to\":{\"rel_type\":\"m.thread\",\"event_id\":\""
                     << thread_root << "\"}";
@@ -1327,6 +1386,7 @@ int cmdAttachFile(const cli::Args& args) {
         if (!r.ok) { std::cerr << "Send failed: " << r.error.message << std::endl; return 1; }
         std::cout << "Sent " << mt << " to " << room_id
                   << (thread_root.empty() ? "" : " (thread " + thread_root + ")")
+                  << (preset == "original" ? "" : " (preset " + preset + ")")
                   << " (mxc " << mxc << ")" << std::endl;
         return 0;
     }
@@ -1365,12 +1425,21 @@ int cmdAttachFile(const cli::Args& args) {
         return 1;
     }
     std::ostringstream fbody;
-    fbody << "{\"msgtype\":\"" << mt << "\",\"body\":\"" << bodyName
-          << "\",\"filename\":\"" << fn << "\""
-          << ",\"file\":{\"url\":\"" << upEnc.data << "\",\"key\":\"" << encKey
+    fbody << "{\"msgtype\":\"" << mt << "\",\"body\":\"" << bodyName << "\"";
+    if (preset != "compact") {
+        fbody << ",\"filename\":\"" << fn << "\"";
+    }
+    fbody << ",\"file\":{\"url\":\"" << upEnc.data << "\",\"key\":\"" << encKey
           << "\",\"iv\":\"" << encIv << "\",\"hashes\":{\"sha256\":\"" << encSha
-          << "\"},\"v\":\"v2\",\"mimetype\":\"" << ct << "\"}"
-          << ",\"info\":{\"mimetype\":\"" << ct << "\"}}";
+          << "\"},\"v\":\"v2\",\"mimetype\":\"" << ct << "\"}";
+    if (preset == "full") {
+        fbody << ",\"info\":{\"mimetype\":\"" << ct << "\",\"size\":" << bytes.size();
+        if (hasImgDim) fbody << ",\"w\":" << imgW << ",\"h\":" << imgH;
+        fbody << "}";
+    } else if (preset == "original") {
+        fbody << ",\"info\":{\"mimetype\":\"" << ct << "\"}";
+    }
+    fbody << "}";
     std::string fbodyStr = fbody.str();
     if (!thread_root.empty()) {
         // Insert the thread relation into the content object (before its close).
