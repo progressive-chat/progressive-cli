@@ -19,7 +19,7 @@
    "status": "verified",
    "since": "0.5.1",
    "screenshot": "assets/Screenshot_proxy_status.png",
-   "note": "Proved on a real terminal: the disabled state (red status line with the enable hint, the deciding proxy_enabled line white-highlighted, the whole config.json in grey below). Same layout for the enabled state (white line, socks5h://host:port + auth flag) \u2014 not captured on a screenshot yet.",
+   "note": "Two things are proved, separately: (1) the output renders \u2014 colored status line, the deciding proxy_enabled line white-highlighted, the whole config.json in grey below; (2) the reported state is truthful \u2014 with 'proxy on' the line switches to the enabled state (socks5h://host:port + auth flag when set), with 'proxy off' back to disabled, and --json prints the same state machine-readable. The screenshot shows the disabled case; the enabled case uses the same layout.",
    "anchor": {
     "file": "src/proxy_commands.cpp",
     "pattern": "proxy: disabled"

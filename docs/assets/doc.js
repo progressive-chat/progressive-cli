@@ -2,7 +2,7 @@
 // feature table. Plain DOM, no dependencies.
 
 const STATUS_LABELS = {
-    verified: 'Partially working',
+    verified: 'Proved working',
     implemented: 'Implemented',
     awaited: 'Awaited',
     wontadd: "Won't add",
