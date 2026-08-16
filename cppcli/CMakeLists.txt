@@ -38,47 +38,25 @@ add_library(matrixcli_ecore ALIAS progressive_core)
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
 
-# libolm — only when the fetched canonical core hasn't provided one yet
-# (progressive-core brings its own olm 3.2.16 via FetchContent).
+# libolm — the fetched canonical core (progressive-core) brings its own
+# olm 3.2.16 via FetchContent (cached in the build tree). The system
+# libolm is the fallback knob for the packagers (USE_SYSTEM_OLM=ON).
 if(NOT TARGET olm)
-if(USE_SYSTEM_OLM)
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(LIBOLM REQUIRED olm)
-    add_library(olm SHARED IMPORTED)
-    find_library(LIBOLM_LIBRARY_PATH olm REQUIRED)
-    set_target_properties(olm PROPERTIES
-        IMPORTED_LOCATION "${LIBOLM_LIBRARY_PATH}"
-        INTERFACE_INCLUDE_DIRECTORIES "${LIBOLM_INCLUDE_DIRS}"
-    )
-    set(OLM_FOUND TRUE)
-else()
-    set(OLM_LIB_FILE "${CMAKE_SOURCE_DIR}/../libolm/build/libolm.so" CACHE FILEPATH "libolm shared library")
-    if(NOT EXISTS "${OLM_LIB_FILE}")
-        execute_process(
-            COMMAND make -C "${CMAKE_SOURCE_DIR}/../libolm" -j
-            RESULT_VARIABLE olm_build_result
-        )
-        if(NOT olm_build_result EQUAL 0)
-            message(WARNING "Failed to build libolm. E2EE features will be disabled.")
-            set(OLM_FOUND FALSE)
-        else()
-            set(OLM_FOUND TRUE)
-        endif()
-    else()
-        set(OLM_FOUND TRUE)
-    endif()
-    if(OLM_FOUND)
+    if(USE_SYSTEM_OLM)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(LIBOLM REQUIRED olm)
         add_library(olm SHARED IMPORTED)
+        find_library(LIBOLM_LIBRARY_PATH olm REQUIRED)
         set_target_properties(olm PROPERTIES
-            IMPORTED_LOCATION "${OLM_LIB_FILE}"
-            INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/../libolm/include"
+            IMPORTED_LOCATION "${LIBOLM_LIBRARY_PATH}"
+            INTERFACE_INCLUDE_DIRECTORIES "${LIBOLM_INCLUDE_DIRS}"
         )
+    else()
+        message(FATAL_ERROR "The canonical core must provide the olm target")
     endif()
-endif()  # USE_SYSTEM_OLM
 else()
-    # olm comes from FetchContent(progressive-core).
     set(OLM_FOUND TRUE)
-endif()  # NOT TARGET olm
+endif()
 
 # nlohmann/json
 include(FetchContent)

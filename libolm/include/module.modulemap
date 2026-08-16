@@ -1,4 +1,0 @@
-module libolm {
-    header "olm/olm.h"
-    export *
-}

@@ -29,17 +29,21 @@ retired in favour of the C++ rewrite and lives in the `go-legacy` tag.
 
 ```
 matrixcli/
-├── cppcli/          # The C++23 client (the whole thing)
-│   ├── lib/http/    #   POSIX + OpenSSL HTTP client, SOCKS5/HTTP proxy
-│   ├── lib/matrix/  #   Matrix protocol (login, sync, send, events)
-│   ├── lib/         #   E2EE/sync core: fetched from progressive-chat/
-│   │                #   progressive-core (FetchContent, matrixcli_ecore alias;
-│   │                #   prebuilt artifact download with source fallback)
-│   ├── lib/api/     #   HTTP server, content negotiation, routing
-│   ├── lib/formats/ #   Format renderers (JSON, text, MD, gemtext, HTML)
-│   └── lib/tui/     #   ncurses terminal UI
-└── ROADMAP.md       # Full porting roadmap (in Russian)
+└── cppcli/          # The C++23 client (the whole thing)
+    ├── lib/http/    #   POSIX + OpenSSL HTTP client, SOCKS5/HTTP proxy
+    ├── lib/matrix/  #   Matrix protocol (login, sync, send, events)
+    ├── lib/         #   E2EE/sync core: fetched from progressive-chat/
+    │                #   progressive-core (FetchContent, matrixcli_ecore
+    │                #   alias; prebuilt artifact with source fallback)
+    ├── lib/api/     #   HTTP server, content negotiation, routing
+    ├── lib/formats/ #   Format renderers (JSON, text, MD, gemtext, HTML)
+    └── lib/tui/     #   ncurses terminal UI
 ```
+
+The dependencies (libolm 3.2.16, nlohmann/json, simdjson) are fetched at
+the build time via FetchContent and cached in the build tree — the repo
+itself stays dependency-free.
+
 
 ### Terminal TUI login
 
