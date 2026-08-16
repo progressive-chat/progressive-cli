@@ -95,6 +95,13 @@ int contentRows(const UiState& st);
 // The settings/display commands (defined in ascii_settings.cpp).
 // Returns true when the command was handled.
 bool asciiSettingsCommand(UiState& st, db::Database& dbi, const cli::Args& a);
+bool asciiCommandDispatch(UiState& st, db::Database& dbi, const cli::Args& a);
+
+// The helpers the commands use (defined in ascii_ui.cpp).
+std::vector<std::string> wrapText(const std::string& s, int width);
+int64_t parseDayMs(const std::string& s);
+std::string eventBody(const matrix::Event& ev);
+int centerRowIndexOf(const UiState& st, const std::string& eventId);
 
 } // namespace matrixcli
 

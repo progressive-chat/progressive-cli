@@ -15,6 +15,7 @@ set(SOURCES
     proxy_commands.cpp
     ascii_ui.cpp
     ascii_settings.cpp
+    ascii_commands.cpp
     cli/args.cpp
     server/server.cpp
     server/web_proxy.cpp

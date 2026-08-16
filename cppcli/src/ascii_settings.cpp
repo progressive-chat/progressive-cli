@@ -270,7 +270,27 @@ bool asciiSettingsCommand(UiState& st, db::Database& dbi, const cli::Args& a) {
             return true;
         }
         // ---- nickname / avatar / presence: the account options ----
-        if (a.command == "nickname" || a.command == "avatar" || a.command == "presence") {
+        if (a.command == "presence" &&
+            !a.positional.empty() &&
+            (a.positional[0] == "online" || a.positional[0] == "away" ||
+             a.positional[0] == "offline")) {
+            // The set-form only; the bare 'presence' fetches the members'
+            // presence (the other handler).
+            st.statusNote = "presence set: " + a.positional[0];
+            dbi.setSetting("presence", a.positional[0]);
+            if (pcore::init() && pcore::loadSavedSession()) {
+                matrix::Client cl;
+                db::StoredAccount sacc = dbi.loadAccount();
+                if (sacc.is_logged_in()) {
+                    cl.setHomeserverURL(sacc.homeserver_url);
+                    cl.setAccessToken(sacc.access_token);
+                    try { cl.setPresence(a.positional[0]); } catch (...) {}
+                }
+            }
+            std::cout << drawFrame(st) << std::flush;
+            return true;
+        }
+        if (a.command == "nickname" || a.command == "avatar") {
             if (a.positional.empty()) {
                 std::cout << "Usage: " << a.command
                           << (a.command == "nickname" ? " <name>" : a.command == "avatar" ? " <url>" : " <online|away|offline>")
@@ -279,22 +299,11 @@ bool asciiSettingsCommand(UiState& st, db::Database& dbi, const cli::Args& a) {
             }
             const std::string v = a.positional[0];
             dbi.setSetting(a.command == "nickname" ? "displayname"
-                           : a.command == "avatar" ? "avatar_url" : "presence", v);
+                                                        : "avatar_url", v);
             if (pcore::init() && pcore::loadSavedSession()) {
                 auto& client = pcore::core().client;
                 if (a.command == "nickname") client->setDisplayName(v);
-                else if (a.command == "avatar") client->setAvatarUrl(v);
-            }
-            if (a.command == "presence") {
-                // The presence goes via the lib/matrix client (the
-                // config.json session — the same one the TUI uses).
-                matrix::Client cl;
-                db::StoredAccount sacc = dbi.loadAccount();
-                if (sacc.is_logged_in()) {
-                    cl.setHomeserverURL(sacc.homeserver_url);
-                    cl.setAccessToken(sacc.access_token);
-                    try { cl.setPresence(v); } catch (...) {}
-                }
+                else client->setAvatarUrl(v);
             }
             st.statusNote = a.command + " set: " + v;
             std::cout << drawFrame(st) << std::flush;

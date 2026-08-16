@@ -182,7 +182,7 @@ std::string clip(const std::string& s, int width) {
 // Word-wrap a string to a display width. ANSI escape sequences are
 // atomic and zero-width; long words are hard-split; explicit \n forces
 // a line break. Continuation lines are indented by the caller.
-std::vector<std::string> wrapText(const std::string& s, int width) {
+std::vector<std::string> wrapTextImpl(const std::string& s, int width) {
     std::vector<std::string> lines;
     std::string cur;
     std::string word;
@@ -290,7 +290,7 @@ std::string highlightMentions(const std::string& body) {
 }
 
 // The matrix::Event's plain text body (newlines COLLAPSED to spaces).
-std::string eventBody(const matrix::Event& ev) {
+std::string eventBodyImpl(const matrix::Event& ev) {
     if (ev.content.is_object()) {
         auto it = ev.content.find("body");
         if (it != ev.content.end() && it->is_string()) {
@@ -367,7 +367,7 @@ int roomThreadCount(db::Database* db, const std::string& roomId) {
 }
 
 // "YYYY-MM-DD" -> unix ms (UTC noon to dodge timezone edges), -1 on error.
-int64_t parseDayMs(const std::string& s) {
+int64_t parseDayMsImpl(const std::string& s) {
     int y = 0, m = 0, d = 0;
     if (std::sscanf(s.c_str(), "%d-%d-%d", &y, &m, &d) != 3) return -1;
     std::tm t{};
@@ -416,7 +416,7 @@ std::string eventPreview(db::Database* db, const std::string& roomId,
                          const std::string& eventId) {
     matrix::Event ev;
     if (!db || eventId.empty() || !db->getEventById(eventId, ev)) return "";
-    std::string b = eventBody(ev);
+    std::string b = eventBodyImpl(ev);
     if (b.empty()) return "";
     return senderShortImpl(ev.sender) + ": " + clip(b, 24);
 }
@@ -517,7 +517,7 @@ std::string renderPermalinks(const std::string& body,
         if (!evPart.empty() && db) {
             matrix::Event ev;
             if (db->getEventById(evPart, ev)) {
-                std::string preview = eventBody(ev);
+                std::string preview = eventBodyImpl(ev);
                 pill += " \u00b7 " + senderShortImpl(ev.sender) + ": " + clip(preview, 24);
             } else {
                 pill += " \u00b7 (event)";
@@ -587,7 +587,7 @@ std::string roomLastMsg(db::Database* db, const std::string& roomId,
     if (ev.event_id.empty()) return "";
     std::string preview;
     if (ev.type == "m.room.message" || ev.type == "m.sticker") {
-        std::string body = eventBody(ev);
+        std::string body = eventBodyImpl(ev);
         std::string mt;
         auto mtIt = ev.content.find("msgtype");
         if (mtIt != ev.content.end() && mtIt->is_string()) mt = mtIt->get<std::string>();
@@ -619,7 +619,7 @@ std::string roomLastMsg(db::Database* db, const std::string& roomId,
 
 // The row index of an event inside the chat timeline (day separators
 // included) — mirrors the centerRows builder in drawFrame.
-int centerRowIndexOf(const UiState& st, const std::string& eventId) {
+int centerRowIndexOfImpl(const UiState& st, const std::string& eventId) {
     int row = 0;
     int64_t prevDay = -1;
     for (const auto& ev : st.messages) {
@@ -637,7 +637,7 @@ int centerRowIndexOf(const UiState& st, const std::string& eventId) {
             for (int lvl = 0; lvl < 3; ++lvl) {
                 matrix::Event prev;
                 if (!st.db->getEventById(cur, prev)) break;
-                if (eventBody(prev).empty()) break;
+                if (eventBodyImpl(prev).empty()) break;
                 nl++;
                 auto rel = prev.content.find("m.relates_to");
                 if (rel == prev.content.end() || !rel->is_object()) break;
@@ -945,7 +945,7 @@ std::vector<std::string> roomThreadList(db::Database* db,
             }
         }
         if (rc > 0) {
-            thr.push_back("⤷ " + clip(eventBody(ev), clipW) + " ("
+            thr.push_back("⤷ " + clip(eventBodyImpl(ev), clipW) + " ("
                           + std::to_string(rc) + ")");
             // The last reply under it: nickname + time, like Element.
             if (last) {
@@ -1491,7 +1491,7 @@ std::string drawFrameImpl(const UiState& st) {
             const std::string& pid = (*pinned)[0].get<std::string>();
             matrix::Event pev;
             if (st.db->getEventById(pid, pev)) {
-                std::string pv = eventBody(pev);
+                std::string pv = eventBodyImpl(pev);
                 out += "  \xf0\x9f\x93\x8c " + clip(pv, W - 4) + "\n";
             }
             break;
@@ -1630,7 +1630,7 @@ std::string drawFrameImpl(const UiState& st) {
                     }
                     if (rc > 0) {
                         if (!trow.empty()) trow += "  ";
-                        trow += "⤷ " + clip(eventBody(ev), 20) + " ("
+                        trow += "⤷ " + clip(eventBodyImpl(ev), 20) + " ("
                               + std::to_string(rc) + ")";
                     }
                 }
@@ -1747,7 +1747,7 @@ std::string drawFrameImpl(const UiState& st) {
                 for (int lvl = 0; lvl < 3; ++lvl) {
                     matrix::Event prev;
                     if (!st.db->getEventById(cur, prev)) break;
-                    std::string preview = eventBody(prev);
+                    std::string preview = eventBodyImpl(prev);
                     if (preview.empty()) break;
                     // The chain line uses the full effective panel width
                     // (the whole screen in mobile) — the wrap takes care of
@@ -2047,7 +2047,7 @@ std::string drawFrameImpl(const UiState& st) {
                         line0 = prefix + timeStr + " " + head + idSuffix;
                     }
                     centerRows.push_back(line0);
-                    auto bLines = wrapText(body, wrapW);
+                    auto bLines = wrapTextImpl(body, wrapW);
                     for (const auto& bl : bLines) {
                         centerRows.push_back(std::string(8, ' ') + bl);
                     }
@@ -2055,7 +2055,7 @@ std::string drawFrameImpl(const UiState& st) {
                     // Reserve the time at the first line's right edge.
                     std::string inner = prefix + row + idSuffix;
                     int reserve = displayWidth(timeStr) + 1;
-                    auto tLines = wrapText(inner, std::max(8, wrapW - reserve));
+                    auto tLines = wrapTextImpl(inner, std::max(8, wrapW - reserve));
                     for (size_t li = 0; li < tLines.size(); ++li) {
                         if (li == 0) {
                             int padN = wrapW + 8 - displayWidth(tLines[0])
@@ -2068,7 +2068,7 @@ std::string drawFrameImpl(const UiState& st) {
                     }
                 } else {
                     std::string first = prefix + timeStr + " " + row + idSuffix;
-                    std::vector<std::string> lines = wrapText(first, wrapW);
+                    std::vector<std::string> lines = wrapTextImpl(first, wrapW);
                     for (size_t li = 0; li < lines.size(); ++li) {
                         if (li == 0) {
                             centerRows.push_back(lines[0]);
@@ -2141,7 +2141,7 @@ std::string drawFrameImpl(const UiState& st) {
             }
             if (rc > 0) {
                 rightRows.push_back(std::to_string(idx + 1) + " \u2937 "
-                                    + clip(eventBody(ev), 20) + " (" +
+                                    + clip(eventBodyImpl(ev), 20) + " (" +
                                     std::to_string(rc) + ")");
                 idx++;
             }
@@ -2151,7 +2151,7 @@ std::string drawFrameImpl(const UiState& st) {
         // One thread: the root + its replies (Element's thread panel),
         // wrapped to the panel width so long lines continue below.
         auto pushWrapped = [&](const std::string& line) {
-            auto lines = wrapText(line, std::max(8, rightW - 1));
+            auto lines = wrapTextImpl(line, std::max(8, rightW - 1));
             for (size_t li = 0; li < lines.size(); ++li) {
                 rightRows.push_back((li == 0 ? std::string()
                                              : std::string(4, ' ')) + lines[li]);
@@ -2161,12 +2161,12 @@ std::string drawFrameImpl(const UiState& st) {
             for (const auto& ev : st.messages) {
                 if (ev.event_id == st.threadRootId) {
                     pushWrapped("[" + senderShortImpl(ev.sender) + "] "
-                                + eventBody(ev));
+                                + eventBodyImpl(ev));
                 }
             }
             for (const auto& ev : st.threadReplies) {
                 pushWrapped("  \u2937 [" + senderShortImpl(ev.sender) + "] "
-                            + eventBody(ev));
+                            + eventBodyImpl(ev));
             }
         }
         if (rightRows.empty()) rightRows.push_back("(thread is empty)");
@@ -2185,7 +2185,7 @@ std::string drawFrameImpl(const UiState& st) {
                     idx++;
                     if (ev.event_id == st.threadRootId) continue;
                     thr.push_back(std::to_string(idx) + " \u2937 "
-                                  + clip(eventBody(ev), 20) + " (" +
+                                  + clip(eventBodyImpl(ev), 20) + " (" +
                                   std::to_string(rc) + ")");
                 }
             }
@@ -2219,7 +2219,7 @@ std::string drawFrameImpl(const UiState& st) {
                 }
                 if (rc > 0 && shown < 3) {
                     rightRows.push_back(clip(rname, 10) + ": \u2937 "
-                                        + clip(eventBody(ev), 16) + " (" +
+                                        + clip(eventBodyImpl(ev), 16) + " (" +
                                         std::to_string(rc) + ")");
                     shown++;
                 }
@@ -2261,7 +2261,7 @@ std::string drawFrameImpl(const UiState& st) {
             rightRows.push_back("----------");
         }
         auto pushWrapped = [&](const std::string& line) {
-            auto lines = wrapText(line, std::max(8, rightW - 1));
+            auto lines = wrapTextImpl(line, std::max(8, rightW - 1));
             for (size_t li = 0; li < lines.size(); ++li) {
                 rightRows.push_back((li == 0 ? std::string()
                                              : std::string(2, ' ')) + lines[li]);
@@ -2546,6 +2546,16 @@ int contentRows(const UiState& st) { return contentRowsImpl(st); }
 
 // The public wrapper over the anonymous-namespace renderer — the llm CLI
 // shares the same ANSI markdown rendering as the chat view.
+
+std::vector<std::string> wrapText(const std::string& s, int width) {
+    return wrapTextImpl(s, width);
+}
+int64_t parseDayMs(const std::string& s) { return parseDayMsImpl(s); }
+std::string eventBody(const matrix::Event& ev) { return eventBodyImpl(ev); }
+int centerRowIndexOf(const UiState& st, const std::string& eventId) {
+    return centerRowIndexOfImpl(st, eventId);
+}
+
 std::string renderMarkdownAnsi(const std::string& body) {
     return renderMarkdownBody(body);
 }
@@ -2934,7 +2944,7 @@ int cmdAsciiUi(const cli::Args& args) {
     }
     // --jump <YYYY-MM-DD>: position the viewport at that day (static).
     if (args.options.count("jump")) {
-        int64_t dayMs = parseDayMs(args.options.at("jump"));
+        int64_t dayMs = parseDayMsImpl(args.options.at("jump"));
         if (dayMs > 0) {
             int64_t best = 0;
             std::string bestId;
@@ -2946,7 +2956,7 @@ int cmdAsciiUi(const cli::Args& args) {
                 }
             }
             if (!bestId.empty()) {
-                int row = centerRowIndexOf(st, bestId);
+                int row = centerRowIndexOfImpl(st, bestId);
                 if (row >= 0) {
                     st.scroll = std::max(0, row - 12);
                     st.focusEvent = bestId;
@@ -3063,7 +3073,7 @@ int cmdAsciiUi(const cli::Args& args) {
             if (mxc.empty()) continue;
             std::string fname = "media_" + ev.event_id.substr(0, 12) + ".bin";
             if (mxc.find("demo.local") != std::string::npos) {
-                std::cout << "── " << eventBody(ev) << " (demo preview) ──" << std::endl;
+                std::cout << "── " << eventBodyImpl(ev) << " (demo preview) ──" << std::endl;
                 std::string tmpImg = "/tmp/matrixcli_preview.png";
                 std::string gen = "magick -size 320x160 gradient:orange-red "
                     "-fill white -pointsize 20 -gravity center "
@@ -3161,6 +3171,7 @@ int cmdAsciiUi(const cli::Args& args) {
             continue;
         }
         if (asciiSettingsCommand(st, dbi, a)) continue;
+        if (asciiCommandDispatch(st, dbi, a)) continue;
         if (a.command == "open" || a.command == "view") {
             std::string q = a.positional.empty() ? st.currentRoomId : a.positional[0];
             loadRoomIntoStateImpl(st, q);
@@ -3461,13 +3472,6 @@ int cmdAsciiUi(const cli::Args& args) {
         // ---- modredact on|off: whether the client may redact OTHER
         // users' messages (the moderation) — off by default. Your OWN
         // messages are always redactable. ----
-        if (a.command == "modredact") {
-            const bool on = a.positional.size() >= 1 && a.positional[0] == "on";
-            dbi.setSetting("mod_redact", on ? "1" : "0");
-            st.statusNote = std::string("moderation redactions: ") + (on ? "allowed" : "blocked");
-            std::cout << drawFrameImpl(st) << std::flush;
-            continue;
-        }
         // ---- powerlevels: the full power-level structure (the custom
         // user levels, the event overrides, the defaults) ----
         if (a.command == "powerlevels" || a.command == "pl") {
@@ -3756,318 +3760,7 @@ int cmdAsciiUi(const cli::Args& args) {
             continue;
         }
         // ---- dump: export the room like Element Web ----
-        if (a.command == "dump" || a.command == "export") {
-            if (a.positional.empty()) {
-                std::cout << "Usage: dump <room> [room2 ...] [--format json|txt|html]"
-                             " [--out dir] [--media] [--server]"
-                          << std::endl;
-                std::cout << "  --media          download media files (default: no media)\n"
-                             "  --limit N        export only the last N events\n"
-                             "  --order asc|desc chronological (default asc, oldest first)\n"
-                             "  --types list     segment by type: messages|media|system"
-                             " (comma list, default all)\n"
-                             "  --media-max MB   skip media files larger than MB megabytes\n"
-                             "  --archive zip|tar.gz  pack the export into an archive"
-                             " (zip needs the 'zip' tool)\n"
-                             "  --server        dump the FULL history from the server (paginated),"
-                             " not just the cache"
-                          << std::endl;
-                continue;
-            }
-            std::string fmt = a.options.count("format") ? a.options.at("format") : "json";
-            std::string outDir = a.options.count("out") ? a.options.at("out") : ".";
-            bool withMedia = a.options.count("media");
-            int limit = 0;
-            if (a.options.count("limit")) {
-                try { limit = std::stoi(a.options.at("limit")); } catch (...) {}
-            }
-            bool descOrder = a.options.count("order") && a.options.at("order") == "desc";
-            std::string types = a.options.count("types") ? a.options.at("types") : "all";
-            long long mediaMaxBytes = -1;
-            if (a.options.count("media-max")) {
-                try {
-                    double mb = std::stod(a.options.at("media-max"));
-                    mediaMaxBytes = static_cast<long long>(mb * 1024 * 1024);
-                } catch (...) {}
-            }
-            std::string archive = a.options.count("archive") ? a.options.at("archive") : "";
-            // Media needs a session (downloads); --media without one = note.
-            bool mediaSession = withMedia && pcore::init() && pcore::loadSavedSession();
-            if (withMedia && !mediaSession) {
-                std::cout << "note: --media needs a logged-in session — exporting events "
-                             "only (mxc URLs are in the JSON)." << std::endl;
-            }
-            // Type segment filter.
-            auto typeAllowed = [&types](const matrix::Event& ev) {
-                if (types == "all") return true;
-                bool isMedia = false;
-                bool isSystem = ev.type == "m.room.member" || ev.type == "m.room.name" ||
-                                ev.type == "m.room.topic" || ev.type == "m.room.avatar" ||
-                                ev.type == "m.room.create" || ev.type == "m.room.power_levels" ||
-                                ev.type == "m.room.join_rules";
-                if (ev.type == "m.room.message" && ev.content.is_object()) {
-                    auto mt = ev.content.find("msgtype");
-                    if (mt != ev.content.end() && mt->is_string()) {
-                        std::string m = mt->get<std::string>();
-                        isMedia = m == "m.image" || m == "m.video" || m == "m.audio" ||
-                                  m == "m.file" || m == "m.sticker";
-                    }
-                }
-                if (ev.type == "m.sticker") isMedia = true;
-                bool isMsg = ev.type == "m.room.message" || ev.type == "m.sticker";
-                if (types.find("messages") != std::string::npos && isMsg && !isMedia) return true;
-                if (types.find("media") != std::string::npos && isMedia) return true;
-                if (types.find("system") != std::string::npos && isSystem) return true;
-                return false;
-            };
-            bool wantServer = a.options.count("server");
-            bool serverSession = wantServer && pcore::init() && pcore::loadSavedSession();
-            if (wantServer && !serverSession) {
-                std::cout << "note: --server needs a logged-in session — using the cache "
-                             "instead." << std::endl;
-            }
-            for (const auto& roomQ : a.positional) {
-                std::string rid = roomQ;
-                std::string rname = roomQ;
-                for (const auto& r : st.rooms) {
-                    std::string id = r.value("room_id", "");
-                    std::string name = r.value("name", "");
-                    if (id == roomQ || id.find(roomQ) != std::string::npos ||
-                        name == roomQ || name.find(roomQ) == 0 ||
-                        name.find(roomQ) != std::string::npos) {
-                        rid = id;
-                        rname = name.empty() ? rid : name;
-                        break;
-                    }
-                }
-                std::vector<matrix::Event> events;
-                if (serverSession) {
-                    // Full history from the server: walk /messages?dir=b from
-                    // the top (newest) backwards until the beginning.
-                    auto& core = pcore::core();
-                    auto client = core.client;
-                    std::string from = "";
-                    int received = 0;
-                    std::cout << "dump: " << rname << " — fetching full history from the "
-                                 "server..." << std::endl;
-                    for (int guard = 0; guard < 2000; ++guard) {
-                        auto r = client->getMessages(rid, from, 100);
-                        if (!r.ok) {
-                            std::cout << "  fetch error: " << r.error.message << std::endl;
-                            break;
-                        }
-                        std::string end;
-                        try {
-                            auto j = nlohmann::json::parse(r.data);
-                            auto chunk = j.value("chunk", nlohmann::json::array());
-                            for (const auto& ev : chunk) {
-                                matrix::Event e;
-                                e.event_id = ev.value("event_id", "");
-                                e.sender = ev.value("sender", "");
-                                e.type = ev.value("type", "");
-                                e.origin_server_ts = ev.value("origin_server_ts", 0LL);
-                                auto c = ev.find("content");
-                                if (c != ev.end() && c->is_object()) e.content = *c;
-                                events.push_back(std::move(e));
-                            }
-                            received += static_cast<int>(chunk.size());
-                            end = j.value("end", "");
-                            std::cout << "  received " << received << " events..." << std::endl;
-                            if (chunk.empty() || end.empty() || end == from) break;
-                        } catch (...) {
-                            break;
-                        }
-                        from = end;
-                    }
-                } else {
-                    events = dbi.getEvents(rid, 50000);
-                    std::cout << "dump: " << rname << " — received " << events.size()
-                              << " events, processing..." << std::endl;
-                }
-                // Type segment filter.
-                if (types != "all") {
-                    std::vector<matrix::Event> filtered;
-                    for (const auto& ev : events) {
-                        if (typeAllowed(ev)) filtered.push_back(ev);
-                    }
-                    events = std::move(filtered);
-                }
-                // --limit N: keep only the last N (the newest) events.
-                if (limit > 0 && static_cast<int>(events.size()) > limit) {
-                    events.erase(events.begin(), events.end() - limit);
-                }
-                // --order desc: newest first (asc = chronological, the default).
-                if (descOrder) {
-                    std::reverse(events.begin(), events.end());
-                }
-                std::string safeName = rname;
-                for (auto& c : safeName) {
-                    if (c == '/' || c == '#' || c == '!' || c == ':' || c == ' ') c = '_';
-                }
-                std::string path = outDir + "/" + safeName + "." + fmt;
-                std::ofstream fout(path);
-                if (!fout) {
-                    std::cout << "  cannot write " << path << std::endl;
-                    continue;
-                }
-                int processed = 0;
-                if (fmt == "json") {
-                    nlohmann::json j;
-                    j["room_id"] = rid;
-                    j["name"] = rname;
-                    j["events"] = nlohmann::json::array();
-                    for (const auto& ev : events) {
-                        nlohmann::json e;
-                        e["event_id"] = ev.event_id;
-                        e["sender"] = ev.sender;
-                        e["type"] = ev.type;
-                        e["origin_server_ts"] = ev.origin_server_ts;
-                        e["content"] = ev.content;
-                        j["events"].push_back(e);
-                        processed++;
-                    }
-                    fout << j.dump(1) << std::endl;
-                } else if (fmt == "txt") {
-                    for (const auto& ev : events) {
-                        std::time_t t = static_cast<std::time_t>(ev.origin_server_ts / 1000);
-                        std::tm tm{};
-                        localtime_r(&t, &tm);
-                        char buf[20];
-                        std::snprintf(buf, sizeof(buf), "%02d:%02d:%02d",
-                                      tm.tm_hour, tm.tm_min, tm.tm_sec);
-                        fout << "[" << buf << "] " << senderShortImpl(ev.sender) << ": "
-                             << eventBody(ev) << std::endl;
-                        processed++;
-                    }
-                } else if (fmt == "html") {
-                    fout << "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-                         << "<title>" << rname << "</title></head><body><h1>"
-                         << rname << "</h1>" << std::endl;
-                    for (const auto& ev : events) {
-                        fout << "<p><b>" << senderShortImpl(ev.sender) << "</b> "
-                             << eventBody(ev) << "</p>" << std::endl;
-                        processed++;
-                    }
-                    fout << "</body></html>" << std::endl;
-                } else {
-                    std::cout << "  unknown format '" << fmt
-                              << "' (json|txt|html)" << std::endl;
-                    continue;
-                }
-                fout.close();
-                // Media pass: download the attached files into <out>/<name>_media/.
-                int mediaSaved = 0;
-                if (withMedia && mediaSession) {
-                    std::string mediaDir = outDir + "/" + safeName + "_media";
-                    std::filesystem::create_directories(mediaDir);
-                    auto& core = pcore::core();
-                    auto client = core.client;
-                    for (const auto& ev : events) {
-                        if (!ev.content.is_object()) continue;
-                        std::string mxc, key, iv, sha, mime;
-                        auto urlIt = ev.content.find("url");
-                        if (urlIt != ev.content.end() && urlIt->is_string()) {
-                            mxc = urlIt->get<std::string>();
-                        }
-                        auto fIt = ev.content.find("file");
-                        if (mxc.empty() && fIt != ev.content.end() && fIt->is_object()) {
-                            auto fu = fIt->find("url");
-                            if (fu != fIt->end() && fu->is_string()) mxc = fu->get<std::string>();
-                            auto k = fIt->find("key");
-                            if (k != fIt->end() && k->is_string()) key = k->get<std::string>();
-                            auto ivv = fIt->find("iv");
-                            if (ivv != fIt->end() && ivv->is_string()) iv = ivv->get<std::string>();
-                            auto h = fIt->find("hashes");
-                            if (h != fIt->end() && h->is_object()) {
-                                auto s = h->find("sha256");
-                                if (s != h->end() && s->is_string()) sha = s->get<std::string>();
-                            }
-                        }
-                        if (mxc.empty()) continue;
-                        auto infoIt = ev.content.find("info");
-                        if (mediaMaxBytes > 0 && infoIt != ev.content.end() &&
-                            infoIt->is_object()) {
-                            auto sz = infoIt->find("size");
-                            if (sz != infoIt->end() && sz->is_number()) {
-                                if (sz->get<long long>() > mediaMaxBytes) {
-                                    std::cout << "  media skip (over --media-max): "
-                                              << ev.event_id << std::endl;
-                                    continue;
-                                }
-                            }
-                        }
-                        if (infoIt != ev.content.end() && infoIt->is_object()) {
-                            auto m = infoIt->find("mimetype");
-                            if (m != infoIt->end() && m->is_string()) mime = m->get<std::string>();
-                        }
-                        std::string ext = "bin";
-                        if (mime == "image/png") ext = "png";
-                        else if (mime == "image/jpeg") ext = "jpg";
-                        else if (mime == "image/gif") ext = "gif";
-                        else if (mime == "image/webp") ext = "webp";
-                        else if (mime == "video/mp4") ext = "mp4";
-                        else if (mime == "audio/mpeg") ext = "mp3";
-                        else if (mime == "audio/ogg") ext = "ogg";
-                        std::string local = mediaDir + "/" + ev.event_id.substr(0, 20) + "." + ext;
-                        std::vector<uint8_t> bytes;
-                        if (!key.empty()) {
-                            auto r = client->downloadMediaEncrypted(mxc, key, iv, sha);
-                            if (r.ok) bytes = r.data;
-                        } else {
-                            auto r = client->downloadMedia(mxc, 0, 0);
-                            if (r.ok) bytes = r.data;
-                        }
-                        if (bytes.empty()) {
-                            std::cout << "  media skip (download failed): " << ev.event_id
-                                      << std::endl;
-                            continue;
-                        }
-                        std::ofstream mout(local, std::ios::binary);
-                        if (!mout) continue;
-                        mout.write(reinterpret_cast<const char*>(bytes.data()),
-                                   static_cast<std::streamsize>(bytes.size()));
-                        mout.close();
-                        mediaSaved++;
-                    }
-                }
-                // --archive zip|tar.gz: pack the dump + the media folder.
-                if (!archive.empty()) {
-                    std::string archPath = outDir + "/" + safeName + "." + archive;
-                    if (archive == "zip") {
-                        std::string cmd = "cd '" + outDir + "' && zip -r -q '" + safeName
-                                        + ".zip' '" + safeName + "." + fmt + "'"
-                                        + (withMedia ? " '" + safeName + "_media'" : "")
-                                        + " 2>/dev/null";
-                        if (std::system(cmd.c_str()) == 0) {
-                            std::cout << "  archive: " << archPath << std::endl;
-                        } else {
-                            std::cout << "  archive failed (is 'zip' installed?)" << std::endl;
-                        }
-                    } else if (archive == "tar.gz") {
-                        std::string cmd = "cd '" + outDir + "' && tar -czf '" + safeName
-                                        + ".tar.gz' '" + safeName + "." + fmt + "'"
-                                        + (withMedia ? " '" + safeName + "_media'" : "")
-                                        + " 2>/dev/null";
-                        if (std::system(cmd.c_str()) == 0) {
-                            std::cout << "  archive: " << archPath << std::endl;
-                        } else {
-                            std::cout << "  archive failed" << std::endl;
-                        }
-                    } else {
-                        std::cout << "  unknown --archive '" << archive
-                                  << "' (zip|tar.gz)" << std::endl;
-                    }
-                }
-                std::cout << "  done: " << path << " (" << processed << " events"
-                          << (withMedia ? ", " + std::to_string(mediaSaved) + " media files)" : ")")
-                          << std::endl;
-                st.statusNote = "dump: " + rname + " — " + std::to_string(events.size())
-                              + " events, " + std::to_string(processed) + " processed -> " + path
-                              + (withMedia ? " + " + std::to_string(mediaSaved) + " media" : "");
-            }
-            std::cout << drawFrameImpl(st) << std::flush;
-            continue;
-        }
+
         // ---- profile: show a user's profile (display name, avatar) ----
         if (a.command == "profile") {
             if (a.positional.empty()) {
@@ -5237,7 +4930,7 @@ int cmdAsciiUi(const cli::Args& args) {
                              " default = the cache" << std::endl;
                 continue;
             }
-            int64_t dayMs = parseDayMs(a.positional[1]);
+            int64_t dayMs = parseDayMsImpl(a.positional[1]);
             if (dayMs < 0) {
                 std::cout << "Bad date '" << a.positional[1] << "' (use YYYY-MM-DD)"
                           << std::endl;
@@ -5460,134 +5153,9 @@ int cmdAsciiUi(const cli::Args& args) {
             continue;
         }
         // ---- search filters: --sender, --since, --until ----
-        if (a.command == "search" || a.command == "find") {
-            if (a.positional.empty()) {
-                std::cout << "Usage: find <query> [--limit N] [--sender @u]"
-                             " [--since YYYY-MM-DD] [--until YYYY-MM-DD]\n"
-                             "  The full-text search over the cached messages"
-                             " — the bodies, the mxids, the reply context and"
-                             " the matrix.to links.\n";
-                continue;
-            }
-            int limit = 10;
-            if (a.options.count("limit")) {
-                try { limit = std::stoi(a.options.at("limit")); } catch (...) {}
-            }
-            int64_t sinceMs = a.options.count("since") ? parseDayMs(a.options.at("since")) : -1;
-            int64_t untilMs = a.options.count("until") ? parseDayMs(a.options.at("until")) : -1;
-            std::string senderF = a.options.count("sender") ? a.options.at("sender") : "";
-            auto hits = dbi.search(a.positional[0], std::max(limit, 5) * 8);
-            int shown = 0;
-            std::cout << std::endl;
-            for (const auto& h : hits) {
-                if (shown >= limit) break;
-                if (!senderF.empty() && h.value("sender", "") != senderF) continue;
-                const int64_t ts = h.value("origin_server_ts", 0LL);
-                if (sinceMs > 0 && ts < sinceMs) continue;
-                if (untilMs > 0 && ts > untilMs) continue;
-                const std::string roomId = h.value("room_id", "");
-                const std::string roomName = h.value("room_name", roomId);
-                const std::string mxid = h.value("sender", "?");
-                const std::string body =
-                    h.value("content", nlohmann::json::object()).value("body", "");
 
-                std::time_t t = ts / 1000;
-                char tbuf[24];
-                std::strftime(tbuf, sizeof(tbuf), "%m-%d %H:%M", std::localtime(&t));
-                std::cout << "  \x1b[1m" << roomName << "\x1b[0m  "
-                          << senderShortImpl(mxid) << "  (\x1b[36m" << mxid
-                          << "\x1b[0m)  " << tbuf << std::endl;
-                // The full body, wrapped to the terminal.
-                auto lines = wrapText(body, terminalWidthImpl() - 6);
-                for (const auto& l : lines) std::cout << "    " << l << std::endl;
-
-                // The reply context: the parent message when present.
-                matrix::Event ev;
-                if (dbi.getEventById(h.value("event_id", ""), ev) &&
-                    ev.content.contains("m.relates_to")) {
-                    const auto& rel = ev.content["m.relates_to"];
-                    const std::string relType = rel.value("rel_type", "");
-                    if (relType == "m.in_reply_to") {
-                        const std::string parentId = rel.value("event_id", "");
-                        matrix::Event parent;
-                        if (dbi.getEventById(parentId, parent)) {
-                            std::string pbody = parent.content.value("body", "");
-                            if (pbody.size() > 120) pbody = pbody.substr(0, 120) + "...";
-                            std::cout << "    \x1b[90m\u21b3 reply to "
-                                      << senderShortImpl(parent.sender) << ": "
-                                      << pbody << "\x1b[0m" << std::endl;
-                        }
-                    }
-                }
-                std::string eid = h.value("event_id", "");
-                if (!eid.empty() && eid[0] == '$') eid = eid.substr(1);
-                std::cout << "    \x1b[90m\U0001F517 https://matrix.to/#/"
-                          << roomId << "/$" << eid
-                          << "\x1b[0m" << std::endl << std::endl;
-                shown++;
-            }
-            if (shown == 0) {
-                std::cout << "No matches for '" << a.positional[0] << "'"
-                          << (senderF.empty() ? "" : " from " + senderF) << std::endl;
-            } else {
-                std::cout << shown << " match" << (shown == 1 ? "" : "es")
-                          << " for '" << a.positional[0] << "'"
-                          << (senderF.empty() ? "" : " from " + senderF) << std::endl;
-            }
-            continue;
-        }
         // ---- goto: jump the chat viewport to an event ----
-        if (a.command == "goto") {
-            if (a.positional.empty()) {
-                std::cout << "Usage: goto <event_id> | lastread | newest (back to the latest)"
-                          << std::endl;
-                continue;
-            }
-            std::string q = a.positional[0];
-            if (q == "lastread" || q == "last-read" || q == "unread") {
-                // Jump to the last-read position (the local m.fully_read
-                // copy), right after the marker.
-                if (st.readMarker.empty()) {
-                    st.statusNote = "no last-read marker (read <room> sets it)";
-                    std::cout << drawFrameImpl(st) << std::flush;
-                    continue;
-                }
-                q = st.readMarker;
-            }
-            matrix::Event target;
-            if (!st.db->getEventById(q, target)) {
-                st.statusNote = "event not in the cache: " + q;
-                std::cout << drawFrameImpl(st) << std::flush;
-                continue;
-            }
-            if (st.currentRoomId != target.room_id) {
-                loadRoomIntoStateImpl(st, target.room_id);
-            }
-            bool inWindow = std::find_if(
-                st.messages.begin(), st.messages.end(),
-                [&](const matrix::Event& ev) { return ev.event_id == q; }) !=
-                st.messages.end();
-            if (!inWindow) {
-                st.limit = 5000;  // the event is older than the window
-                loadRoomIntoStateImpl(st, target.room_id);
-                inWindow = std::find_if(
-                    st.messages.begin(), st.messages.end(),
-                    [&](const matrix::Event& ev) { return ev.event_id == q; }) !=
-                    st.messages.end();
-            }
-            if (!inWindow) {
-                st.statusNote = "event exists but is outside the loaded window";
-                std::cout << drawFrameImpl(st) << std::flush;
-                continue;
-            }
-            st.focusEvent = q;
-            int rowIdx = centerRowIndexOf(st, q);
-            st.scroll = rowIdx >= 0 ? std::max(0, rowIdx - 12) : 0;
-            if (st.mobile) st.mobileTab = 1;
-            st.statusNote = "viewing event ‹" + q + "› · 'newest' to return";
-            std::cout << drawFrameImpl(st) << std::flush;
-            continue;
-        }
+
         if (a.command == "newest") {
             st.focusEvent.clear();
             st.scroll = 1 << 30;  // clamped to the bottom in drawFrame
@@ -6314,7 +5882,7 @@ replyRef:
                         matrix::Event target;
                         if (st.db->getEventById(evPart, target)) {
                             std::cout << "  [" << senderShortImpl(target.sender) << ": "
-                                      << clip(eventBody(target), 40) << "]";
+                                      << clip(eventBodyImpl(target), 40) << "]";
                         } else {
                             std::cout << "  (event not in the cache)";
                         }
@@ -6413,7 +5981,7 @@ replyRef:
                     break;
                 }
             }
-            if (!st.messages.empty()) last = eventBody(st.messages.back());
+            if (!st.messages.empty()) last = eventBodyImpl(st.messages.back());
             std::string cmd = "notify-send 'progressive-cli: " + rname + "' '" + clip(last, 80)
                             + "' 2>/dev/null || echo -e '\a'";
             std::system(cmd.c_str());
