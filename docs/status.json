@@ -1,8 +1,8 @@
 {
  "generated": {
-  "version": "v0.5.1-25-gc98a210-dirty",
-  "commit": "c98a21018f4738ba8d85ee89900224cce6d5a0d5",
-  "builtAt": "2026-08-17T09:45:49+00:00",
+  "version": "v0.5.1-31-gfc94722",
+  "commit": "fc9472213488f2bbd2dbec65a1501d67b9b29cac",
+  "builtAt": "2026-08-17T12:12:08+00:00",
   "generator": "docs/gen.mjs"
  },
  "note": "This file is generated. Edit docs/features.json instead.",
@@ -329,6 +329,71 @@
    }
   },
   {
+   "id": "demo-tui",
+   "name": "Demo TUI (demo tui \u2014 the full ncurses session)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/demo_tui.cpp",
+    "pattern": "cmdTUI",
+    "missing": false,
+    "line": 90
+   }
+  },
+  {
+   "id": "demo-ui-static",
+   "name": "Demo ASCII UI (demo ui \u2014 static frame at any terminal size)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/demo_repl.cpp",
+    "pattern": "mode == \"ui\"",
+    "missing": false,
+    "line": 310
+   }
+  },
+  {
+   "id": "demo-mobile",
+   "name": "Demo mobile tabs (demo mobile)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/demo_repl.cpp",
+    "pattern": "mode == \"mobile\"",
+    "missing": false,
+    "line": 314
+   }
+  },
+  {
+   "id": "demo-cli",
+   "name": "Demo CLI commands (demo cli)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/demo_repl.cpp",
+    "pattern": "mode == \"cli\"",
+    "missing": false,
+    "line": 319
+   }
+  },
+  {
+   "id": "demo-markdown",
+   "name": "Demo markdown renderer (demo markdown)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/demo_repl.cpp",
+    "pattern": "demoMarkdownShowcase",
+    "missing": false,
+    "line": 107
+   }
+  },
+  {
    "id": "demo-vote",
    "name": "Demo votings (demo vote \u2014 15 votings in 10 rooms)",
    "category": "ui",
@@ -339,6 +404,71 @@
     "pattern": "demoVoteShowcase",
     "missing": false,
     "line": 150
+   }
+  },
+  {
+   "id": "notifications-toggle",
+   "name": "Notifications on|off (settings + corner)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/ascii_ui_repl_b.cpp",
+    "pattern": "notifications on",
+    "missing": false,
+    "line": 610
+   }
+  },
+  {
+   "id": "monitor-room",
+   "name": "Room monitor (monitor <room> <0-100|off> \u2014 receipts at 100%)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/ascii_ui_repl_b.cpp",
+    "pattern": "monitor <room>",
+    "missing": false,
+    "line": 620
+   }
+  },
+  {
+   "id": "receipts-hidden",
+   "name": "m.receipt excluded from the chat timeline",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/ascii_ui_draw.cpp",
+    "pattern": "m.receipt",
+    "missing": false,
+    "line": 414
+   }
+  },
+  {
+   "id": "frame-alignment",
+   "name": "Header/frame alignment with wide emoji (cpWidth U+1F4E5)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/ascii_ui.cpp",
+    "pattern": "0x1F4E5",
+    "missing": false,
+    "line": 101
+   }
+  },
+  {
+   "id": "db-fresh-install",
+   "name": "Fresh DB: rooms insert on first run (migration order fix)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "lib/database/db.cpp",
+    "pattern": "CREATE TABLE IF NOT EXISTS rooms",
+    "missing": false,
+    "line": 76
    }
   },
   {
