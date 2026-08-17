@@ -780,6 +780,26 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
     if (!st.mobile && st.showNotifications) {
         int free = rows - static_cast<int>(rightRows.size());
         if (free >= 2) {
+            auto notifClock = [&](const std::tm& tm) {
+                char buf[20];
+                int h12 = tm.tm_hour % 12;
+                if (h12 == 0) h12 = 12;
+                const char* ap = tm.tm_hour < 12 ? "AM" : "PM";
+                if (st.clock12h) {
+                    std::snprintf(buf, sizeof(buf),
+                                  st.showSeconds ? "%d:%02d:%02d %s"
+                                                 : "%d:%02d %s",
+                                  h12, tm.tm_min,
+                                  st.showSeconds ? tm.tm_sec : 0, ap);
+                } else {
+                    std::snprintf(buf, sizeof(buf),
+                                  st.showSeconds ? "%02d:%02d:%02d"
+                                                 : "%02d:%02d",
+                                  tm.tm_hour, tm.tm_min,
+                                  st.showSeconds ? tm.tm_sec : 0);
+                }
+                return std::string(buf);
+            };
             auto notifTime = [&](int64_t ts) {
                 std::time_t t = static_cast<std::time_t>(ts / 1000)
                               + static_cast<std::time_t>(st.tzOffset) * 3600;
@@ -811,24 +831,7 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                                   (tm.tm_year + 1900) % 100);
                     datePart = dbuf;
                 }
-                char buf[20];
-                int h12 = tm.tm_hour % 12;
-                if (h12 == 0) h12 = 12;
-                const char* ap = tm.tm_hour < 12 ? "AM" : "PM";
-                if (st.clock12h) {
-                    std::snprintf(buf, sizeof(buf),
-                                  st.showSeconds ? "%d:%02d:%02d %s"
-                                                 : "%d:%02d %s",
-                                  h12, tm.tm_min,
-                                  st.showSeconds ? tm.tm_sec : 0, ap);
-                } else {
-                    std::snprintf(buf, sizeof(buf),
-                                  st.showSeconds ? "%02d:%02d:%02d"
-                                                 : "%02d:%02d",
-                                  tm.tm_hour, tm.tm_min,
-                                  st.showSeconds ? tm.tm_sec : 0);
-                }
-                return datePart + std::string(buf);
+                return datePart + notifClock(tm);
             };
             rightRows.push_back(st.showEmoji ? "\xf0\x9f\x94\x94 notifications"
                                              : "[notif]");
@@ -840,27 +843,28 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
             } else {
                 int shown = 0;
                 bool squeezed = false;  // one row left: previews go inline
+                int budget = std::max(8, rightW - 1);
                 for (const auto& n : st.notifications) {
                     if (shown >= free - 1) break;
-                    std::string line;
+                    std::string marker;
                     switch (n.kind) {
                         case 1:  // ping
-                            line += st.showEmoji
+                            marker = st.showEmoji
                                  ? "\x1b[1;33m\xf0\x9f\x94\x94\x1b[0m "
                                  : "[ping] ";
                             break;
                         case 2:  // reply to my message
-                            line += st.showEmoji
+                            marker = st.showEmoji
                                  ? "\x1b[36m\xe2\x86\xaa\x1b[0m "
                                  : "[reply] ";
                             break;
                         case 3:  // my message read
-                            line += st.showEmoji
+                            marker = st.showEmoji
                                  ? "\x1b[32m\xe2\x9c\x93\x1b[0m "
                                  : "[seen] ";
                             break;
                         default:
-                            line += "  ";
+                            marker = "  ";
                     }
                     // Split "sender pinged you: <preview>" — the preview
                     // gets its own indented row while rows allow, then
@@ -871,24 +875,84 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                         head = n.text.substr(0, colon);
                         preview = n.text.substr(colon + 2);
                     }
-bool twoLine = !squeezed && !preview.empty() &&
-                               shown + 2 < free && shown < 8;
-                    line += "\x1b[90m" + notifTime(n.ts) + " "
-                          + clip(n.room, std::max(3, rightW / 3)) + "\x1b[0m "
-                          + head;
-                    if (!twoLine && !preview.empty()) {
-                        line += " \x1b[90m\xe2\x80\x94 " + preview + "\x1b[0m";
+                    bool twoLine = !squeezed && !preview.empty() &&
+                                   shown + 2 < free && shown < 8;
+                    // The head is never clipped: when the room+time eats
+                    // the panel, the date goes first, then the head wraps
+                    // below the meta line (never cut a word).
+                    std::string ts = notifTime(n.ts);
+                    std::string clockOnly = ts;
+                    if (!clockOnly.empty() && clockOnly[0] != '0' &&
+                        (clockOnly[0] < '0' || clockOnly[0] > '9')) {
+                        std::time_t t2 = static_cast<std::time_t>(n.ts / 1000)
+                                       + st.tzOffset * 3600;
+                        std::tm tm2{};
+                        localtime_r(&t2, &tm2);
+                        clockOnly = notifClock(tm2);
                     }
-                    rightRows.push_back(clip(line, std::max(8, rightW - 1)));
-                    shown++;
-                    if (twoLine) {
-                        rightRows.push_back(clip(
-                            "    \x1b[90m" + preview + "\x1b[0m",
-                            std::max(8, rightW - 1)));
+                    std::string roomClip =
+                        clip(n.room, std::max(3, rightW / 3));
+                    std::string meta =
+                        "\x1b[90m" + ts + " " + roomClip + "\x1b[0m ";  // date + room
+                    std::string metaNoDate =
+                        "\x1b[90m" + clockOnly + " "
+                        + roomClip + "\x1b[0m ";                       // time + room
+                    std::string line = marker + meta + head;
+                    bool dropped = false;
+                    int headCells = displayWidth(head);
+                    int base = displayWidth(marker) + displayWidth(meta);
+                    if (base + headCells > budget) {
+                        int base2 = displayWidth(marker)
+                                  + displayWidth(metaNoDate);
+                        if (base2 + headCells <= budget) {
+                            line = marker + metaNoDate + head;
+                            dropped = true;
+                        }
+                    }
+                    if (dropped || displayWidth(line) <= budget) {
+                        int need = 1 + (twoLine ? 1 : 0);
+                        if (shown + need > free - 1) break;
+                        if (!twoLine && !preview.empty()) {
+                            line += " \x1b[90m\xe2\x80\x94 "
+                                  + clip(preview, budget - displayWidth(line)) + "\x1b[0m";
+                        }
+                        rightRows.push_back(clip(line, budget));
                         shown++;
-                    } else if (!preview.empty()) {
-                        squeezed = true;
+                        if (twoLine) {
+                            rightRows.push_back(clip(
+                                "    \x1b[90m" + preview + "\x1b[0m", budget));
+                            shown++;
+                        } else if (!preview.empty()) {
+                            squeezed = true;
+                        }
+                        continue;
                     }
+                    // The head is longer than the whole panel: wrap it on
+                    // indented continuation rows (never cut a word).
+                    std::string ind = "    ";
+                    auto headRows = wrapTextImpl(head, std::max(8, budget - 4));
+                    int need = 1 + static_cast<int>(headRows.size())
+                             + (twoLine ? 1 : 0);
+                    if (shown + need > free - 1) break;
+                    rightRows.push_back(clip(marker + meta, budget));
+                    shown++;
+                    for (size_t hi = 0; hi < headRows.size(); ++hi) {
+                        std::string hr = ind + headRows[hi];
+                        if (hi + 1 == headRows.size() && !twoLine &&
+                            !preview.empty()) {
+                            hr += " \x1b[90m\xe2\x80\x94 " + preview + "\x1b[0m";
+                        }
+                        rightRows.push_back(clip(hr, budget));
+                        shown++;
+                        if (hi + 1 == headRows.size() && twoLine &&
+                            !preview.empty()) {
+                            rightRows.push_back(clip(
+                                ind + ind + "\x1b[90m" + preview + "\x1b[0m",
+                                budget));
+                            shown++;
+                        }
+                    }
+                    if (!preview.empty() && !twoLine) squeezed = true;
                 }
             }
         }
