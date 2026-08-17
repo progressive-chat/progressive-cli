@@ -22,7 +22,7 @@ struct Notification {
     int64_t ts = 0;      // when it happened (ms)
     std::string room;    // room display name
     std::string text;    // "Alice pinged you" / "Bob read a message"
-    bool isPing = false; // pings get the 🔔 marker
+    int kind = 0;        // 0 = read, 1 = ping, 2 = reply, 3 = saw my msg
 };
 
 struct UiState {

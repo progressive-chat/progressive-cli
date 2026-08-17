@@ -780,5 +780,39 @@ void populateDemoDataExtras(matrixcli::db::Database& dbi) {
             rc.origin_server_ts = rts;
             dbi.insertEvent(rc);
         }
+        // A message of ours + a reply to it + a receipt on it: the corner
+        // shows "replied to you" and "saw your message" for real.
+        matrix::Event mine;
+        mine.event_id = "$demo_you_pair_msg";
+        mine.room_id = "!design:demo.local";
+        mine.sender = "@you";
+        mine.type = "m.room.message";
+        mine.content = {{"body",
+                         "Who wants to pair on the sync rework? "
+                         "I'll take the first half."},
+                        {"msgtype", "m.text"}};
+        mine.origin_server_ts = n0 - 22 * 60000;
+        dbi.insertEvent(mine);
+        matrix::Event reply;
+        reply.event_id = "$demo_reply_pair_msg";
+        reply.room_id = "!design:demo.local";
+        reply.sender = "@bob:demo.local";
+        reply.type = "m.room.message";
+        reply.content = {{"body", "I'll take the second half!"},
+                         {"msgtype", "m.text"},
+                         {"m.relates_to",
+                          {{"m.in_reply_to", {{"event_id", mine.event_id}}}}}};
+        reply.origin_server_ts = n0 - 18 * 60000;
+        dbi.insertEvent(reply);
+        matrix::Event seen;
+        seen.event_id = "$demo_receipt_you_pair";
+        seen.room_id = "!design:demo.local";
+        seen.sender = "@kate:demo.local";
+        seen.type = "m.receipt";
+        seen.content = {{mine.event_id,
+                         {{"m.read",
+                           {{"@kate:demo.local", {{"ts", n0 - 8 * 60000}}}}}}}};
+        seen.origin_server_ts = n0 - 8 * 60000;
+        dbi.insertEvent(seen);
     }
 }

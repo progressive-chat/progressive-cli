@@ -378,9 +378,10 @@ void loadRoomIntoStateImpl(UiState& st, const std::string& query) {
     for (auto& [id, readers] : st.receipts) {
         readers = (id == markerId) ? markerReaders : "";
     }
-    // Notifications for the bottom-right corner: recent pings (@me
-    // mentions) and read receipts in rooms monitored at 100% (the
-    // "monitor <room> 100" setting). Newest first, capped at 12.
+    // Notifications for the bottom-right corner: pings (@me mentions),
+    // replies to my messages, read receipts in rooms monitored at 100%
+    // ("seen your message" when a receipt targets my own event, "read a
+    // message" otherwise). Newest first, capped at 12.
     st.notifications.clear();
     {
         const std::string myId = st.accountLabel == "demo (offline)"
@@ -389,13 +390,21 @@ void loadRoomIntoStateImpl(UiState& st, const std::string& query) {
         const std::string localpart = "@" + myId.substr(1,
             sep == std::string::npos ? std::string::npos : sep - 1);
         std::vector<Notification> found;
-        auto collect = [&](const matrix::Event& ev, const std::string& rname) {
+        auto mkPreview = [](std::string s) {
+            for (auto& ch : s) {
+                if (ch == '\n' || ch == '\r') ch = ' ';
+            }
+            if (s.size() > 40) s = s.substr(0, 40) + "\xe2\x80\xa6";
+            return s;
+        };
+        auto collect = [&](const matrix::Event& ev,
+                           const std::string& rname,
+                           const std::unordered_set<std::string>& myEvents) {
             if (found.size() >= 24) return;
             if (ev.type == "m.receipt" && ev.content.is_object()) {
                 if (st.db->getSetting("monitor:" + ev.room_id, "0") != "100")
                     return;
                 for (const auto& [eid, readers] : ev.content.items()) {
-                    (void)eid;
                     if (!readers.is_object()) continue;
                     auto rit = readers.find("m.read");
                     if (rit == readers.end() || !rit->is_object()) continue;
@@ -406,8 +415,11 @@ void loadRoomIntoStateImpl(UiState& st, const std::string& query) {
                         if (tit != info.end() && tit->is_number())
                             rts = tit->get<int64_t>();
                         if (rts <= 0) rts = ev.origin_server_ts;
+                        bool mine = myEvents.count(eid) != 0;
                         found.push_back({rts, rname,
-                            senderShortImpl(uid) + " read a message", false});
+                            senderShortImpl(uid)
+                                + (mine ? " saw your message" : " read a message"),
+                            mine ? 3 : 0});
                     }
                 }
                 return;
@@ -415,24 +427,45 @@ void loadRoomIntoStateImpl(UiState& st, const std::string& query) {
             if (ev.type == "m.room.message" && ev.content.is_object() &&
                 ev.sender != myId && ev.content.contains("body")) {
                 std::string body = ev.content["body"].get<std::string>();
-                if (body.find(myId) != std::string::npos ||
-                    body.find(localpart) != std::string::npos) {
-                    std::string preview = body;
-                    for (auto& ch : preview) {
-                        if (ch == '\n' || ch == '\r') ch = ' ';
+                bool ping = body.find(myId) != std::string::npos ||
+                            body.find(localpart) != std::string::npos;
+                // A reply to MY message ("m.in_reply_to"/"m.thread" target).
+                bool reply = false;
+                if (ev.content.contains("m.relates_to") &&
+                    ev.content["m.relates_to"].is_object()) {
+                    auto rt = ev.content["m.relates_to"];
+                    std::string target;
+                    if (rt.contains("m.in_reply_to") &&
+                        rt["m.in_reply_to"].is_object() &&
+                        rt["m.in_reply_to"].contains("event_id")) {
+                        target = rt["m.in_reply_to"]["event_id"]
+                                     .get<std::string>();
+                    } else if (rt.value("rel_type", "") == "m.thread" &&
+                               rt.contains("event_id")) {
+                        target = rt["event_id"].get<std::string>();
                     }
-                    if (preview.size() > 40) preview = preview.substr(0, 40) + "\xe2\x80\xa6";
+                    if (!target.empty() && myEvents.count(target))
+                        reply = true;
+                }
+                if (reply) {
                     found.push_back({ev.origin_server_ts, rname,
-                        senderShortImpl(ev.sender) + " pinged you: " + preview, true});
+                        senderShortImpl(ev.sender) + " replied to you: "
+                            + mkPreview(body), 2});
+                } else if (ping) {
+                    found.push_back({ev.origin_server_ts, rname,
+                        senderShortImpl(ev.sender) + " pinged you: "
+                            + mkPreview(body), 1});
                 }
             }
         };
         for (const auto& r : st.rooms) {
             std::string rname = r.value("name", r.value("room_id", "?"));
-            for (const auto& ev :
-                 st.db->getEvents(r.value("room_id", ""), 300)) {
-                collect(ev, rname);
+            auto evs = st.db->getEvents(r.value("room_id", ""), 300);
+            std::unordered_set<std::string> myEvents;
+            for (const auto& ev : evs) {
+                if (ev.sender == myId) myEvents.insert(ev.event_id);
             }
+            for (const auto& ev : evs) collect(ev, rname, myEvents);
             if (found.size() >= 24) break;
         }
         std::stable_sort(found.begin(), found.end(),

@@ -814,11 +814,24 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                 for (const auto& n : st.notifications) {
                     if (shown >= free - 1) break;
                     std::string line;
-                    if (n.isPing) {
-                        line += st.showEmoji ? "\x1b[1;33m\xf0\x9f\x94\x94\x1b[0m "
-                                             : "[ping] ";
-                    } else {
-                        line += "  ";
+                    switch (n.kind) {
+                        case 1:  // ping
+                            line += st.showEmoji
+                                 ? "\x1b[1;33m\xf0\x9f\x94\x94\x1b[0m "
+                                 : "[ping] ";
+                            break;
+                        case 2:  // reply to my message
+                            line += st.showEmoji
+                                 ? "\x1b[36m\xe2\x86\xaa\x1b[0m "
+                                 : "[reply] ";
+                            break;
+                        case 3:  // my message read
+                            line += st.showEmoji
+                                 ? "\x1b[32m\xe2\x9c\x93\x1b[0m "
+                                 : "[seen] ";
+                            break;
+                        default:
+                            line += "  ";
                     }
                     // Split "sender pinged you: <preview>" — the preview
                     // gets its own indented row so the narrow panel never
