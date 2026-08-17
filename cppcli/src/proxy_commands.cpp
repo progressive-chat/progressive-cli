@@ -406,7 +406,10 @@ int cmdProxy(const cli::Args& args) {
             dumpConfigFile();
         } else {
             std::string line = "proxy: enabled (proxied connections) — to disable: proxy off";
-            std::cout << paint("[1;32m", line) << std::endl;
+            std::cout << paint("\033[1;32m", line) << std::endl;
+            std::cout << paint("\033[90m",
+                "  switch: proxy on <name|N> — presets: " + presetsSummary())
+                      << std::endl;
             dumpConfigFile();
         }
     }
