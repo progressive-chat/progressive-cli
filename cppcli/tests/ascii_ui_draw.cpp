@@ -757,7 +757,33 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                               + static_cast<std::time_t>(st.tzOffset) * 3600;
                 std::tm tm{};
                 localtime_r(&t, &tm);
-                char buf[16];
+                std::time_t now = std::time(nullptr);
+                std::tm tmNow{};
+                localtime_r(&now, &tmNow);
+                int64_t dayNow = tmNow.tm_year * 500 + tmNow.tm_yday;
+                int64_t day    = tm.tm_year * 500    + tm.tm_yday;
+                std::string datePart;
+                if (day == dayNow) {
+                    datePart = "";
+                } else if (day == dayNow - 1) {
+                    datePart = "yest ";
+                } else if (tm.tm_year == tmNow.tm_year) {
+                    static const char* MON[] = {"Jan","Feb","Mar","Apr","May",
+                        "Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
+                    char dbuf[16];
+                    std::snprintf(dbuf, sizeof(dbuf), "%s %d ",
+                                  MON[tm.tm_mon], tm.tm_mday);
+                    datePart = dbuf;
+                } else {
+                    static const char* MON[] = {"Jan","Feb","Mar","Apr","May",
+                        "Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
+                    char dbuf[16];
+                    std::snprintf(dbuf, sizeof(dbuf), "%s %d %02d ",
+                                  MON[tm.tm_mon], tm.tm_mday,
+                                  (tm.tm_year + 1900) % 100);
+                    datePart = dbuf;
+                }
+                char buf[20];
                 int h12 = tm.tm_hour % 12;
                 if (h12 == 0) h12 = 12;
                 const char* ap = tm.tm_hour < 12 ? "AM" : "PM";
@@ -774,7 +800,7 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                                   tm.tm_hour, tm.tm_min,
                                   st.showSeconds ? tm.tm_sec : 0);
                 }
-                return std::string(buf);
+                return datePart + std::string(buf);
             };
             rightRows.push_back(st.showEmoji ? "\xf0\x9f\x94\x94 notifications"
                                              : "[notif]");
@@ -794,11 +820,26 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                     } else {
                         line += "  ";
                     }
+                    // Split "sender pinged you: <preview>" — the preview
+                    // gets its own indented row so the narrow panel never
+                    // cuts it off.
+                    std::string head = n.text, preview;
+                    size_t colon = n.text.find(": ");
+                    if (colon != std::string::npos) {
+                        head = n.text.substr(0, colon);
+                        preview = n.text.substr(colon + 2);
+                    }
                     line += "\x1b[90m" + notifTime(n.ts) + " "
                           + clip(n.room, std::max(3, rightW / 3)) + "\x1b[0m "
-                          + n.text;
+                          + head;
                     rightRows.push_back(clip(line, std::max(8, rightW - 1)));
                     shown++;
+                    if (!preview.empty() && shown < free) {
+                        rightRows.push_back(clip(
+                            "    \x1b[90m" + preview + "\x1b[0m",
+                            std::max(8, rightW - 1)));
+                        shown++;
+                    }
                 }
             }
         }

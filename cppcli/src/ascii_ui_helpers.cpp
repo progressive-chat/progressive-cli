@@ -417,8 +417,13 @@ void loadRoomIntoStateImpl(UiState& st, const std::string& query) {
                 std::string body = ev.content["body"].get<std::string>();
                 if (body.find(myId) != std::string::npos ||
                     body.find(localpart) != std::string::npos) {
+                    std::string preview = body;
+                    for (auto& ch : preview) {
+                        if (ch == '\n' || ch == '\r') ch = ' ';
+                    }
+                    if (preview.size() > 40) preview = preview.substr(0, 40) + "\xe2\x80\xa6";
                     found.push_back({ev.origin_server_ts, rname,
-                        senderShortImpl(ev.sender) + " pinged you", true});
+                        senderShortImpl(ev.sender) + " pinged you: " + preview, true});
                 }
             }
         };
