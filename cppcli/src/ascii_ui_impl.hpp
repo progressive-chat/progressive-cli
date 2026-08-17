@@ -49,6 +49,9 @@ std::string roomLastMsg(db::Database* db, const std::string& roomId,
                         const std::vector<nlohmann::json>& rooms);
 matrix::Event roomLastEvent(db::Database* db, const std::string& roomId);
 int centerRowIndexOfImpl(const UiState& st, const std::string& eventId);
+// The m.room.tombstone successor of the room ("" when none) — the receive
+// side of a room upgrade.
+std::string tombstoneSuccessor(const std::vector<matrix::Event>& events);
 void sortRoomsByActivity(UiState& st);
 std::string proxyLabelText();
 int contentRowsImpl(const UiState& st);

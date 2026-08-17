@@ -736,6 +736,28 @@
       "status": "wontadd",
       "since": "",
       "note": "Fetched via FetchContent from progressive-core instead."
+    },
+    {
+      "id": "pins-list",
+      "name": "Pinned listing (pins \u2014 list + goto jump, banner with count)",
+      "category": "ui",
+      "status": "implemented",
+      "since": "0.5.2",
+      "anchor": {
+        "file": "src/ascii_ui_repl_g.cpp",
+        "pattern": "a.command == \"pins\""
+      }
+    },
+    {
+      "id": "room-upgrade-receive",
+      "name": "Room upgrade receive (tombstone banner + goto successor)",
+      "category": "ui",
+      "status": "implemented",
+      "since": "0.5.2",
+      "anchor": {
+        "file": "src/ascii_ui_draw.cpp",
+        "pattern": "m.room.tombstone"
+      }
     }
   ]
 }

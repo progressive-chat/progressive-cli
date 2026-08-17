@@ -382,7 +382,7 @@ int asciiReplDispatchG(UiState& st, db::Database& dbi, const cli::Args& a) {
         // ---- goto: jump the chat viewport to an event ----
         if (a.command == "goto") {
             if (a.positional.empty()) {
-                std::cout << "Usage: goto <event_id> | lastread | newest (back to the latest)"
+                std::cout << "Usage: goto <event_id> | lastread | successor | newest (back to the latest)"
                           << std::endl;
                 return 1;
             }
@@ -396,6 +396,19 @@ int asciiReplDispatchG(UiState& st, db::Database& dbi, const cli::Args& a) {
                     return 1;
                 }
                 q = st.readMarker;
+            }
+            if (q == "successor") {
+                // The room was upgraded: follow the tombstone's successor.
+                std::string succ = tombstoneSuccessor(st.messages);
+                if (succ.empty()) {
+                    st.statusNote = "no tombstone in this room — nothing to follow";
+                    std::cout << drawFrameImpl(st) << std::flush;
+                    return 1;
+                }
+                loadRoomIntoStateImpl(st, succ);
+                st.statusNote = "followed the upgrade \xe2\x86\x92 " + succ;
+                std::cout << drawFrameImpl(st) << std::flush;
+                return 1;
             }
             matrix::Event target;
             if (!st.db->getEventById(q, target)) {
@@ -447,6 +460,40 @@ int asciiReplDispatchG(UiState& st, db::Database& dbi, const cli::Args& a) {
             st.statusNote = std::string("thread list in the right panel ") +
                             (st.showThreadsBottom ? "on" : "off");
             std::cout << drawFrameImpl(st) << std::flush;
+            return 1;
+        }
+        // ---- pins: the room's pinned messages (with a goto hint) ----
+        if (a.command == "pins") {
+            if (st.pinned.empty()) {
+                std::cout << "No pinned messages in " << st.currentRoomId
+                          << ". (pin <event_id> pins the current view — the "
+                          << "list updates when a client sets m.room.pinned_events.)"
+                          << std::endl;
+                return 1;
+            }
+            int n = 0;
+            for (const auto& ev : st.messages) {
+                if (!st.pinned.count(ev.event_id)) continue;
+                n++;
+                std::time_t t = static_cast<std::time_t>(ev.origin_server_ts / 1000)
+                              + static_cast<std::time_t>(st.tzOffset) * 3600;
+                std::tm tm{};
+                localtime_r(&t, &tm);
+                char dateBuf[16];
+                std::snprintf(dateBuf, sizeof(dateBuf), "%04d-%02d-%02d",
+                              tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+                std::string body = eventBodyImpl(ev);
+                std::string shortId = ev.event_id.substr(0, 10);
+                std::cout << n << ". " << dateBuf << " " << senderShortImpl(ev.sender)
+                          << " \x1b[90m\u2039" << shortId << "\u203a\x1b[0m "
+                          << clip(body, 60) << std::endl;
+            }
+            if (n < static_cast<int>(st.pinned.size())) {
+                std::cout << (st.pinned.size() - n)
+                          << " more pinned message(s) outside the loaded window."
+                          << std::endl;
+            }
+            std::cout << "\nJump: goto <short-id> \u00b7 unpin <short-id>" << std::endl;
             return 1;
         }
         // ---- files: the room's media messages (audio/video/image/file) ----
@@ -577,6 +624,7 @@ replyRef:
                 pin.content = {{"pinned", nlohmann::json::array({target->event_id})}};
                 pin.origin_server_ts = nowTs;
                 dbi.insertEvent(pin);
+                st.pinned.insert(target->event_id);
                 st.statusNote = "pinned " + target->event_id;
                 std::cout << drawFrameImpl(st) << std::flush;
                 return 1;

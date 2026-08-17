@@ -125,6 +125,20 @@ int centerRowIndexOfImpl(const UiState& st, const std::string& eventId) {
     return -1;
 }
 
+// The m.room.tombstone successor of the room ("" when none) — the receive
+// side of a room upgrade.
+std::string tombstoneSuccessor(const std::vector<matrix::Event>& events) {
+    for (const auto& ev : events) {
+        if (ev.type != "m.room.tombstone" || !ev.content.is_object()) continue;
+        auto s = ev.content.find("successor_room_id");
+        if (s != ev.content.end() && s->is_string()) {
+            std::string v = s->get<std::string>();
+            if (!v.empty()) return v;
+        }
+    }
+    return "";
+}
+
 // Element-style room list: most recently active rooms first.
 void sortRoomsByActivity(UiState& st) {
     // Starred (anchored) rooms are pinned to the top, like Element's

@@ -1,8 +1,8 @@
 {
  "generated": {
-  "version": "v0.5.1-38-gedddfdd-dirty",
-  "commit": "edddfddc55d23ebd7e62bff6ee60e2b0879ff9a3",
-  "builtAt": "2026-08-17T18:33:23+00:00",
+  "version": "v0.5.1-39-gf797196-dirty",
+  "commit": "f79719601d369923722643a70a2c829b2c7d7885",
+  "builtAt": "2026-08-17T21:13:12+00:00",
   "generator": "docs/gen.mjs"
  },
  "note": "This file is generated. Edit docs/features.json instead.",
@@ -140,7 +140,7 @@
     "file": "src/ascii_ui_repl_a.cpp",
     "pattern": "invreason",
     "missing": false,
-    "line": 72
+    "line": 73
    }
   },
   {
@@ -192,7 +192,7 @@
     "file": "src/ascii_ui_repl_a.cpp",
     "pattern": "sendtyping",
     "missing": false,
-    "line": 71
+    "line": 72
    }
   },
   {
@@ -232,7 +232,7 @@
     "file": "src/ascii_ui_repl_g.cpp",
     "pattern": "m.room.power_levels",
     "missing": false,
-    "line": 717
+    "line": 765
    }
   },
   {
@@ -279,7 +279,7 @@
     "file": "src/ascii_ui_repl_a.cpp",
     "pattern": "presence fetched",
     "missing": false,
-    "line": 531
+    "line": 532
    }
   },
   {
@@ -442,7 +442,7 @@
     "file": "src/ascii_ui_draw.cpp",
     "pattern": "m.receipt",
     "missing": false,
-    "line": 414
+    "line": 442
    }
   },
   {
@@ -494,7 +494,7 @@
     "file": "src/ascii_ui_helpers.cpp",
     "pattern": "st.notifications.clear",
     "missing": false,
-    "line": 385
+    "line": 399
    }
   },
   {
@@ -520,7 +520,7 @@
     "file": "src/ascii_ui_helpers.cpp",
     "pattern": "Power levels first",
     "missing": false,
-    "line": 298
+    "line": 312
    }
   },
   {
@@ -860,6 +860,32 @@
    "since": "",
    "note": "Fetched via FetchContent from progressive-core instead.",
    "anchor": null
+  },
+  {
+   "id": "pins-list",
+   "name": "Pinned listing (pins \u2014 list + goto jump, banner with count)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.2",
+   "anchor": {
+    "file": "src/ascii_ui_repl_g.cpp",
+    "pattern": "a.command == \"pins\"",
+    "missing": false,
+    "line": 466
+   }
+  },
+  {
+   "id": "room-upgrade-receive",
+   "name": "Room upgrade receive (tombstone banner + goto successor)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.2",
+   "anchor": {
+    "file": "src/ascii_ui_draw.cpp",
+    "pattern": "m.room.tombstone",
+    "missing": false,
+    "line": 429
+   }
   }
  ]
 }

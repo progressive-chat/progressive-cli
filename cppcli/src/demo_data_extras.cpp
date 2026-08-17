@@ -815,4 +815,31 @@ void populateDemoDataExtras(matrixcli::db::Database& dbi) {
         seen.origin_server_ts = n0 - 8 * 60000;
         dbi.insertEvent(seen);
     }
+    // The room-upgrade showcase: #dev got a tombstone and moved to
+    // #programming — the chat shows the upgrade banner + "goto successor".
+    {
+        int64_t t2 = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        matrix::Event bye;
+        bye.event_id = "$demo_dev_goodbye";
+        bye.room_id = "!dev:demo.local";
+        bye.sender = "@alice:demo.local";
+        bye.type = "m.room.message";
+        bye.content = {{"body",
+                        "We moved the dev chat to #programming \xe2\x80\x94 "
+                        "join us there!"},
+                       {"msgtype", "m.text"}};
+        bye.origin_server_ts = t2 - 26 * 3600000;
+        dbi.insertEvent(bye);
+        matrix::Event tomb;
+        tomb.event_id = "$demo_dev_tombstone";
+        tomb.room_id = "!dev:demo.local";
+        tomb.sender = "@alice:demo.local";
+        tomb.type = "m.room.tombstone";
+        tomb.state_key = "";
+        tomb.content = {{"body", "This room has been replaced"},
+                        {"successor_room_id", "!programming:demo.local"}};
+        tomb.origin_server_ts = t2 - 25 * 3600000;
+        dbi.insertEvent(tomb);
+    }
 }

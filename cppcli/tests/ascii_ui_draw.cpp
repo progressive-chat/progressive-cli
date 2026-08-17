@@ -337,6 +337,26 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                     newAfterMarker++;
             }
         }
+        // The pinned banner and the upgrade banner — one slim row at the
+        // top of the chat, before the day separators.
+        if (!st.mobile) {
+            if (!st.pinned.empty()) {
+                std::string b = st.showEmoji
+                    ? "\xf0\x9f\x93\x8c " : "[pins] ";
+                b += std::to_string(st.pinned.size())
+                   + (st.pinned.size() == 1 ? " pinned message" : " pinned messages")
+                   + " \x1b[90m\u2014 'pins' to list, 'goto <short-id>' to jump\x1b[0m";
+                centerRows.push_back(clip(b, centerW - 1));
+            }
+            std::string succ = tombstoneSuccessor(st.messages);
+            if (!succ.empty()) {
+                std::string b = st.showEmoji
+                    ? "\xe2\x99\xbb " : "[upgraded] ";
+                b += "this room was upgraded \xe2\x86\x92 moved to " + succ
+                   + "  \x1b[90m(goto successor)\x1b[0m";
+                centerRows.push_back(clip(b, centerW - 1));
+            }
+        }
         for (const auto& ev : st.messages) {
             int64_t day = ev.origin_server_ts / 86400000;
             if (day != prevDay) {
@@ -404,6 +424,14 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
             // Reactions are aggregated into the message rows; the state
             // events (power levels, encryption, room meta) are system
             // data — neither should become standalone (empty) lines.
+            // Tombstones (room upgraded): a dim system row with the
+            // successor — the banner at the top has the full line.
+            if (ev.type == "m.room.tombstone") {
+                std::string succ = tombstoneSuccessor(st.messages);
+                centerRows.push_back("\x1b[90m\u266b room upgraded \xe2\x86\x92 successor "
+                    + (succ.empty() ? "\xfffd" : succ) + " \x1b[0m");
+                continue;
+            }
             if (ev.type == "m.reaction" || ev.type == "m.room.power_levels" ||
                 ev.type == "m.room.encryption" || ev.type == "m.room.create" ||
                 ev.type == "m.room.topic" || ev.type == "m.room.name" ||
