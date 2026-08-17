@@ -646,7 +646,11 @@ std::string drawFrameImpl(const UiState& st) {
     if (W - leftW - rightW - 2 < minCenter) {
         rightW = std::max(10, W - leftW - 2 - minCenter);
     }
+    // The chat caps its width: on very wide terminals the leftover stays
+    // as a right margin instead of an empty strip inside the message area.
     int centerW = std::max(20, W - leftW - rightW - 2);
+    int centerCap = st.mobile ? W - 2 : 120;
+    if (centerW > centerCap) centerW = centerCap;
 
     std::string roomName = "No room selected";
     std::string e2eeMark;  // the lock for the open room
