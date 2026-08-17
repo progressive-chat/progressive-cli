@@ -263,6 +263,17 @@ void loadRoomIntoStateImpl(UiState& st, const std::string& query) {
                 st.memberNames[ev.sender] = dn->get<std::string>();
             }
         }
+        // Power levels: the state event may be far older than the visible
+        // window — scan the whole history so admins/mods sort correctly.
+        if (ev.type == "m.room.power_levels" && ev.content.is_object()) {
+            st.powerLevelsEvent = ev.content;
+            auto users = ev.content.find("users");
+            if (users != ev.content.end() && users->is_object()) {
+                for (auto& [uid, lvl] : users->items()) {
+                    if (lvl.is_number()) st.powerLevels[uid] = lvl.get<int>();
+                }
+            }
+        }
     }
     for (const auto& ev : st.messages) {
         if (std::find(st.members.begin(), st.members.end(), ev.sender) ==

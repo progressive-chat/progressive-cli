@@ -599,11 +599,24 @@ int asciiReplDispatchB(UiState& st, db::Database& dbi, const cli::Args& a) {
             return 1;
         }
         // ---- invites on|off: the "📥 N (invites)" counter in the header ----
+        //     invites legend on|off: the "(invites)" explanation after it
         if (a.command == "invites") {
-            if (a.positional.empty() || a.positional[0] == "on") st.showInvites = true;
-            else st.showInvites = false;
-            st.statusNote = std::string("invites counter ") + (st.showInvites ? "on" : "off");
-            dbi.setSetting("show_invites", st.showInvites ? "1" : "0");
+            if (!a.positional.empty() && a.positional[0] == "legend") {
+                if (a.positional.size() < 2 || a.positional[1] == "on") {
+                    st.showInvitesLegend = true;
+                } else st.showInvitesLegend = false;
+                st.statusNote = std::string("invites legend ")
+                              + (st.showInvitesLegend ? "on" : "off");
+                dbi.setSetting("show_invites_legend",
+                               st.showInvitesLegend ? "1" : "0");
+            } else {
+                if (a.positional.empty() || a.positional[0] == "on") {
+                    st.showInvites = true;
+                } else st.showInvites = false;
+                st.statusNote = std::string("invites counter ")
+                              + (st.showInvites ? "on" : "off");
+                dbi.setSetting("show_invites", st.showInvites ? "1" : "0");
+            }
             std::cout << drawFrameImpl(st) << std::flush;
             return 1;
         }

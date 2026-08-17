@@ -749,9 +749,9 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
     // the recent notifications (pings @me, receipts in 100%-monitored
     // rooms), each with a timestamp. Settings: monitor <room> <0-100|off>
     // (100% = receipts notify) and notifications on|off.
-    if (!st.mobile && st.showNotifications && !st.notifications.empty()) {
+    if (!st.mobile && st.showNotifications) {
         int free = rows - static_cast<int>(rightRows.size());
-        if (free >= 3) {
+        if (free >= 2) {
             auto notifTime = [&](int64_t ts) {
                 std::time_t t = static_cast<std::time_t>(ts / 1000)
                               + static_cast<std::time_t>(st.tzOffset) * 3600;
@@ -778,21 +778,28 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
             };
             rightRows.push_back(st.showEmoji ? "\xf0\x9f\x94\x94 notifications"
                                              : "[notif]");
-            int shown = 0;
-            for (const auto& n : st.notifications) {
-                if (shown >= free - 1) break;
-                std::string line;
-                if (n.isPing) {
-                    line += st.showEmoji ? "\x1b[1;33m\xf0\x9f\x94\x94\x1b[0m "
-                                         : "[ping] ";
-                } else {
-                    line += "  ";
+            if (st.notifications.empty()) {
+                rightRows.push_back(clip(
+                    "\x1b[90m(no recent ones — pings @you and receipts "
+                    "from rooms monitored at 100% land here)\x1b[0m",
+                    std::max(8, rightW - 1)));
+            } else {
+                int shown = 0;
+                for (const auto& n : st.notifications) {
+                    if (shown >= free - 1) break;
+                    std::string line;
+                    if (n.isPing) {
+                        line += st.showEmoji ? "\x1b[1;33m\xf0\x9f\x94\x94\x1b[0m "
+                                             : "[ping] ";
+                    } else {
+                        line += "  ";
+                    }
+                    line += "\x1b[90m" + notifTime(n.ts) + " "
+                          + clip(n.room, std::max(3, rightW / 3)) + "\x1b[0m "
+                          + n.text;
+                    rightRows.push_back(clip(line, std::max(8, rightW - 1)));
+                    shown++;
                 }
-                line += "\x1b[90m" + notifTime(n.ts) + " "
-                      + clip(n.room, std::max(3, rightW / 3)) + "\x1b[0m "
-                      + n.text;
-                rightRows.push_back(clip(line, std::max(8, rightW - 1)));
-                shown++;
             }
         }
     }

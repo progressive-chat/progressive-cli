@@ -72,6 +72,7 @@ struct UiState {
     bool showImages = false;    // full image cards (default: compact marker)
     bool showEmoji = true;      // emoji glyphs; off = ASCII fallbacks
     bool showInvites = true;    // the "📥 N (invites)" counter in the rooms header
+    bool showInvitesLegend = true;  // the "(invites)" explanation after the count
     bool showNames = true;      // Element: show sender display names
     bool showReceipts = true;   // Element: show read receipts
     bool showJoins = true;      // Element: show join/leave messages

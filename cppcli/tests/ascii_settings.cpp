@@ -226,7 +226,7 @@ bool asciiSettingsCommand(UiState& st, db::Database& dbi, const cli::Args& a) {
             add("  layout    " + std::string(st.mobile ? "smartphone (stacked)" : "desktop (three columns)") + "  (mobile on / mobile off)");
             add("  account   " + st.accountLabel);
             add("  proxy     " + st.proxyLabel);
-            add("  invites   " + std::string(st.showInvites ? "on" : "off") + "  (invites on / invites off)  [" + std::to_string(st.invites) + " open]");
+            add("  invites   " + std::string(st.showInvites ? "on" : "off") + "  (invites on / invites off)  [" + std::to_string(st.invites) + " open]" + (st.showInvitesLegend ? ", legend on" : ", legend off") + "  (invites legend on|off)");
             add("  notif     " + std::string(st.showNotifications ? "on" : "off") + "  (notifications on / notifications off)  [bottom-right corner]");
             {
                 std::string mon;

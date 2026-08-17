@@ -96,6 +96,7 @@ int cmdAsciiUi(const cli::Args& args) {
     st.showImages = dbi.getSetting("images") == "1";
     st.showEmoji = dbi.getSetting("emoji") != "0";
     st.showInvites = dbi.getSetting("show_invites", "1") != "0";
+    st.showInvitesLegend = dbi.getSetting("show_invites_legend", "1") != "0";
     st.showNotifications = dbi.getSetting("show_notifications", "1") != "0";
     st.limitRows = std::max(0, std::atoi(dbi.getSetting("rows", "0").c_str()));
     try { st.leftPanelW = std::stoi(dbi.getSetting("panel_left", "-1")); } catch (...) {}

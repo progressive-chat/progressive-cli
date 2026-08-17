@@ -762,7 +762,7 @@ std::string drawFrameImpl(const UiState& st) {
     std::string leftHeader = st.accountLabel + " — Rooms";
     if (st.invites > 0 && st.showInvites) {
         leftHeader += (st.showEmoji ? " 📥 " : " [inv] ") + std::to_string(st.invites)
-                    + (st.showEmoji ? " (invites)" : "");
+                    + (st.showEmoji && st.showInvitesLegend ? " (invites)" : "");
     }
     std::string headRoom = " " + roomName;
     if (static_cast<int>(headRoom.size()) > centerW - 1) headRoom = headRoom.substr(0, centerW - 1);
