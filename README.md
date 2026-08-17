@@ -73,15 +73,39 @@ The login screen supports connection types:
 | Yggdrasil | Mesh network (200::/7, .ygg domains) | URL rewrite |
 | Custom | User-specified proxy | Configurable host/port/credentials |
 
-### REST API (`matrixcli serve` / `matrixcli demo`)
+### Demo mode (`matrixcli demo`)
+
+An offline demo (no Matrix account needed): an interactive REPL against the
+demo database, one-shot `cli` mode, the ASCII client interface, the ncurses
+TUI, plus the markdown rendering and poll vote showcases:
+
+```bash
+# Interactive demo session (type help at the prompt)
+matrixcli demo
+
+# Populate the demo DB and exit (then run the one-shot commands)
+matrixcli demo cli
+
+# The markdown rendering demo: what the chat view does with a message
+matrixcli demo markdown
+
+# The poll vote demo: 15 votings in 10 rooms, pick one and vote
+matrixcli demo vote
+```
+
+The same vote flow reads any cache: with a real account the one-shot
+`matrixcli vote <room> <poll_event_id> <answer>` sends the vote to the
+homeserver.
+
+### REST API (`matrixcli serve`)
 
 The server exposes a format-aware REST API under `/api/` (default port
-8080, `--port` to change). Demo mode (`matrixcli demo`) serves the same
-API with synthetic data and no account:
+8080, `--port` to change). Demo mode (`matrixcli serve --demo`) serves the
+same API with synthetic data and no account:
 
 ```bash
 # Start the API server (demo mode, no account needed)
-matrixcli demo --port=8080
+matrixcli serve --demo --port=8080
 
 # Get client status
 curl "http://localhost:8080/api/status?format=json"
@@ -160,6 +184,19 @@ matrixcli agent "summarize #general"     # the Matrix-tools agent
   blocks), subagents, MCP, plan mode, goals, cron, and the interactive
   `process` tool (a PTY per process: start/send/poll/wait/kill — for
   gdb/pdb-style debugging).
+
+### The ASCII UI settings
+
+`matrixcli demo ui --static` draws one frame and exits (non-interactive,
+pipe-friendly). In the interactive UI the `settings` screen lists every
+toggle:
+
+- `invites on|off` — the "📥 N (invites)" counter in the rooms header
+- `notifications on|off` — the bottom-right corner: recent @-pings of the
+  logged-in account plus the read receipts of 100%-monitored rooms
+- `monitor <room> <0-100|off>` — the room's monitoring level; receipts
+  become notifications at 100%
+- `spaces [--json]` — list the spaces in the cache (one-shot command)
 
 ## Features
 
