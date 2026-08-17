@@ -284,6 +284,11 @@ void loadRoomIntoStateImpl(UiState& st, const std::string& query) {
             }
         if (!ev.redacts.empty()) st.redactedIds.insert(ev.redacts);
     }
+    // Power levels first: admins, then moderators, then the rest (stable).
+    std::stable_sort(st.members.begin(), st.members.end(),
+        [&](const std::string& a, const std::string& b) {
+            return st.powerLevels[a] > st.powerLevels[b];
+        });
     // Members whose localparts collide (two "@alice" from different
     // servers) get the full mxid in the chat rows.
     st.nameColliders.clear();
@@ -361,6 +366,65 @@ void loadRoomIntoStateImpl(UiState& st, const std::string& query) {
     }
     for (auto& [id, readers] : st.receipts) {
         readers = (id == markerId) ? markerReaders : "";
+    }
+    // Notifications for the bottom-right corner: recent pings (@me
+    // mentions) and read receipts in rooms monitored at 100% (the
+    // "monitor <room> 100" setting). Newest first, capped at 12.
+    st.notifications.clear();
+    {
+        const std::string myId = st.accountLabel == "demo (offline)"
+                                     ? "@you" : "@" + st.accountLabel;
+        size_t sep = myId.find('@', 1);
+        const std::string localpart = "@" + myId.substr(1,
+            sep == std::string::npos ? std::string::npos : sep - 1);
+        std::vector<Notification> found;
+        auto collect = [&](const matrix::Event& ev, const std::string& rname) {
+            if (found.size() >= 24) return;
+            if (ev.type == "m.receipt" && ev.content.is_object()) {
+                if (st.db->getSetting("monitor:" + ev.room_id, "0") != "100")
+                    return;
+                for (const auto& [eid, readers] : ev.content.items()) {
+                    (void)eid;
+                    if (!readers.is_object()) continue;
+                    auto rit = readers.find("m.read");
+                    if (rit == readers.end() || !rit->is_object()) continue;
+                    for (const auto& [uid, info] : rit->items()) {
+                        if (uid == myId || !info.is_object()) continue;
+                        int64_t rts = 0;
+                        auto tit = info.find("ts");
+                        if (tit != info.end() && tit->is_number())
+                            rts = tit->get<int64_t>();
+                        if (rts <= 0) rts = ev.origin_server_ts;
+                        found.push_back({rts, rname,
+                            senderShortImpl(uid) + " read a message", false});
+                    }
+                }
+                return;
+            }
+            if (ev.type == "m.room.message" && ev.content.is_object() &&
+                ev.sender != myId && ev.content.contains("body")) {
+                std::string body = ev.content["body"].get<std::string>();
+                if (body.find(myId) != std::string::npos ||
+                    body.find(localpart) != std::string::npos) {
+                    found.push_back({ev.origin_server_ts, rname,
+                        senderShortImpl(ev.sender) + " pinged you", true});
+                }
+            }
+        };
+        for (const auto& r : st.rooms) {
+            std::string rname = r.value("name", r.value("room_id", "?"));
+            for (const auto& ev :
+                 st.db->getEvents(r.value("room_id", ""), 300)) {
+                collect(ev, rname);
+            }
+            if (found.size() >= 24) break;
+        }
+        std::stable_sort(found.begin(), found.end(),
+            [](const Notification& a, const Notification& b) {
+                return a.ts > b.ts;
+            });
+        if (found.size() > 12) found.resize(12);
+        st.notifications = std::move(found);
     }
 }
 

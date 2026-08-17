@@ -253,6 +253,9 @@ int cmdView(const matrixcli::cli::Args& args) {
             }
         }
 
+        // Ephemeral events are not timeline rows: receipts show in the
+        // notifications corner instead.
+        if (ev.type == "m.receipt") continue;
         std::string body = ev.content.value("body", "(no body)");
         // element-web style: strip the fallback "> quote" block from reply bodies
         // (the quote is rendered as reply context instead).

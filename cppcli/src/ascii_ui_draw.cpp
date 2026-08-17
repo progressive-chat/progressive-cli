@@ -142,6 +142,22 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                     // The vote row uses plain text — the 🗳 glyph renders
                     // one cell in the phone terminal and shifted the pipes.
                     center = "[" + senderShortImpl(ev.sender) + "] voted";
+                    // A dim hint under the row: which voting this vote
+                    // belongs to, so the chat shows what is being voted
+                    // about at a glance.
+                    matrix::Event pev;
+                    if (st.db && st.db->getEventById(target, pev)
+                        && pev.content.is_object()) {
+                        auto q = pev.content.find("question");
+                        if (q != pev.content.end() && q->is_object()) {
+                            std::string qtext = q->value("text", "");
+                            if (!qtext.empty()) {
+                                center += "\n  \x1b[90m"
+                                        + clip(qtext, std::max(20, centerW - 4))
+                                        + "\x1b[0m";
+                            }
+                        }
+                    }
                 } else if (mt == "m.sticker") {
                     center = "[" + senderShortImpl(ev.sender) + "] "
                            + (st.showEmoji ? "\u2b1c sticker: " : "[sticker] ")
@@ -394,7 +410,8 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                 ev.type == "m.room.avatar" || ev.type == "m.room.canonical_alias" ||
                 ev.type == "m.room.join_rules" ||
                 ev.type == "m.room.history_visibility" ||
-                ev.type == "m.room.encrypted" || ev.type == "m.room.redaction") {
+                ev.type == "m.room.encrypted" || ev.type == "m.room.redaction" ||
+                ev.type == "m.receipt") {  // ephemeral — the corner shows them
                 continue;
             }
             std::string row = renderRow(ev);
@@ -727,6 +744,57 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
             }
         }
         if (rightRows.empty()) rightRows.push_back("(no agent activity yet)");
+    }
+    // The bottom-right corner: free rows under the right panel content get
+    // the recent notifications (pings @me, receipts in 100%-monitored
+    // rooms), each with a timestamp. Settings: monitor <room> <0-100|off>
+    // (100% = receipts notify) and notifications on|off.
+    if (!st.mobile && st.showNotifications && !st.notifications.empty()) {
+        int free = rows - static_cast<int>(rightRows.size());
+        if (free >= 3) {
+            auto notifTime = [&](int64_t ts) {
+                std::time_t t = static_cast<std::time_t>(ts / 1000)
+                              + static_cast<std::time_t>(st.tzOffset) * 3600;
+                std::tm tm{};
+                localtime_r(&t, &tm);
+                char buf[16];
+                int h12 = tm.tm_hour % 12;
+                if (h12 == 0) h12 = 12;
+                const char* ap = tm.tm_hour < 12 ? "AM" : "PM";
+                if (st.clock12h) {
+                    std::snprintf(buf, sizeof(buf),
+                                  st.showSeconds ? "%d:%02d:%02d %s"
+                                                 : "%d:%02d %s",
+                                  h12, tm.tm_min,
+                                  st.showSeconds ? tm.tm_sec : 0, ap);
+                } else {
+                    std::snprintf(buf, sizeof(buf),
+                                  st.showSeconds ? "%02d:%02d:%02d"
+                                                 : "%02d:%02d",
+                                  tm.tm_hour, tm.tm_min,
+                                  st.showSeconds ? tm.tm_sec : 0);
+                }
+                return std::string(buf);
+            };
+            rightRows.push_back(st.showEmoji ? "\xf0\x9f\x94\x94 notifications"
+                                             : "[notif]");
+            int shown = 0;
+            for (const auto& n : st.notifications) {
+                if (shown >= free - 1) break;
+                std::string line;
+                if (n.isPing) {
+                    line += st.showEmoji ? "\x1b[1;33m\xf0\x9f\x94\x94\x1b[0m "
+                                         : "[ping] ";
+                } else {
+                    line += "  ";
+                }
+                line += "\x1b[90m" + notifTime(n.ts) + " "
+                      + clip(n.room, std::max(3, rightW / 3)) + "\x1b[0m "
+                      + n.text;
+                rightRows.push_back(clip(line, std::max(8, rightW - 1)));
+                shown++;
+            }
+        }
     }
     // Smartphone mode: the rooms list, the chat and the members become one
     // long stacked stream (section separators between them) — the phone

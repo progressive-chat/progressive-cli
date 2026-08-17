@@ -686,4 +686,99 @@ void populateDemoDataExtras(matrixcli::db::Database& dbi) {
             dbi.insertEvent(rep);
         }
     }
+
+    // The vote showcase: 13 more polls across 9 rooms (with the two #general
+    // ones that makes 15 votings in 10 rooms) — what `demo vote` walks.
+    // Placed before the fresh-message window so the room list previews stay
+    // on the ordinary messages; each poll gets a few responses.
+    {
+        int64_t t0 = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        int64_t vt = t0 - 95 * 60000;
+        struct { const char* room; const char* question;
+                 const char* a; const char* b; const char* c;
+                 const char* voters; } polls[] = {
+            {"!general:demo.local", "Which feature should ship first?", "Threads", "Reactions", "Spaces", "@bob/@charlie/@dave/@you"},
+            {"!dev:demo.local", "Ship v0.6 this week?", "Yes, ship it", "One more beta", "Delay it", "@alice/@frank/@you"},
+            {"!dev:demo.local", "Which linter do we standardize on?", "clang-tidy", "clang-format", "None", "@dave/@carol"},
+            {"!random:demo.local", "Weekly movie night?", "Friday", "Saturday", "Skip this week", "@erin/@heidi/@you"},
+            {"!random:demo.local", "Next community event?", "Hackathon", "Game night", "Movie night", "@frank/@grace"},
+            {"!design:demo.local", "Dark or light theme for the app?", "Dark", "Light", "System default", "@alice/@julia"},
+            {"!music:demo.local", "Genre of the month?", "Synthwave", "Jazz", "Metal", "@erin/@bob/@you"},
+            {"!games:demo.local", "Community tournament game?", "Chess", "Mario Kart", "Fighting game", "@kate/@ivan/@you"},
+            {"!games:demo.local", "Controller or keyboard?", "Controller", "Keyboard", "Touch", "@grace/@dave"},
+            {"!science:demo.local", "Host a science AMA?", "Yes, monthly", "Once", "No", "@carol/@bob/@you"},
+            {"!movies:demo.local", "Best sci-fi movie of the year?", "Dune Part 3", "The Martian remake", "Other", "@julia/@charlie"},
+            {"!food:demo.local", "Meetup catering?", "Pizza", "Vegan bowls", "BBQ", "@heidi/@erin/@you"},
+            {"!privacy:demo.local", "Password manager?", "Bitwarden", "KeepassXC", "pass", "@frank/@kate/@you"},
+        };
+        int n = 0;
+        for (const auto& pl : polls) {
+            std::string pollId = "$demo_vote_" + std::to_string(++n);
+            matrix::Event p;
+            p.event_id = pollId;
+            p.room_id = pl.room; p.sender = "@bob";
+            p.type = "m.room.message";
+            p.content = {{"msgtype", "m.poll.start"},
+                         {"question", {{"text", pl.question}}},
+                         {"answers", {{{"id", "a"}, {"text", pl.a}},
+                                      {{"id", "b"}, {"text", pl.b}},
+                                      {{"id", "c"}, {"text", pl.c}}}},
+                         {"m.relates_to", {{"event_id", pollId}, {"rel_type", "m.reference"}}}};
+            p.origin_server_ts = vt;
+            dbi.insertEvent(p);
+            vt -= 60000;
+            std::string voters = pl.voters;
+            size_t start = 0;
+            size_t vi = 0;
+            while (start <= voters.size()) {
+                size_t slash = voters.find('/', start);
+                std::string who = voters.substr(
+                    start, slash == std::string::npos ? std::string::npos : slash - start);
+                if (!who.empty()) {
+                    // The answers rotate, so the tallies are mixed.
+                    const char* vote = who == "@you"
+                        ? (vi % 2 == 0 ? "a" : "b")
+                        : (vi % 3 == 0 ? "a" : vi % 3 == 1 ? "b" : "c");
+                    matrix::Event r;
+                    r.event_id = "$demo_vote_r_" + std::to_string(vi) + "_" + who;
+                    r.room_id = pl.room; r.sender = who;
+                    r.type = "m.room.message";
+                    r.content = {{"msgtype", "m.poll.response"},
+                                 {"m.relates_to", {{"event_id", pollId}, {"rel_type", "m.reference"}}},
+                                 {"selections", {vote}}};
+                    r.origin_server_ts = vt;
+                    dbi.insertEvent(r);
+                    vi++;
+                    vt -= 60000;
+                }
+                if (slash == std::string::npos) break;
+                start = slash + 1;
+            }
+        }
+    }
+    // The notifications corner: #design is monitored at 100% and gets read
+    // receipts, so the bottom-right corner shows both kinds (receipts +
+    // the @you pings that live in the room).
+    dbi.setSetting("monitor:!design:demo.local", "100");
+    {
+        int64_t n0 = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        struct { const char* who; int64_t ago; } reads[] = {
+            {"@carol:demo.local", 12 * 60000},
+            {"@kate:demo.local", 5 * 60000},
+        };
+        for (const auto& rd : reads) {
+            int64_t rts = n0 - rd.ago;
+            matrix::Event rc;
+            rc.event_id = "$demo_receipt_" + std::string(rd.who);
+            rc.room_id = "!design:demo.local";
+            rc.sender = rd.who;
+            rc.type = "m.receipt";
+            rc.content = {{"$demo_design_msg",
+                           {{"m.read", {{rd.who, {{"ts", rts}}}}}}}};
+            rc.origin_server_ts = rts;
+            dbi.insertEvent(rc);
+        }
+    }
 }

@@ -379,6 +379,41 @@ int cmdStatus(const matrixcli::cli::Args& args) {
         std::cout << name << "  [" << msgs << " msgs]" << std::endl;
     }
     return 0;
+}int cmdSpaces(const matrixcli::cli::Args& args) {
+    using namespace matrixcli;
+    db::Database dbi;
+    if (!dbi.open("matrixcli.db")) {
+        std::cerr << "Cannot open database" << std::endl;
+        return 1;
+    }
+    std::vector<nlohmann::json> spaces;
+    for (auto& r : dbi.listRooms()) {
+        if (r.value("is_space", false)) spaces.push_back(r);
+    }
+    if (args.options.count("json")) {
+        nlohmann::json j;
+        j["total"] = spaces.size();
+        j["spaces"] = nlohmann::json::array();
+        for (auto& r : spaces) {
+            std::string id = r.value("room_id", "");
+            j["spaces"].push_back({{"room_id", id},
+                                   {"name", r.value("name", id)},
+                                   {"member_count", r.value("member_count", 0)}});
+        }
+        std::cout << j.dump() << std::endl;
+        return 0;
+    }
+    if (spaces.empty()) {
+        std::cout << "No spaces in cache." << std::endl;
+        std::cout << "  In the ui: 'spaces' lists them, 'space <name>' filters"
+                     " the room list by a space." << std::endl;
+        return 0;
+    }
+    for (auto& r : spaces) {
+        std::string id = r.value("room_id", "");
+        std::cout << r.value("name", id) << "  " << id << std::endl;
+    }
+    return 0;
 }int cmdSendMsg(const matrixcli::cli::Args& args) {
     using namespace matrixcli;
     if (args.positional.size() < 2) {

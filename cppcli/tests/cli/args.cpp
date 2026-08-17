@@ -105,6 +105,7 @@ void printUsage() {
               << "  tui           Launch the terminal UI (the optional add-on)\n"
               << "  typing        Who is typing: typing <room>\n"
               << "  ui            The ASCII-drawn client (rooms | chat | members)\n"
+              << "  spaces        The spaces in the cache: spaces [--json] (the ui also has 'space <name>' to filter the room list)\n"
               << "  verify        SAS-verify a device: verify <user> --device <id> [--confirm]\n"
               << "  verify-wait   Accept an incoming SAS request: verify-wait [--confirm] [--timeout s]\n"
               << "  view          View the room messages (offline, the cache): view <room> [limit] [--senders @u] [--hide @u]\n"

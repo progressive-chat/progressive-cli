@@ -598,6 +598,54 @@ int asciiReplDispatchB(UiState& st, db::Database& dbi, const cli::Args& a) {
             std::cout << drawFrameImpl(st) << std::flush;
             return 1;
         }
+        // ---- invites on|off: the "📥 N (invites)" counter in the header ----
+        if (a.command == "invites") {
+            if (a.positional.empty() || a.positional[0] == "on") st.showInvites = true;
+            else st.showInvites = false;
+            st.statusNote = std::string("invites counter ") + (st.showInvites ? "on" : "off");
+            dbi.setSetting("show_invites", st.showInvites ? "1" : "0");
+            std::cout << drawFrameImpl(st) << std::flush;
+            return 1;
+        }
+        // ---- notifications on|off: the bottom-right corner list ----
+        if (a.command == "notifications" || a.command == "notif") {
+            if (a.positional.empty() || a.positional[0] == "on") st.showNotifications = true;
+            else st.showNotifications = false;
+            st.statusNote = std::string("notifications corner ")
+                          + (st.showNotifications ? "on" : "off");
+            dbi.setSetting("show_notifications", st.showNotifications ? "1" : "0");
+            std::cout << drawFrameImpl(st) << std::flush;
+            return 1;
+        }
+        // ---- monitor <room> <0-100|off>: receipts notify at 100% ----
+        if (a.command == "monitor") {
+            if (a.positional.size() < 2) {
+                st.statusNote = "monitor <room> <0-100|off> — 100% = receipts notify";
+                std::cout << drawFrameImpl(st) << std::flush;
+                return 1;
+            }
+            std::string roomQ = a.positional[0];
+            std::string roomId = roomQ;
+            for (const auto& r : st.rooms) {
+                std::string id = r.value("room_id", "");
+                std::string name = r.value("name", "");
+                if (id == roomQ || name == roomQ ||
+                    name.find(roomQ) == 0 || id.find(roomQ) != std::string::npos) {
+                    roomId = id;
+                    break;
+                }
+            }
+            std::string v = a.positional[1];
+            std::string val;
+            if (v == "off" || v == "0") val = "0";
+            else if (v == "100" || v == "1") val = "100";
+            else val = v;
+            dbi.setSetting("monitor:" + roomId, val);
+            st.statusNote = "monitor " + roomQ + " = "
+                          + (val == "0" ? "off" : val + "%");
+            std::cout << drawFrameImpl(st) << std::flush;
+            return 1;
+        }
         // ---- images on|off: full image cards ----
         if (a.command == "images") {
             if (a.positional.empty() || a.positional[0] == "on") st.showImages = true;

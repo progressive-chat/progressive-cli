@@ -226,7 +226,20 @@ bool asciiSettingsCommand(UiState& st, db::Database& dbi, const cli::Args& a) {
             add("  layout    " + std::string(st.mobile ? "smartphone (stacked)" : "desktop (three columns)") + "  (mobile on / mobile off)");
             add("  account   " + st.accountLabel);
             add("  proxy     " + st.proxyLabel);
-            add("  invites   " + std::to_string(st.invites));
+            add("  invites   " + std::string(st.showInvites ? "on" : "off") + "  (invites on / invites off)  [" + std::to_string(st.invites) + " open]");
+            add("  notif     " + std::string(st.showNotifications ? "on" : "off") + "  (notifications on / notifications off)  [bottom-right corner]");
+            {
+                std::string mon;
+                for (const auto& r : st.rooms) {
+                    std::string m = dbi.getSetting(
+                        "monitor:" + r.value("room_id", ""), "0");
+                    if (m != "0" && m != "off")
+                        mon += (mon.empty() ? "" : ", ") + r.value("name", "?")
+                             + " " + m + "%";
+                }
+                add("  monitor   " + (mon.empty() ? "none" : mon)
+                    + "  (monitor <room> <0-100|off>  [receipts notify at 100%])");
+            }
             add("  space     " + (st.activeSpace.empty() ? "all rooms" : st.activeSpace) + "  (space <name> / space all)");
             for (const auto& l : lines) std::cout << l << std::endl;
             return true;

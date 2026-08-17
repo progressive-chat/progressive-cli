@@ -98,6 +98,7 @@ int cpWidth(uint32_t cp) {
     // pipes. Only the real emoji blocks and CJK are wide.
     if (cp == 0x1F451 || cp == 0x1F6E1) return 1;   // 👑 🛡 power badges are narrow
     if (cp == 0x1F5F3) return 1;                    // 🗳 ballot box is narrow too
+    if (cp == 0x1F4E5) return 1;                    // 📥 inbox tray is narrow too
     if (cp == 0x2B55) return 2;                     // ⭕ heavy circle renders wide
     if (cp >= 0x1F000 && cp <= 0x1FAFF) return 2;    // emoji blocks
     return 1;
@@ -759,8 +760,9 @@ std::string drawFrameImpl(const UiState& st) {
         }
     }
     std::string leftHeader = st.accountLabel + " — Rooms";
-    if (st.invites > 0) {
-        leftHeader += (st.showEmoji ? " 📥 " : " [inv] ") + std::to_string(st.invites);
+    if (st.invites > 0 && st.showInvites) {
+        leftHeader += (st.showEmoji ? " 📥 " : " [inv] ") + std::to_string(st.invites)
+                    + (st.showEmoji ? " (invites)" : "");
     }
     std::string headRoom = " " + roomName;
     if (static_cast<int>(headRoom.size()) > centerW - 1) headRoom = headRoom.substr(0, centerW - 1);

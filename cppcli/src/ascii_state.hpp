@@ -16,6 +16,15 @@
 
 namespace matrixcli {
 
+// One notification row for the bottom-right corner: a ping (@me mention)
+// or a read receipt in a room monitored at 100% (monitor <room> 100).
+struct Notification {
+    int64_t ts = 0;      // when it happened (ms)
+    std::string room;    // room display name
+    std::string text;    // "Alice pinged you" / "Bob read a message"
+    bool isPing = false; // pings get the 🔔 marker
+};
+
 struct UiState {
     db::Database* db = nullptr;
     std::vector<nlohmann::json> rooms;   // listRooms()
@@ -62,6 +71,7 @@ struct UiState {
     bool showSeconds = false;   // HH:MM:SS instead of HH:MM
     bool showImages = false;    // full image cards (default: compact marker)
     bool showEmoji = true;      // emoji glyphs; off = ASCII fallbacks
+    bool showInvites = true;    // the "📥 N (invites)" counter in the rooms header
     bool showNames = true;      // Element: show sender display names
     bool showReceipts = true;   // Element: show read receipts
     bool showJoins = true;      // Element: show join/leave messages
@@ -82,6 +92,8 @@ struct UiState {
     std::string threadRoomId;   // for the room thread list
     std::string threadRootId;   // for the single-thread view
     std::vector<matrix::Event> threadReplies;  // replies of threadRootId
+    std::vector<Notification> notifications;   // corner list (newest first)
+    bool showNotifications = true;             // the corner list on/off
 };
 
 // The rendering + the state helpers (defined in ascii_ui.cpp).

@@ -185,6 +185,10 @@ int main(int argc, char* argv[]) {
         return cmdRooms(args);
     }
 
+    if (args.command == "spaces") {
+        return cmdSpaces(args);
+    }
+
     if (args.command == "view") {
         return cmdView(args);
     }
