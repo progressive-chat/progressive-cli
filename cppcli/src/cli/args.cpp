@@ -144,7 +144,7 @@ void printUsage() {
 }
 
 void printVersion() {
-    std::cout << "matrixcli v0.1.0" << std::endl;
+    std::cout << "progressive-cli v0.5.2" << std::endl;
 }
 
 }} // namespace matrixcli::cli
