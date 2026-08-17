@@ -400,7 +400,7 @@ void loadRoomIntoStateImpl(UiState& st, const std::string& query) {
         auto collect = [&](const matrix::Event& ev,
                            const std::string& rname,
                            const std::unordered_set<std::string>& myEvents) {
-            if (found.size() >= 24) return;
+            if (found.size() >= 48) return;
             if (ev.type == "m.receipt" && ev.content.is_object()) {
                 if (st.db->getSetting("monitor:" + ev.room_id, "0") != "100")
                     return;
@@ -466,13 +466,13 @@ void loadRoomIntoStateImpl(UiState& st, const std::string& query) {
                 if (ev.sender == myId) myEvents.insert(ev.event_id);
             }
             for (const auto& ev : evs) collect(ev, rname, myEvents);
-            if (found.size() >= 24) break;
+            if (found.size() >= 48) break;
         }
         std::stable_sort(found.begin(), found.end(),
             [](const Notification& a, const Notification& b) {
                 return a.ts > b.ts;
             });
-        if (found.size() > 12) found.resize(12);
+        if (found.size() > 20) found.resize(20);
         st.notifications = std::move(found);
     }
 }

@@ -811,6 +811,7 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                     std::max(8, rightW - 1)));
             } else {
                 int shown = 0;
+                bool squeezed = false;  // one row left: previews go inline
                 for (const auto& n : st.notifications) {
                     if (shown >= free - 1) break;
                     std::string line;
@@ -834,24 +835,31 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                             line += "  ";
                     }
                     // Split "sender pinged you: <preview>" — the preview
-                    // gets its own indented row so the narrow panel never
-                    // cuts it off.
+                    // gets its own indented row while rows allow, then
+                    // inline so the corner keeps showing older entries.
                     std::string head = n.text, preview;
                     size_t colon = n.text.find(": ");
                     if (colon != std::string::npos) {
                         head = n.text.substr(0, colon);
                         preview = n.text.substr(colon + 2);
                     }
+bool twoLine = !squeezed && !preview.empty() &&
+                               shown + 2 < free && shown < 8;
                     line += "\x1b[90m" + notifTime(n.ts) + " "
                           + clip(n.room, std::max(3, rightW / 3)) + "\x1b[0m "
                           + head;
+                    if (!twoLine && !preview.empty()) {
+                        line += " \x1b[90m\xe2\x80\x94 " + preview + "\x1b[0m";
+                    }
                     rightRows.push_back(clip(line, std::max(8, rightW - 1)));
                     shown++;
-                    if (!preview.empty() && shown < free) {
+                    if (twoLine) {
                         rightRows.push_back(clip(
                             "    \x1b[90m" + preview + "\x1b[0m",
                             std::max(8, rightW - 1)));
                         shown++;
+                    } else if (!preview.empty()) {
+                        squeezed = true;
                     }
                 }
             }
