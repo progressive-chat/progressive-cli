@@ -61,10 +61,10 @@ static bool tableHasColumn(sqlite3* db, const char* table, const char* col) {
 }
 
 void Database::migrate() {
-    if (!tableHasColumn(_db, "rooms", "is_space")) {
-        exec("ALTER TABLE rooms ADD COLUMN is_space INTEGER DEFAULT 0");
-        exec("ALTER TABLE rooms ADD COLUMN space TEXT DEFAULT ''");
-    }
+    // The tables must exist BEFORE the ALTERs — on a fresh database the
+    // ADD COLUMN below would fail ("no such table: rooms") and the is_space
+    // / space columns would never appear, silently dropping every room
+    // insert (insertRoom references them).
     exec("CREATE TABLE IF NOT EXISTS settings ("
          " key TEXT PRIMARY KEY, value TEXT )");
     exec(R"(
@@ -80,7 +80,9 @@ void Database::migrate() {
             avatar_url TEXT,
             is_direct INTEGER DEFAULT 0,
             is_encrypted INTEGER DEFAULT 0,
-            member_count INTEGER DEFAULT 0
+            member_count INTEGER DEFAULT 0,
+            is_space INTEGER DEFAULT 0,
+            space TEXT DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS events (
@@ -113,6 +115,11 @@ void Database::migrate() {
         );
         CREATE INDEX IF NOT EXISTS idx_notif_unread ON notifications(read, ts DESC);
     )");
+    // Old databases created before is_space/space existed.
+    if (!tableHasColumn(_db, "rooms", "is_space")) {
+        exec("ALTER TABLE rooms ADD COLUMN is_space INTEGER DEFAULT 0");
+        exec("ALTER TABLE rooms ADD COLUMN space TEXT DEFAULT ''");
+    }
 }
 
 // ── Account ──
@@ -195,6 +202,11 @@ bool Database::upsertRoom(const json& room_data, const std::string& room_id) {
     std::string space = room_data.value("space", "");
 
     sqlite3_prepare_v2(_db, sql, -1, &stmt, nullptr);
+    if (!stmt) {
+        util::Logger::instance().error(
+            "upsertRoom prepare failed: " + std::string(sqlite3_errmsg(_db)));
+        return false;
+    }
     sqlite3_bind_text(stmt, 1, room_id.c_str(), room_id.size(), SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, name.c_str(), name.size(), SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 3, topic.c_str(), topic.size(), SQLITE_TRANSIENT);
