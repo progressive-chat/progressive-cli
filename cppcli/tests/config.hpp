@@ -17,6 +17,13 @@ public:
     std::string get(const std::string& key, const std::string& default_val = "") const;
     void set(const std::string& key, const std::string& value);
 
+    // Raw JSON accessors — stored natively in config.json (e.g. the
+    // "proxy_presets" array), so the user can edit them by hand.
+    nlohmann::json getRaw(const std::string& key,
+                          const nlohmann::json& fallback = nlohmann::json()) const;
+    void setRaw(const std::string& key, const nlohmann::json& value);
+    void erase(const std::string& key);
+
     // Permanent view filters (stored under "filters" as a JSON string):
     //   {"senders": [...], "hide": [...], "rooms": {"!id": {"senders": [...], "hide": [...]}}}
     nlohmann::json filters() const;

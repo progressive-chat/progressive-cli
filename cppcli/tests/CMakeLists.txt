@@ -47,9 +47,9 @@ set(SOURCES
     server/web_proxy.cpp
 )
 
-add_executable(progressive-cli ${SOURCES})
-target_include_directories(progressive-cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(progressive-cli PRIVATE
+add_executable(progressive-cli-tests ${SOURCES})
+target_include_directories(progressive-cli-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(progressive-cli-tests PRIVATE
     matrixcli_util
     matrixcli_json
     matrixcli_http
@@ -67,6 +67,6 @@ target_link_libraries(progressive-cli PRIVATE
 )
 
 if(BUILD_TUI)
-    target_link_libraries(progressive-cli PRIVATE matrixcli_tui)
-    target_compile_definitions(progressive-cli PRIVATE BUILD_TUI=1)
+    target_link_libraries(progressive-cli-tests PRIVATE matrixcli_tui)
+    target_compile_definitions(progressive-cli-tests PRIVATE BUILD_TUI=1)
 endif()

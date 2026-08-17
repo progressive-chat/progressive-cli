@@ -58,6 +58,24 @@ void Config::set(const std::string& key, const std::string& value) {
     _data[key] = value;
 }
 
+nlohmann::json Config::getRaw(const std::string& key, const nlohmann::json& fallback) const {
+    auto it = _data.find(key);
+    if (it == _data.end()) return fallback;
+    if (it->is_string()) {
+        try { return nlohmann::json::parse(it->get<std::string>()); }
+        catch (...) {}
+    }
+    return *it;
+}
+
+void Config::setRaw(const std::string& key, const nlohmann::json& value) {
+    _data[key] = value;
+}
+
+void Config::erase(const std::string& key) {
+    _data.erase(key);
+}
+
 nlohmann::json Config::filters() const {
     try {
         auto raw = get("filters", "{}");

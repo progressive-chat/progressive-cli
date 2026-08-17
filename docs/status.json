@@ -1,8 +1,8 @@
 {
  "generated": {
-  "version": "v0.5.1-31-gfc94722",
-  "commit": "fc9472213488f2bbd2dbec65a1501d67b9b29cac",
-  "builtAt": "2026-08-17T12:12:08+00:00",
+  "version": "v0.5.1-38-gedddfdd-dirty",
+  "commit": "edddfddc55d23ebd7e62bff6ee60e2b0879ff9a3",
+  "builtAt": "2026-08-17T18:33:23+00:00",
   "generator": "docs/gen.mjs"
  },
  "note": "This file is generated. Edit docs/features.json instead.",
@@ -416,7 +416,7 @@
     "file": "src/ascii_ui_repl_b.cpp",
     "pattern": "notifications on",
     "missing": false,
-    "line": 610
+    "line": 623
    }
   },
   {
@@ -429,7 +429,7 @@
     "file": "src/ascii_ui_repl_b.cpp",
     "pattern": "monitor <room>",
     "missing": false,
-    "line": 620
+    "line": 633
    }
   },
   {
@@ -486,7 +486,7 @@
   },
   {
    "id": "notif-corner",
-   "name": "Notifications corner (pings + receipts at 100% monitoring)",
+   "name": "Notifications corner (pings + receipts; 20-entry cap, previews compress to inline)",
    "category": "ui",
    "status": "implemented",
    "since": "0.5.1",
@@ -494,7 +494,7 @@
     "file": "src/ascii_ui_helpers.cpp",
     "pattern": "st.notifications.clear",
     "missing": false,
-    "line": 373
+    "line": 385
    }
   },
   {
@@ -507,7 +507,7 @@
     "file": "src/ascii_ui_repl_b.cpp",
     "pattern": "show_invites",
     "missing": false,
-    "line": 606
+    "line": 610
    }
   },
   {
@@ -520,7 +520,7 @@
     "file": "src/ascii_ui_helpers.cpp",
     "pattern": "Power levels first",
     "missing": false,
-    "line": 287
+    "line": 298
    }
   },
   {
@@ -534,7 +534,7 @@
     "file": "src/ascii_ui_repl.cpp",
     "pattern": "readLineWithHistory",
     "missing": false,
-    "line": 485
+    "line": 486
    }
   },
   {
