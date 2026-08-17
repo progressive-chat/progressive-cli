@@ -266,34 +266,144 @@
    "status": "implemented",
    "since": "0.5.0"
   },
-  {
-   "id": "demo",
-   "name": "Demo mode (demo tui|ui|mobile|cli|markdown|vote)",
-   "category": "ui",
-   "status": "implemented",
-   "since": "0.5.1",
-   "anchor": {
-    "file": "src/demo_repl.cpp",
-    "pattern": "cmdDemoRepl"
-   }
-  },
-  {
-   "id": "demo-vote",
-   "name": "Demo votings (demo vote \u2014 15 votings in 10 rooms)",
-   "category": "ui",
-   "status": "implemented",
-   "since": "0.5.1",
-   "anchor": {
-    "file": "src/demo_repl.cpp",
-    "pattern": "demoVoteShowcase"
-   }
-  },
-  {
-   "id": "spaces-cmd",
-   "name": "Spaces listing (spaces [--json])",
-   "category": "ui",
-   "status": "implemented",
-   "since": "0.5.1",
+   {
+    "id": "demo",
+    "name": "Demo mode (demo tui|ui|mobile|cli|markdown|vote)",
+    "category": "ui",
+    "status": "implemented",
+    "since": "0.5.1",
+    "anchor": {
+     "file": "src/demo_repl.cpp",
+     "pattern": "cmdDemoRepl"
+    }
+   },
+   {
+    "id": "demo-tui",
+    "name": "Demo TUI (demo tui \u2014 the full ncurses session)",
+    "category": "ui",
+    "status": "implemented",
+    "since": "0.5.1",
+    "anchor": {
+     "file": "src/demo_tui.cpp",
+     "pattern": "cmdTUI"
+    }
+   },
+   {
+    "id": "demo-ui-static",
+    "name": "Demo ASCII UI (demo ui \u2014 static frame at any terminal size)",
+    "category": "ui",
+    "status": "implemented",
+    "since": "0.5.1",
+    "anchor": {
+     "file": "src/demo_repl.cpp",
+     "pattern": "mode == \"ui\""
+    }
+   },
+   {
+    "id": "demo-mobile",
+    "name": "Demo mobile tabs (demo mobile)",
+    "category": "ui",
+    "status": "implemented",
+    "since": "0.5.1",
+    "anchor": {
+     "file": "src/demo_repl.cpp",
+     "pattern": "mode == \"mobile\""
+    }
+   },
+   {
+    "id": "demo-cli",
+    "name": "Demo CLI commands (demo cli)",
+    "category": "ui",
+    "status": "implemented",
+    "since": "0.5.1",
+    "anchor": {
+     "file": "src/demo_repl.cpp",
+     "pattern": "mode == \"cli\""
+    }
+   },
+   {
+    "id": "demo-markdown",
+    "name": "Demo markdown renderer (demo markdown)",
+    "category": "ui",
+    "status": "implemented",
+    "since": "0.5.1",
+    "anchor": {
+     "file": "src/demo_repl.cpp",
+     "pattern": "demoMarkdownShowcase"
+    }
+   },
+   {
+    "id": "demo-vote",
+    "name": "Demo votings (demo vote \u2014 15 votings in 10 rooms)",
+    "category": "ui",
+    "status": "implemented",
+    "since": "0.5.1",
+    "anchor": {
+     "file": "src/demo_repl.cpp",
+     "pattern": "demoVoteShowcase"
+    }
+   },
+   {
+    "id": "notifications-toggle",
+    "name": "Notifications on|off (settings + corner)",
+    "category": "ui",
+    "status": "implemented",
+    "since": "0.5.1",
+    "anchor": {
+     "file": "src/ascii_ui_repl_b.cpp",
+     "pattern": "notifications on"
+    }
+   },
+   {
+    "id": "monitor-room",
+    "name": "Room monitor (monitor <room> <0-100|off> \u2014 receipts at 100%)",
+    "category": "ui",
+    "status": "implemented",
+    "since": "0.5.1",
+    "anchor": {
+     "file": "src/ascii_ui_repl_b.cpp",
+     "pattern": "monitor <room>"
+    }
+   },
+   {
+    "id": "receipts-hidden",
+    "name": "m.receipt excluded from the chat timeline",
+    "category": "ui",
+    "status": "implemented",
+    "since": "0.5.1",
+    "anchor": {
+     "file": "src/ascii_ui_draw.cpp",
+     "pattern": "m.receipt"
+    }
+   },
+   {
+    "id": "frame-alignment",
+    "name": "Header/frame alignment with wide emoji (cpWidth U+1F4E5)",
+    "category": "ui",
+    "status": "implemented",
+    "since": "0.5.1",
+    "anchor": {
+     "file": "src/ascii_ui.cpp",
+     "pattern": "0x1F4E5"
+    }
+   },
+   {
+    "id": "db-fresh-install",
+    "name": "Fresh DB: rooms insert on first run (migration order fix)",
+    "category": "ui",
+    "status": "implemented",
+    "since": "0.5.1",
+    "anchor": {
+     "file": "lib/database/db.cpp",
+     "pattern": "CREATE TABLE IF NOT EXISTS rooms"
+    }
+   },
+   {
+    "id": "spaces-cmd",
+    "name": "Spaces listing (spaces [--json])",
+    "category": "ui",
+    "status": "implemented",
+    "since": "0.5.1",
    "anchor": {
     "file": "src/cmd_status.cpp",
     "pattern": "cmdSpaces"
