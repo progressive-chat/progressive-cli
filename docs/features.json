@@ -25,14 +25,15 @@
     "pattern": "proxy: disabled"
    }
   },
-  {
-   "id": "proxy-status-enabled",
-   "name": "Proxy status \u2014 enabled state display",
-   "category": "cli",
-   "status": "implemented",
-   "since": "0.5.1",
-   "note": "white line with socks5h://host:port and the auth flag when set \u2014 same layout as the disabled state; not captured on a screenshot yet",
-   "anchor": {
+{
+    "id": "proxy-status-enabled",
+    "name": "Proxy status \u2014 enabled state display",
+    "category": "cli",
+    "status": "verified",
+    "since": "0.5.1",
+    "screenshot": "assets/Screenshot_proxy_status_enabled_displayed.png",
+    "note": "on a real terminal: the status line is GREEN (bold) with the disable hint \u2014 the same layout as the disabled state below it: the grey switch/presets line with socks5h://host:port per preset (auth fields shown when set), the deciding proxy_active line white-highlighted, the whole config.json in grey",
+    "anchor": {
     "file": "src/proxy_commands.cpp",
     "pattern": "proxy: enabled \\(proxied connections\\)"
    }
@@ -55,7 +56,7 @@
    "category": "cli",
    "status": "implemented",
    "since": "0.5.1",
-   "note": "'proxy on' flips the line to the enabled state (socks5h://host:port + auth flag when set), 'proxy off' back to disabled, --json prints the same state machine-readable. NOT manually verified yet \u2014 whether the reported state always matches config.json still needs a manual test (the user will do it later).",
+   "note": "'proxy on' flips the line to the enabled state (socks5h://host:port + auth flag when set), 'proxy off' back to disabled, --json prints the same state machine-readable. Both states are now captured on screenshots; whether the reported state ALWAYS matches config.json still needs a manual round-trip test (the user will do it later).",
    "anchor": {
     "file": "src/proxy_commands.cpp",
     "pattern": "j\\[\"enabled\"\\]"
@@ -267,13 +268,68 @@
   },
   {
    "id": "demo",
-   "name": "Demo mode (demo tui|ui|mobile|cli)",
+   "name": "Demo mode (demo tui|ui|mobile|cli|markdown|vote)",
    "category": "ui",
    "status": "implemented",
    "since": "0.5.1",
    "anchor": {
     "file": "src/demo_repl.cpp",
     "pattern": "cmdDemoRepl"
+   }
+  },
+  {
+   "id": "demo-vote",
+   "name": "Demo votings (demo vote \u2014 15 votings in 10 rooms)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/demo_repl.cpp",
+    "pattern": "demoVoteShowcase"
+   }
+  },
+  {
+   "id": "spaces-cmd",
+   "name": "Spaces listing (spaces [--json])",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/cmd_status.cpp",
+    "pattern": "cmdSpaces"
+   }
+  },
+  {
+   "id": "notif-corner",
+   "name": "Notifications corner (pings + receipts at 100% monitoring)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/ascii_ui_helpers.cpp",
+    "pattern": "st.notifications.clear"
+   }
+  },
+  {
+   "id": "invites-toggle",
+   "name": "Invites counter toggle (invites on|off, \u201c\ud83d\udce5 N (invites)\u201d)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/ascii_ui_repl_b.cpp",
+    "pattern": "show_invites"
+   }
+  },
+  {
+   "id": "members-order",
+   "name": "Members ordered by power level (admin > moderator)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/ascii_ui_helpers.cpp",
+    "pattern": "Power levels first"
    }
   },
   {

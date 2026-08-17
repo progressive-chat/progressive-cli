@@ -1,669 +1,735 @@
 {
-  "generated": {
-    "version": "v0.5.1-23-g12287c8",
-    "commit": "12287c80cc470e75ea3fb6f7e335c0070d1088f9",
-    "builtAt": "2026-08-16T21:46:14.321010+00:00",
-    "generator": "docs/gen.mjs"
+ "generated": {
+  "version": "v0.5.1-25-gc98a210-dirty",
+  "commit": "c98a21018f4738ba8d85ee89900224cce6d5a0d5",
+  "builtAt": "2026-08-17T09:45:49+00:00",
+  "generator": "docs/gen.mjs"
+ },
+ "note": "This file is generated. Edit docs/features.json instead.",
+ "categories": [
+  "cli",
+  "ui",
+  "e2ee",
+  "llm",
+  "agent",
+  "voip",
+  "transport",
+  "api",
+  "tests",
+  "rejected"
+ ],
+ "features": [
+  {
+   "id": "proxy-status-disabled",
+   "name": "Proxy status \u2014 disabled state display",
+   "category": "cli",
+   "status": "verified",
+   "since": "0.5.1",
+   "screenshot": "assets/Screenshot_proxy_status_disabled_displayed.png",
+   "note": "on a real terminal: red status line with the enable hint, the deciding proxy_active line white-highlighted, the whole config.json in grey below (proxy_presets + proxy_active only \u2014 no flat keys)",
+   "anchor": {
+    "file": "src/proxy_commands.cpp",
+    "pattern": "proxy: disabled",
+    "missing": false,
+    "line": 401
+   }
   },
-  "note": "This file is generated. Edit docs/features.json instead.",
-  "categories": [
-    "cli",
-    "ui",
-    "e2ee",
-    "llm",
-    "agent",
-    "voip",
-    "transport",
-    "api",
-    "tests",
-    "rejected"
-  ],
-  "features": [
-    {
-      "id": "proxy-status-disabled",
-      "name": "Proxy status \u2014 disabled state display",
-      "category": "cli",
-      "status": "verified",
-      "since": "0.5.1",
-      "screenshot": "assets/Screenshot_proxy_status_disabled_displayed.png",
-      "note": "on a real terminal: red status line with the enable hint, the deciding proxy_active line white-highlighted, the whole config.json in grey below (proxy_presets + proxy_active only \u2014 no flat keys)",
-      "anchor": {
-        "file": "src/proxy_commands.cpp",
-        "pattern": "proxy: disabled",
-        "missing": false,
-        "line": 401
-      }
-    },
-    {
-      "id": "proxy-status-enabled",
-      "name": "Proxy status \u2014 enabled state display",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.5.1",
-      "note": "white line with socks5h://host:port and the auth flag when set \u2014 same layout as the disabled state; not captured on a screenshot yet",
-      "anchor": {
-        "file": "src/proxy_commands.cpp",
-        "pattern": "proxy: enabled \\(proxied connections\\)",
-        "missing": false,
-        "line": 408
-      }
-    },
-    {
-      "id": "proxy-status-json",
-      "name": "Proxy status \u2014 machine-readable --json",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.5.1",
-      "note": "prints {\"enabled\", \"host\", \"port\", \"type\", \"auth\"}; whether the values match config.json still needs the manual test",
-      "anchor": {
-        "file": "src/proxy_commands.cpp",
-        "pattern": "j\\[\"enabled\"\\]",
-        "missing": false,
-        "line": 392
-      }
-    },
-    {
-      "id": "proxy-status-truthful",
-      "name": "Proxy status \u2014 reported state is truthful",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.5.1",
-      "note": "'proxy on' flips the line to the enabled state (socks5h://host:port + auth flag when set), 'proxy off' back to disabled, --json prints the same state machine-readable. NOT manually verified yet \u2014 whether the reported state always matches config.json still needs a manual test (the user will do it later).",
-      "anchor": {
-        "file": "src/proxy_commands.cpp",
-        "pattern": "j\\[\"enabled\"\\]",
-        "missing": false,
-        "line": 392
-      }
-    },
-    {
-      "id": "cli-login",
-      "name": "CLI login (interactive + password)",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.1",
-      "test": "cli_e2e",
-      "anchor": {
-        "file": "src/cmd_view_attach.cpp",
-        "pattern": "progressive-cli login",
-        "missing": false,
-        "line": 471
-      }
-    },
-    {
-      "id": "cli-rooms",
-      "name": "Rooms, messages, spaces",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.1",
-      "test": "cli_e2e",
-      "anchor": null
-    },
-    {
-      "id": "threads",
-      "name": "Threads (m.relates_to m.thread)",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.5.1",
-      "test": "media_send",
-      "anchor": {
-        "file": "src/media_send.cpp",
-        "pattern": "rel_type\\\\\":\\\\\"m.thread",
-        "missing": false,
-        "line": 40
-      }
-    },
-    {
-      "id": "polls",
-      "name": "Polls",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.5.0",
-      "anchor": null
-    },
-    {
-      "id": "reactions",
-      "name": "Reactions",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.5.0",
-      "anchor": null
-    },
-    {
-      "id": "invites",
-      "name": "Invites with dates + reasons (invreason)",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": {
-        "file": "src/ascii_ui_repl_a.cpp",
-        "pattern": "invreason",
-        "missing": false,
-        "line": 72
-      }
-    },
-    {
-      "id": "receipts",
-      "name": "Per-room read receipts",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": {
-        "file": "src/ascii_settings.cpp",
-        "pattern": "receipts on",
-        "missing": false,
-        "line": 38
-      }
-    },
-    {
-      "id": "read-marker",
-      "name": "Last-read marker (m.fully_read, goto lastread)",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": {
-        "file": "src/ascii_ui_repl_g.cpp",
-        "pattern": "m.fully_read",
-        "missing": false,
-        "line": 391
-      }
-    },
-    {
-      "id": "read-marker-db",
-      "name": "Read-marker storage (read_marker_<room>)",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": {
-        "file": "lib/matrix/client_sync.cpp",
-        "pattern": "read_marker",
-        "missing": false,
-        "line": 80
-      }
-    },
-    {
-      "id": "sendtyping",
-      "name": "Typing notifications (m.typing)",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": {
-        "file": "src/ascii_ui_repl_a.cpp",
-        "pattern": "sendtyping",
-        "missing": false,
-        "line": 71
-      }
-    },
-    {
-      "id": "sendpreset",
-      "name": "Media send presets (original/compact/full)",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.5.1",
-      "test": "media_send",
-      "anchor": {
-        "file": "src/ascii_settings.cpp",
-        "pattern": "sendpreset original",
-        "missing": false,
-        "line": 213
-      }
-    },
-    {
-      "id": "attach",
-      "name": "File attach (upload, E2EE AES-CTR block)",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": {
-        "file": "src/cmd_view_attach.cpp",
-        "pattern": "uploadMedia",
-        "missing": false,
-        "line": 524
-      }
-    },
-    {
-      "id": "powerlevels",
-      "name": "Power levels view (custom levels, overrides)",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": {
-        "file": "src/ascii_ui_repl_g.cpp",
-        "pattern": "m.room.power_levels",
-        "missing": false,
-        "line": 717
-      }
-    },
-    {
-      "id": "modredact",
-      "name": "Moderation redactions (modredact guard)",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": {
-        "file": "src/ascii_settings.cpp",
-        "pattern": "mod_redact",
-        "missing": false,
-        "line": 205
-      }
-    },
-    {
-      "id": "url-previews",
-      "name": "URL previews",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": {
-        "file": "src/cmd_tui_commands.cpp",
-        "pattern": "queueUrlPreview",
-        "missing": false,
-        "line": 44
-      }
-    },
-    {
-      "id": "search",
-      "name": "Message search (find/search with filters)",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": null
-    },
-    {
-      "id": "presence",
-      "name": "Presence (set + member fetch)",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": {
-        "file": "src/ascii_ui_repl_a.cpp",
-        "pattern": "presence fetched",
-        "missing": false,
-        "line": 531
-      }
-    },
-    {
-      "id": "nickname-avatar",
-      "name": "Display name + avatar",
-      "category": "cli",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": null
-    },
-    {
-      "id": "tui",
-      "name": "ncurses TUI",
-      "category": "ui",
-      "status": "implemented",
-      "since": "0.1",
-      "test": "cli_e2e",
-      "anchor": null
-    },
-    {
-      "id": "tui-login",
-      "name": "TUI login with the connection selector",
-      "category": "ui",
-      "status": "implemented",
-      "since": "0.5.0",
-      "anchor": null
-    },
-    {
-      "id": "ascii-ui",
-      "name": "ASCII UI (rooms/chat/mobile tabs)",
-      "category": "ui",
-      "status": "implemented",
-      "since": "0.5.0",
-      "anchor": null
-    },
-    {
-      "id": "demo",
-      "name": "Demo mode (demo tui|ui|mobile|cli)",
-      "category": "ui",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": {
-        "file": "src/demo_repl.cpp",
-        "pattern": "cmdDemoRepl",
-        "missing": false,
-        "line": 106
-      }
-    },
-    {
-      "id": "ctrl-c",
-      "name": "Ctrl+C/Ctrl+D handling (EINTR-safe)",
-      "category": "ui",
-      "status": "implemented",
-      "since": "0.5.1",
-      "test": "cli_e2e",
-      "anchor": {
-        "file": "src/ascii_ui_repl.cpp",
-        "pattern": "readLineWithHistory",
-        "missing": false,
-        "line": 483
-      }
-    },
-    {
-      "id": "themes",
-      "name": "Themes",
-      "category": "ui",
-      "status": "wontadd",
-      "since": "",
-      "note": "Dropped; the color scheme is fixed (dark, ANSI).",
-      "anchor": null
-    },
-    {
-      "id": "e2ee-megolm",
-      "name": "E2EE Olm/Megolm (m.megolm.v1.aes-sha2)",
-      "category": "e2ee",
-      "status": "implemented",
-      "since": "0.1",
-      "test": "megolm_inbound",
-      "anchor": {
-        "file": "tests/test_sync_applier.cpp",
-        "pattern": "m.megolm.v1",
-        "missing": false,
-        "line": 219
-      }
-    },
-    {
-      "id": "e2ee-sas",
-      "name": "SAS device verification (/verify in the ASCII UI)",
-      "category": "e2ee",
-      "status": "implemented",
-      "since": "0.5.1",
-      "test": "e2ee_sas",
-      "anchor": {
-        "file": "src/demo_tui.cpp",
-        "pattern": "runSasVerification",
-        "missing": false,
-        "line": 84
-      }
-    },
-    {
-      "id": "e2ee-backup",
-      "name": "Key backup",
-      "category": "e2ee",
-      "status": "implemented",
-      "since": "0.5.0",
-      "anchor": null
-    },
-    {
-      "id": "e2ee-attach",
-      "name": "Encrypted media (AES-CTR + the Element file block)",
-      "category": "e2ee",
-      "status": "implemented",
-      "since": "0.5.1",
-      "test": "media_send",
-      "anchor": {
-        "file": "src/cmd_view_attach.cpp",
-        "pattern": "aesCtrCrypt",
-        "missing": false,
-        "line": 551
-      }
-    },
-    {
-      "id": "llm-chat",
-      "name": "LLM chat (llm, streaming SSE)",
-      "category": "llm",
-      "status": "implemented",
-      "since": "0.5.0",
-      "test": "llm_sse",
-      "anchor": null
-    },
-    {
-      "id": "llm-sse",
-      "name": "Chunked SSE decoding (multi-line events, null usage)",
-      "category": "llm",
-      "status": "implemented",
-      "since": "0.5.1",
-      "test": "llm_sse",
-      "anchor": {
-        "file": "src/matrix_agent.cpp",
-        "pattern": "streamPost",
-        "missing": false,
-        "line": 515
-      }
-    },
-    {
-      "id": "llm-sessions",
-      "name": "Sessions: continue/chat/resume, named, archive/trash",
-      "category": "llm",
-      "status": "implemented",
-      "since": "0.5.0",
-      "test": "sessions_store",
-      "anchor": null
-    },
-    {
-      "id": "llm-expected",
-      "name": "std::expected API (C++23)",
-      "category": "llm",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": null
-    },
-    {
-      "id": "llm-flags",
-      "name": "--rich/--markdown/--json, temperature/top-p, --no-reasoning",
-      "category": "llm",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": null
-    },
-    {
-      "id": "llm-tools",
-      "name": "LLM tools (filesystem/shell, PTY process)",
-      "category": "llm",
-      "status": "implemented",
-      "since": "0.5.1",
-      "test": "agent_loop",
-      "anchor": null
-    },
-    {
-      "id": "llm-presets",
-      "name": "Provider presets (llm_presets, deepseek/groq/\u2026)",
-      "category": "llm",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": null
-    },
-    {
-      "id": "agent-matrix",
-      "name": "Matrix-tools agent (matrix_agent)",
-      "category": "agent",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": null
-    },
-    {
-      "id": "agent-cli",
-      "name": "agent/agent-code CLI + /agent in the TUI",
-      "category": "agent",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": null
-    },
-    {
-      "id": "agent-offline",
-      "name": "Offline agent (tui agent, no login)",
-      "category": "agent",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": null
-    },
-    {
-      "id": "agent-setup",
-      "name": "First-run agent wizard (agent_setup)",
-      "category": "agent",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": null
-    },
-    {
-      "id": "agent-esc",
-      "name": "Esc interrupt + Ctrl+C quit in the agent",
-      "category": "agent",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": null
-    },
-    {
-      "id": "voip-signaling",
-      "name": "VoIP signaling (m.call.*: call/answer/hangup/status/wait)",
-      "category": "voip",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": {
-        "file": "src/call_commands.cpp",
-        "pattern": "m.call.invite",
-        "missing": false,
-        "line": 4
-      }
-    },
-    {
-      "id": "voip-store",
-      "name": "Calls store (calls.json)",
-      "category": "voip",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": {
-        "file": "src/call_commands.cpp",
-        "pattern": "calls.json",
-        "missing": false,
-        "line": 10
-      }
-    },
-    {
-      "id": "webrtc",
-      "name": "WebRTC media plane (DTLS-SRTP + Opus)",
-      "category": "voip",
-      "status": "awaited",
-      "since": "",
-      "note": "The next stage after the signaling.",
-      "anchor": null
-    },
-    {
-      "id": "tor",
-      "name": "Tor transport (SOCKS5)",
-      "category": "transport",
-      "status": "implemented",
-      "since": "0.5.0",
-      "anchor": null
-    },
-    {
-      "id": "i2p",
-      "name": "I2P transport (HTTP proxy)",
-      "category": "transport",
-      "status": "implemented",
-      "since": "0.5.0",
-      "anchor": null
-    },
-    {
-      "id": "yggdrasil",
-      "name": "Yggdrasil transport (native IPv6)",
-      "category": "transport",
-      "status": "implemented",
-      "since": "0.5.0",
-      "anchor": null
-    },
-    {
-      "id": "api-serve",
-      "name": "REST API (matrixcli serve, /api/)",
-      "category": "api",
-      "status": "implemented",
-      "since": "0.1",
-      "anchor": null
-    },
-    {
-      "id": "api-formats",
-      "name": "Formats: JSON/text/Markdown/Gemtext/HTML",
-      "category": "api",
-      "status": "implemented",
-      "since": "0.5.0",
-      "anchor": {
-        "file": "lib/api/demo_data.cpp",
-        "pattern": "Gemtext",
-        "missing": false,
-        "line": 233
-      }
-    },
-    {
-      "id": "test-llm",
-      "name": "LLM SSE tests",
-      "category": "tests",
-      "status": "implemented",
-      "since": "0.5.1",
-      "test": "llm_sse",
-      "anchor": null
-    },
-    {
-      "id": "test-db",
-      "name": "DB settings + invites tests",
-      "category": "tests",
-      "status": "implemented",
-      "since": "0.5.1",
-      "test": "db_settings",
-      "anchor": null
-    },
-    {
-      "id": "test-sessions",
-      "name": "Session store tests",
-      "category": "tests",
-      "status": "implemented",
-      "since": "0.5.1",
-      "test": "sessions_store",
-      "anchor": null
-    },
-    {
-      "id": "test-agent",
-      "name": "Agent loop integration test (fake OpenAI server)",
-      "category": "tests",
-      "status": "implemented",
-      "since": "0.5.1",
-      "test": "agent_loop",
-      "anchor": null
-    },
-    {
-      "id": "test-media",
-      "name": "Media send preset tests",
-      "category": "tests",
-      "status": "implemented",
-      "since": "0.5.1",
-      "test": "media_send",
-      "anchor": null
-    },
-    {
-      "id": "ci",
-      "name": "CI (build + tests + ASan/UBSan)",
-      "category": "tests",
-      "status": "implemented",
-      "since": "0.5.1",
-      "anchor": null
-    },
-    {
-      "id": "go-legacy",
-      "name": "Go implementation (gomuks fork)",
-      "category": "rejected",
-      "status": "wontadd",
-      "since": "",
-      "note": "Retired; kept as the go-legacy tag.",
-      "anchor": null
-    },
-    {
-      "id": "java-ts",
-      "name": "Java/TypeScript bridges",
-      "category": "rejected",
-      "status": "wontadd",
-      "since": "",
-      "note": "Retired; the repo is C++ only.",
-      "anchor": null
-    },
-    {
-      "id": "vendored-olm",
-      "name": "Vendored libolm in the repo",
-      "category": "rejected",
-      "status": "wontadd",
-      "since": "",
-      "note": "Fetched via FetchContent from progressive-core instead.",
-      "anchor": null
-    }
-  ]
+  {
+   "id": "proxy-status-enabled",
+   "name": "Proxy status \u2014 enabled state display",
+   "category": "cli",
+   "status": "verified",
+   "since": "0.5.1",
+   "screenshot": "assets/Screenshot_proxy_status_enabled_displayed.png",
+   "note": "on a real terminal: the status line is GREEN (bold) with the disable hint \u2014 the same layout as the disabled state below it: the grey switch/presets line with socks5h://host:port per preset (auth fields shown when set), the deciding proxy_active line white-highlighted, the whole config.json in grey",
+   "anchor": {
+    "file": "src/proxy_commands.cpp",
+    "pattern": "proxy: enabled \\(proxied connections\\)",
+    "missing": false,
+    "line": 408
+   }
+  },
+  {
+   "id": "proxy-status-json",
+   "name": "Proxy status \u2014 machine-readable --json",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.5.1",
+   "note": "prints {\"enabled\", \"host\", \"port\", \"type\", \"auth\"}; whether the values match config.json still needs the manual test",
+   "anchor": {
+    "file": "src/proxy_commands.cpp",
+    "pattern": "j\\[\"enabled\"\\]",
+    "missing": false,
+    "line": 392
+   }
+  },
+  {
+   "id": "proxy-status-truthful",
+   "name": "Proxy status \u2014 reported state is truthful",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.5.1",
+   "note": "'proxy on' flips the line to the enabled state (socks5h://host:port + auth flag when set), 'proxy off' back to disabled, --json prints the same state machine-readable. Both states are now captured on screenshots; whether the reported state ALWAYS matches config.json still needs a manual round-trip test (the user will do it later).",
+   "anchor": {
+    "file": "src/proxy_commands.cpp",
+    "pattern": "j\\[\"enabled\"\\]",
+    "missing": false,
+    "line": 392
+   }
+  },
+  {
+   "id": "cli-login",
+   "name": "CLI login (interactive + password)",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.1",
+   "test": "cli_e2e",
+   "anchor": {
+    "file": "src/cmd_view_attach.cpp",
+    "pattern": "progressive-cli login",
+    "missing": false,
+    "line": 474
+   }
+  },
+  {
+   "id": "cli-rooms",
+   "name": "Rooms, messages, spaces",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.1",
+   "test": "cli_e2e",
+   "anchor": null
+  },
+  {
+   "id": "threads",
+   "name": "Threads (m.relates_to m.thread)",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.5.1",
+   "test": "media_send",
+   "anchor": {
+    "file": "src/media_send.cpp",
+    "pattern": "rel_type\\\\\":\\\\\"m.thread",
+    "missing": false,
+    "line": 40
+   }
+  },
+  {
+   "id": "polls",
+   "name": "Polls",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.5.0",
+   "anchor": null
+  },
+  {
+   "id": "reactions",
+   "name": "Reactions",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.5.0",
+   "anchor": null
+  },
+  {
+   "id": "invites",
+   "name": "Invites with dates + reasons (invreason)",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/ascii_ui_repl_a.cpp",
+    "pattern": "invreason",
+    "missing": false,
+    "line": 72
+   }
+  },
+  {
+   "id": "receipts",
+   "name": "Per-room read receipts",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/ascii_settings.cpp",
+    "pattern": "receipts on",
+    "missing": false,
+    "line": 38
+   }
+  },
+  {
+   "id": "read-marker",
+   "name": "Last-read marker (m.fully_read, goto lastread)",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/ascii_ui_repl_g.cpp",
+    "pattern": "m.fully_read",
+    "missing": false,
+    "line": 391
+   }
+  },
+  {
+   "id": "read-marker-db",
+   "name": "Read-marker storage (read_marker_<room>)",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "lib/matrix/client_sync.cpp",
+    "pattern": "read_marker",
+    "missing": false,
+    "line": 80
+   }
+  },
+  {
+   "id": "sendtyping",
+   "name": "Typing notifications (m.typing)",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/ascii_ui_repl_a.cpp",
+    "pattern": "sendtyping",
+    "missing": false,
+    "line": 71
+   }
+  },
+  {
+   "id": "sendpreset",
+   "name": "Media send presets (original/compact/full)",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.5.1",
+   "test": "media_send",
+   "anchor": {
+    "file": "src/ascii_settings.cpp",
+    "pattern": "sendpreset original",
+    "missing": false,
+    "line": 213
+   }
+  },
+  {
+   "id": "attach",
+   "name": "File attach (upload, E2EE AES-CTR block)",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/cmd_view_attach.cpp",
+    "pattern": "uploadMedia",
+    "missing": false,
+    "line": 527
+   }
+  },
+  {
+   "id": "powerlevels",
+   "name": "Power levels view (custom levels, overrides)",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/ascii_ui_repl_g.cpp",
+    "pattern": "m.room.power_levels",
+    "missing": false,
+    "line": 717
+   }
+  },
+  {
+   "id": "modredact",
+   "name": "Moderation redactions (modredact guard)",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/ascii_settings.cpp",
+    "pattern": "mod_redact",
+    "missing": false,
+    "line": 205
+   }
+  },
+  {
+   "id": "url-previews",
+   "name": "URL previews",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/cmd_tui_commands.cpp",
+    "pattern": "queueUrlPreview",
+    "missing": false,
+    "line": 44
+   }
+  },
+  {
+   "id": "search",
+   "name": "Message search (find/search with filters)",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": null
+  },
+  {
+   "id": "presence",
+   "name": "Presence (set + member fetch)",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/ascii_ui_repl_a.cpp",
+    "pattern": "presence fetched",
+    "missing": false,
+    "line": 531
+   }
+  },
+  {
+   "id": "nickname-avatar",
+   "name": "Display name + avatar",
+   "category": "cli",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": null
+  },
+  {
+   "id": "tui",
+   "name": "ncurses TUI",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.1",
+   "test": "cli_e2e",
+   "anchor": null
+  },
+  {
+   "id": "tui-login",
+   "name": "TUI login with the connection selector",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.0",
+   "anchor": null
+  },
+  {
+   "id": "ascii-ui",
+   "name": "ASCII UI (rooms/chat/mobile tabs)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.0",
+   "anchor": null
+  },
+  {
+   "id": "demo",
+   "name": "Demo mode (demo tui|ui|mobile|cli|markdown|vote)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/demo_repl.cpp",
+    "pattern": "cmdDemoRepl",
+    "missing": false,
+    "line": 274
+   }
+  },
+  {
+   "id": "demo-vote",
+   "name": "Demo votings (demo vote \u2014 15 votings in 10 rooms)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/demo_repl.cpp",
+    "pattern": "demoVoteShowcase",
+    "missing": false,
+    "line": 150
+   }
+  },
+  {
+   "id": "spaces-cmd",
+   "name": "Spaces listing (spaces [--json])",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/cmd_status.cpp",
+    "pattern": "cmdSpaces",
+    "missing": false,
+    "line": 382
+   }
+  },
+  {
+   "id": "notif-corner",
+   "name": "Notifications corner (pings + receipts at 100% monitoring)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/ascii_ui_helpers.cpp",
+    "pattern": "st.notifications.clear",
+    "missing": false,
+    "line": 373
+   }
+  },
+  {
+   "id": "invites-toggle",
+   "name": "Invites counter toggle (invites on|off, \u201c\ud83d\udce5 N (invites)\u201d)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/ascii_ui_repl_b.cpp",
+    "pattern": "show_invites",
+    "missing": false,
+    "line": 606
+   }
+  },
+  {
+   "id": "members-order",
+   "name": "Members ordered by power level (admin > moderator)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/ascii_ui_helpers.cpp",
+    "pattern": "Power levels first",
+    "missing": false,
+    "line": 287
+   }
+  },
+  {
+   "id": "ctrl-c",
+   "name": "Ctrl+C/Ctrl+D handling (EINTR-safe)",
+   "category": "ui",
+   "status": "implemented",
+   "since": "0.5.1",
+   "test": "cli_e2e",
+   "anchor": {
+    "file": "src/ascii_ui_repl.cpp",
+    "pattern": "readLineWithHistory",
+    "missing": false,
+    "line": 485
+   }
+  },
+  {
+   "id": "themes",
+   "name": "Themes",
+   "category": "ui",
+   "status": "wontadd",
+   "since": "",
+   "note": "Dropped; the color scheme is fixed (dark, ANSI).",
+   "anchor": null
+  },
+  {
+   "id": "e2ee-megolm",
+   "name": "E2EE Olm/Megolm (m.megolm.v1.aes-sha2)",
+   "category": "e2ee",
+   "status": "implemented",
+   "since": "0.1",
+   "test": "megolm_inbound",
+   "anchor": {
+    "file": "tests/test_sync_applier.cpp",
+    "pattern": "m.megolm.v1",
+    "missing": false,
+    "line": 219
+   }
+  },
+  {
+   "id": "e2ee-sas",
+   "name": "SAS device verification (/verify in the ASCII UI)",
+   "category": "e2ee",
+   "status": "implemented",
+   "since": "0.5.1",
+   "test": "e2ee_sas",
+   "anchor": {
+    "file": "src/demo_tui.cpp",
+    "pattern": "runSasVerification",
+    "missing": false,
+    "line": 84
+   }
+  },
+  {
+   "id": "e2ee-backup",
+   "name": "Key backup",
+   "category": "e2ee",
+   "status": "implemented",
+   "since": "0.5.0",
+   "anchor": null
+  },
+  {
+   "id": "e2ee-attach",
+   "name": "Encrypted media (AES-CTR + the Element file block)",
+   "category": "e2ee",
+   "status": "implemented",
+   "since": "0.5.1",
+   "test": "media_send",
+   "anchor": {
+    "file": "src/cmd_view_attach.cpp",
+    "pattern": "aesCtrCrypt",
+    "missing": false,
+    "line": 554
+   }
+  },
+  {
+   "id": "llm-chat",
+   "name": "LLM chat (llm, streaming SSE)",
+   "category": "llm",
+   "status": "implemented",
+   "since": "0.5.0",
+   "test": "llm_sse",
+   "anchor": null
+  },
+  {
+   "id": "llm-sse",
+   "name": "Chunked SSE decoding (multi-line events, null usage)",
+   "category": "llm",
+   "status": "implemented",
+   "since": "0.5.1",
+   "test": "llm_sse",
+   "anchor": {
+    "file": "src/matrix_agent.cpp",
+    "pattern": "streamPost",
+    "missing": false,
+    "line": 515
+   }
+  },
+  {
+   "id": "llm-sessions",
+   "name": "Sessions: continue/chat/resume, named, archive/trash",
+   "category": "llm",
+   "status": "implemented",
+   "since": "0.5.0",
+   "test": "sessions_store",
+   "anchor": null
+  },
+  {
+   "id": "llm-expected",
+   "name": "std::expected API (C++23)",
+   "category": "llm",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": null
+  },
+  {
+   "id": "llm-flags",
+   "name": "--rich/--markdown/--json, temperature/top-p, --no-reasoning",
+   "category": "llm",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": null
+  },
+  {
+   "id": "llm-tools",
+   "name": "LLM tools (filesystem/shell, PTY process)",
+   "category": "llm",
+   "status": "implemented",
+   "since": "0.5.1",
+   "test": "agent_loop",
+   "anchor": null
+  },
+  {
+   "id": "llm-presets",
+   "name": "Provider presets (llm_presets, deepseek/groq/\u2026)",
+   "category": "llm",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": null
+  },
+  {
+   "id": "agent-matrix",
+   "name": "Matrix-tools agent (matrix_agent)",
+   "category": "agent",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": null
+  },
+  {
+   "id": "agent-cli",
+   "name": "agent/agent-code CLI + /agent in the TUI",
+   "category": "agent",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": null
+  },
+  {
+   "id": "agent-offline",
+   "name": "Offline agent (tui agent, no login)",
+   "category": "agent",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": null
+  },
+  {
+   "id": "agent-setup",
+   "name": "First-run agent wizard (agent_setup)",
+   "category": "agent",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": null
+  },
+  {
+   "id": "agent-esc",
+   "name": "Esc interrupt + Ctrl+C quit in the agent",
+   "category": "agent",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": null
+  },
+  {
+   "id": "voip-signaling",
+   "name": "VoIP signaling (m.call.*: call/answer/hangup/status/wait)",
+   "category": "voip",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/call_commands.cpp",
+    "pattern": "m.call.invite",
+    "missing": false,
+    "line": 4
+   }
+  },
+  {
+   "id": "voip-store",
+   "name": "Calls store (calls.json)",
+   "category": "voip",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": {
+    "file": "src/call_commands.cpp",
+    "pattern": "calls.json",
+    "missing": false,
+    "line": 10
+   }
+  },
+  {
+   "id": "webrtc",
+   "name": "WebRTC media plane (DTLS-SRTP + Opus)",
+   "category": "voip",
+   "status": "awaited",
+   "since": "",
+   "note": "The next stage after the signaling.",
+   "anchor": null
+  },
+  {
+   "id": "tor",
+   "name": "Tor transport (SOCKS5)",
+   "category": "transport",
+   "status": "implemented",
+   "since": "0.5.0",
+   "anchor": null
+  },
+  {
+   "id": "i2p",
+   "name": "I2P transport (HTTP proxy)",
+   "category": "transport",
+   "status": "implemented",
+   "since": "0.5.0",
+   "anchor": null
+  },
+  {
+   "id": "yggdrasil",
+   "name": "Yggdrasil transport (native IPv6)",
+   "category": "transport",
+   "status": "implemented",
+   "since": "0.5.0",
+   "anchor": null
+  },
+  {
+   "id": "api-serve",
+   "name": "REST API (matrixcli serve, /api/)",
+   "category": "api",
+   "status": "implemented",
+   "since": "0.1",
+   "anchor": null
+  },
+  {
+   "id": "api-formats",
+   "name": "Formats: JSON/text/Markdown/Gemtext/HTML",
+   "category": "api",
+   "status": "implemented",
+   "since": "0.5.0",
+   "anchor": {
+    "file": "lib/api/demo_data.cpp",
+    "pattern": "Gemtext",
+    "missing": false,
+    "line": 233
+   }
+  },
+  {
+   "id": "test-llm",
+   "name": "LLM SSE tests",
+   "category": "tests",
+   "status": "implemented",
+   "since": "0.5.1",
+   "test": "llm_sse",
+   "anchor": null
+  },
+  {
+   "id": "test-db",
+   "name": "DB settings + invites tests",
+   "category": "tests",
+   "status": "implemented",
+   "since": "0.5.1",
+   "test": "db_settings",
+   "anchor": null
+  },
+  {
+   "id": "test-sessions",
+   "name": "Session store tests",
+   "category": "tests",
+   "status": "implemented",
+   "since": "0.5.1",
+   "test": "sessions_store",
+   "anchor": null
+  },
+  {
+   "id": "test-agent",
+   "name": "Agent loop integration test (fake OpenAI server)",
+   "category": "tests",
+   "status": "implemented",
+   "since": "0.5.1",
+   "test": "agent_loop",
+   "anchor": null
+  },
+  {
+   "id": "test-media",
+   "name": "Media send preset tests",
+   "category": "tests",
+   "status": "implemented",
+   "since": "0.5.1",
+   "test": "media_send",
+   "anchor": null
+  },
+  {
+   "id": "ci",
+   "name": "CI (build + tests + ASan/UBSan)",
+   "category": "tests",
+   "status": "implemented",
+   "since": "0.5.1",
+   "anchor": null
+  },
+  {
+   "id": "go-legacy",
+   "name": "Go implementation (gomuks fork)",
+   "category": "rejected",
+   "status": "wontadd",
+   "since": "",
+   "note": "Retired; kept as the go-legacy tag.",
+   "anchor": null
+  },
+  {
+   "id": "java-ts",
+   "name": "Java/TypeScript bridges",
+   "category": "rejected",
+   "status": "wontadd",
+   "since": "",
+   "note": "Retired; the repo is C++ only.",
+   "anchor": null
+  },
+  {
+   "id": "vendored-olm",
+   "name": "Vendored libolm in the repo",
+   "category": "rejected",
+   "status": "wontadd",
+   "since": "",
+   "note": "Fetched via FetchContent from progressive-core instead.",
+   "anchor": null
+  }
+ ]
 }
