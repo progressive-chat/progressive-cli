@@ -9,6 +9,7 @@
 #include "agent_tools.hpp"
 #include "matrix_agent.hpp"
 #include "ascii_ui.hpp"
+#include "ascii_ui_impl.hpp"
 #include "../lib/matrix/client.hpp"
 #include "../lib/matrix/pushrules.hpp"
 #include "../lib/database/db.hpp"
@@ -100,6 +101,173 @@ static void demoReplSend(const matrixcli::cli::Args& args) {
     std::cout << "[demo] sent " << ts << " to " << args.positional[0] << ": " << body << std::endl;
 }
 
+// The markdown rendering demo: the same sample that also lives in the
+// #general demo room, rendered by the same ANSI renderer the chat view uses
+// (renderMarkdownBody in ascii_ui_helpers.cpp).
+void demoMarkdownShowcase() {
+    static const char* kSample =
+        "Markdown demo: **bold text**, *italic*, `inline code`, "
+        "[a link](https://matrix.org) and a raw https://matrix.org\n"
+        "\n"
+        "# A header\n"
+        "\n"
+        "- a bullet\n"
+        "- another bullet\n"
+        "- [x] done task\n"
+        "- [ ] open task\n"
+        "\n"
+        "1. first step\n"
+        "2. second step\n"
+        "\n"
+        "> a quoted line\n"
+        "\n"
+        "```cpp\n"
+        "#include <iostream>\n"
+        "\n"
+        "int main() {\n"
+        "    // a highlighted comment\n"
+        "    const char* s = \"hello markdown\";\n"
+        "    std::cout << s << std::endl;\n"
+        "    return 0;\n"
+        "}\n"
+        "```";
+    std::cout << "Markdown rendering demo — the ANSI renderer the chat view uses.\n"
+                 "The same message lives in #general (demo): run view \"#general\""
+              << std::endl;
+    if (isatty(STDOUT_FILENO)) {
+        std::cout << renderMarkdownBody(kSample) << std::endl;
+    } else {
+        std::cout << "(stdout is not a terminal — the styled output only shows "
+                     "interactively; here is the plain source:)" << std::endl;
+        std::cout << kSample << std::endl;
+    }
+}
+
+// The poll vote demo: scans the cache (demo OR real data — same database
+// code path) for m.poll.start events, lets the user pick a voting, shows
+// the question and the current tallies, and records their vote as an
+// m.poll.response event (the wire format the UI renders).
+void demoVoteShowcase(db::Database& dbi) {
+    struct PollInfo {
+        std::string roomId, roomName, id, question;
+        std::vector<std::pair<std::string, std::string>> answers;
+    };
+    std::vector<PollInfo> polls;
+    std::set<std::string> roomsWith;
+    for (const auto& r : dbi.listRooms()) {
+        std::string roomId = r.value("room_id", "");
+        if (roomId.empty()) continue;
+        std::string roomName = r.value("name", "");
+        if (roomName.empty()) roomName = roomId;
+        auto evs = dbi.getEvents(roomId, 5000);
+        for (const auto& ev : evs) {
+            if (!ev.content.is_object()) continue;
+            if (ev.content.value("msgtype", "") != "m.poll.start") continue;
+            PollInfo pi;
+            pi.roomId = roomId;
+            pi.roomName = roomName;
+            pi.id = ev.event_id;
+            auto q = ev.content.find("question");
+            if (q != ev.content.end() && q->is_object()) {
+                pi.question = q->value("text", "");
+            }
+            auto an = ev.content.find("answers");
+            if (an != ev.content.end() && an->is_array()) {
+                for (const auto& a : *an) {
+                    if (a.is_object()) {
+                        pi.answers.emplace_back(a.value("id", ""),
+                                                a.value("text", ""));
+                    }
+                }
+            }
+            if (pi.question.empty()) pi.question = pi.id;
+            polls.push_back(std::move(pi));
+            roomsWith.insert(roomId);
+        }
+    }
+    if (polls.empty()) {
+        std::cout << "No votings in the cache yet (run 'demo populate' first)."
+                  << std::endl;
+        return;
+    }
+    std::cout << "The client knows about " << polls.size() << " votings in "
+              << roomsWith.size() << " rooms:" << std::endl;
+    for (size_t i = 0; i < polls.size(); ++i) {
+        std::cout << "  " << (i + 1) << ": [" << polls[i].roomName << "] "
+                  << polls[i].question << "  (" << polls[i].answers.size()
+                  << " answers)" << std::endl;
+    }
+    if (!isatty(STDIN_FILENO)) {
+        std::cout << "(run it on a terminal to vote — or 'view <room>' shows "
+                     "the tallies in the chat)" << std::endl;
+        return;
+    }
+    std::cout << "Which voting are you in? [1-" << polls.size() << "]: "
+              << std::flush;
+    std::string pick;
+    std::getline(std::cin, pick);
+    long idx = -1;
+    try {
+        long v = std::stol(pick);
+        if (v >= 1 && v <= static_cast<long>(polls.size())) idx = v - 1;
+    } catch (...) {}
+    if (idx < 0) {
+        std::cout << "No such voting." << std::endl;
+        return;
+    }
+    const PollInfo& p = polls[idx];
+    std::cout << "Voting #" << (idx + 1) << ": " << p.question << "  ("
+              << p.roomName << ")" << std::endl;
+    // The current tallies (the m.poll.response events for this poll).
+    std::map<std::string, int> tally;
+    for (const auto& ev : dbi.getEvents(p.roomId, 5000)) {
+        if (!ev.content.is_object()) continue;
+        if (ev.content.value("msgtype", "") != "m.poll.response") continue;
+        auto rel = ev.content.find("m.relates_to");
+        if (rel == ev.content.end() || !rel->is_object()) continue;
+        if (rel->value("event_id", "") != p.id) continue;
+        auto sel = ev.content.find("selections");
+        if (sel != ev.content.end() && sel->is_array() && !sel->empty() &&
+            (*sel)[0].is_string()) {
+            tally[(*sel)[0].get<std::string>()]++;
+        }
+    }
+    for (size_t i = 0; i < p.answers.size(); ++i) {
+        std::cout << "  " << (i + 1) << ": " << p.answers[i].second
+                  << "  (" << tally[p.answers[i].first] << " votes)"
+                  << std::endl;
+    }
+    std::cout << "Vote for? [1-" << p.answers.size() << "]: " << std::flush;
+    std::string ans;
+    std::getline(std::cin, ans);
+    long aidx = -1;
+    try {
+        long v = std::stol(ans);
+        if (v >= 1 && v <= static_cast<long>(p.answers.size())) aidx = v - 1;
+    } catch (...) {}
+    if (aidx < 0) {
+        std::cout << "No such answer." << std::endl;
+        return;
+    }
+    int64_t ts = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    matrix::Event r;
+    r.event_id = "$demo_vote_you_" + std::to_string(ts);
+    r.room_id = p.roomId;
+    r.sender = "@you";
+    r.type = "m.room.message";
+    r.content = {{"msgtype", "m.poll.response"},
+                 {"m.relates_to",
+                  {{"event_id", p.id}, {"rel_type", "m.reference"}}},
+                 {"selections", {p.answers[aidx].first}}};
+    r.origin_server_ts = ts;
+    dbi.insertEvent(r);
+    std::cout << "Voted for \"" << p.answers[aidx].second << "\" in "
+              << p.roomName << " (recorded locally)." << std::endl;
+    std::cout << "See it in the chat: view \"" << p.roomName
+              << "\" 30 — or run 'ui' and open the room." << std::endl;
+}
+
 #ifdef BUILD_TUI
 int cmdTUI(const matrixcli::cli::Args& args);
 #endif
@@ -118,11 +286,23 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
                      "  progressive-cli send \"#general\" \"hello\"\n";
         return 0;
     };
-    // The positional shortcuts: demo tui | ui | mobile | cli — no menu.
+    // The positional shortcuts: demo tui | ui | mobile | cli | markdown | vote
+    // — no menu.
     if (!args.positional.empty()) {
         const std::string mode = args.positional[0];
         cli::Args sub = args;
         sub.positional.erase(sub.positional.begin());
+        if (mode == "markdown" || mode == "md") {
+            demoMarkdownShowcase();
+            return 0;
+        }
+        if (mode == "vote" || mode == "voting") {
+            db::Database dbi;
+            if (!dbi.open("matrixcli.db")) return 1;
+            if (dbi.listRooms().empty()) populateDemoData(dbi);
+            demoVoteShowcase(dbi);
+            return 0;
+        }
         if (mode == "tui") {
             sub.options["tui"] = "true";
             return cmdDemoRepl(sub);
@@ -150,6 +330,14 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
     // interface; with --static/--once it draws the frame once and exits
     // (non-interactive, pipe-friendly) instead of starting the REPL.
     if (args.options.count("ui") || args.options.count("ascii")) {
+        // Tell the user the frame can be drawn once and exited — the
+        // pipe-friendly (screenshot) mode.
+        if (!args.options.count("static") && !args.options.count("once")
+            && isatty(STDOUT_FILENO)) {
+            std::cout << "note: demo ui --static draws the frame once and "
+                         "exits (non-interactive, pipe-friendly)."
+                      << std::endl;
+        }
         cli::Args uiArgs;
         if (!args.positional.empty()) {
             uiArgs.positional.push_back(args.positional[0]);
@@ -208,7 +396,9 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
                      "     (non-interactive: progressive-cli demo --ui --static)\n"
                      "  4) terminal UI (ncurses TUI)\n"
                      "  5) ASCII client for smartphones (stacked, portrait)\n"
-                     "Choice [1/2/3/4/5]: " << std::flush;
+                     "  6) markdown rendering demo (demo markdown)\n"
+                     "  7) the poll vote demo (demo vote)\n"
+                     "Choice [1/2/3/4/5/6/7]: " << std::flush;
         std::string ans;
         std::getline(std::cin, ans);
         if (!matrixcli::g_interrupted.load()) {
@@ -228,6 +418,16 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
             uiArgs.options["mobile"] = "true";
             return matrixcli::cmdAsciiUi(uiArgs);
         }
+        if (!ans.empty() && ans[0] == '6') {
+            demoMarkdownShowcase();
+            return 0;
+        }
+        if (!ans.empty() && ans[0] == '7') {
+            db::Database dbi;
+            if (!dbi.open("matrixcli.db")) return 1;
+            demoVoteShowcase(dbi);
+            return 0;
+        }
         if (!ans.empty() && ans[0] == '4') {
             cli::Args tuiArgs;
             tuiArgs.options["tui"] = "true";
@@ -244,7 +444,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
 
     std::cout << "progressive-cli demo — interactive mode (offline, no account needed)" << std::endl;
     std::cout << "Commands: help | rooms | view <room> [n] | search <query> |"
-              << " send <room> <text> | ui | clear | quit" << std::endl;
+              << " send <room> <text> | markdown | vote | ui | clear | quit" << std::endl;
     std::cout << "Demo rooms: #general  #dev  #random  #dm_alice  #dm_bob" << std::endl;
 
     std::string line;
@@ -269,6 +469,8 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
                          "  view <room> [n]           show the last n messages (default 20)\n"
                          "  search <query>            full-text search in cached messages\n"
                          "  send <room> <text>        send a message (demo, offline)\n"
+                         "  markdown                  show the markdown rendering demo\n"
+                         "  vote                      pick a voting (of the N the cache knows) and vote\n"
                          "  ui                        ASCII client interface (rooms | chat | members)\n"
                          "  clear                     clear the screen\n"
                          "  quit / exit               leave the demo\n";
@@ -282,6 +484,14 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
         if (a.command == "view") { cmdView(a); continue; }
         if (a.command == "search") { cmdSearch(a); continue; }
         if (a.command == "send") { demoReplSend(a); continue; }
+        if (a.command == "markdown" || a.command == "md") {
+            demoMarkdownShowcase();
+            continue;
+        }
+        if (a.command == "vote" || a.command == "voting") {
+            demoVoteShowcase(dbi);
+            continue;
+        }
         if (a.command == "attach" || a.command == "send-file") {
             if (a.positional.size() < 2) {
                 std::cout << "Usage: attach <room> <file> [--caption text]" << std::endl;
