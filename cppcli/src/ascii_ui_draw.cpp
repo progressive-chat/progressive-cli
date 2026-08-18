@@ -70,18 +70,10 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
     // | threads across all rooms (Element-style).
     std::vector<std::string> rightRows;
     if (st.rightPanel == 0) {
-        // Full @user:server ids when the panel has the room for them.
-        bool fullIds = false;
-        if (!st.members.empty() && rightW >= 15) {
-            int fullW = 0;
-            for (const auto& mem : st.members) {
-                int w = displayWidth(memberRowStr(st, mem, true));
-                if (w > fullW) fullW = w;
-            }
-            fullIds = (rightW - 2 >= fullW);
-        }
+        // Full @user:server ids per row, whenever the row fits the panel.
         for (const auto& mem : st.members) {
-            rightRows.push_back(memberRowStr(st, mem, fullIds));
+            rightRows.push_back(memberRowStr(
+                st, mem, rightW - 2 >= displayWidth(memberRowStr(st, mem, true))));
         }
         // The thread list sits at the BOTTOM of the right panel, under a
         // separator (Element-style): ⤷ <preview> (<reply count>).
