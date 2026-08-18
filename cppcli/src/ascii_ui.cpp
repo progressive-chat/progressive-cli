@@ -95,12 +95,9 @@ int cpWidth(uint32_t cp) {
     if (cp >= 0xFFE0 && cp <= 0xFFE6) return 2;
     // Misc symbols and dingbats (❤ ♪ ★ ⤷ ⭕ …) render ONE cell in the
     // phone terminal (glibc wcwidth agrees) — counting them 2 broke the
-    // pipes. Emoji render two cells there (only the glyphs that show a
-    // narrow/outline form are tuned below).
-    if (cp == 0x1F451 || cp == 0x1F6E1) return 1;   // 👑 🛡 power badges are narrow
-    if (cp == 0x1F5F3) return 1;                    // 🗳 ballot box is narrow too
-    if (cp == 0x1F4E5) return 1;                    // 📥 inbox tray is narrow too
-    if (cp == 0x1F4E8) return 1;                    // 📨 inbox is narrow too
+    // pipes. The emoji blocks render TWO cells there like every terminal.
+    // (The old "👑 🛡 🗳 📥 are narrow" overrides came from byte-column
+    // checks, not real rendering — they shifted the header/panel pipes.)
     if (cp == 0x2B55) return 2;                     // ⭕ heavy circle renders wide
     if (cp >= 0x1F000 && cp <= 0x1FAFF) return 2;   // emoji blocks
     return 1;
