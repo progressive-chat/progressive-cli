@@ -623,13 +623,68 @@ std::string drawFrameImpl(const UiState& st) {
                 w += displayWidth(" 📨 ") + displayWidth(relativeTime(invIt->second.ts));
             } else {
                 std::string last = roomLastMsg(st.db, rid, st.rooms);
-                if (!last.empty()) w += 3 + displayWidth(last);  // " · preview"
+                if (!last.empty()) w += 3 + std::min(44, displayWidth(last));  // " · preview"
             }
             if (st.db->getSetting("threads_off", "0") == "0" &&
                 roomThreadCount(st.db, rid) > 0) w += 4;  // " 🧵N"
             if (w > longestRoom) longestRoom = w;
         }
-        leftW = std::max(24, std::min(56, longestRoom + 2));
+        // The section headers count too: "▸ Tech Space (21) People from
+        // all rooms: 1022, in space: 312" is longer than any room row, and
+        // the list must never clip them while the chat keeps idle space.
+        // (The preview text is measured to a fixed 44-cell budget — the
+        // rows clip it anyway.)
+        {
+            std::vector<std::string> bucketName;
+            std::vector<std::string> bucketSid;
+            std::unordered_map<std::string, int> spaceIdx;
+            for (const auto& r : st.rooms) {
+                if (!r.value("is_space", false)) continue;
+                std::string sid = r.value("room_id", "");
+                if (!spaceIdx.count(sid)) {
+                    spaceIdx[sid] = static_cast<int>(bucketName.size());
+                    bucketName.push_back(r.value("name", "?"));
+                    bucketSid.push_back(sid);
+                }
+            }
+            const int noSpaceBucket = static_cast<int>(bucketName.size());
+            std::vector<int> rowN(bucketName.size() + 1, 0);
+            for (const auto& r : st.rooms) {
+                if (r.value("is_space", false)) continue;
+                auto si = spaceIdx.find(r.value("space", ""));
+                ++rowN[si != spaceIdx.end() ? si->second : noSpaceBucket];
+            }
+            if (static_cast<int>(st.invited.size()) > 0)
+                longestRoom = std::max(longestRoom,
+                                       displayWidth(" 📨 Invites"));
+            for (size_t b = 0; b < bucketName.size(); ++b) {
+                if (rowN[b] == 0) continue;
+                int allPeople = 0, spacePeople = 0;
+                for (const auto& r : st.rooms) {
+                    if (r.value("is_space", false)) {
+                        if (r.value("room_id", "") == bucketSid[b])
+                            spacePeople = r.value("member_count", 0);
+                    } else if (r.value("space", "") == bucketSid[b]) {
+                        allPeople += r.value("member_count", 0);
+                    }
+                }
+                int w = displayWidth("▸ " + bucketName[b] + " ("
+                                     + std::to_string(rowN[b]) + ") "
+                                     + "People from all rooms: "
+                                     + std::to_string(allPeople)
+                                     + ", in space: "
+                                     + std::to_string(spacePeople)) + 2;
+                if (w > longestRoom) longestRoom = w;
+            }
+            if (rowN[static_cast<size_t>(noSpaceBucket)] > 0) {
+                longestRoom = std::max(
+                    longestRoom,
+                    displayWidth("-- No space ("
+                                 + std::to_string(rowN[static_cast<size_t>(noSpaceBucket)])
+                                 + ") --"));
+            }
+        }
+        leftW = std::max(24, std::min(72, longestRoom + 2));
         if (horizMembers) {
             rightW = 0;
         } else {
