@@ -1186,16 +1186,19 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                                       ? last : last.substr(0, colon + 1);
                 std::string what = colon == std::string::npos
                                        ? "" : last.substr(colon + 1);
-                std::string prev = " · " + who + "\x1b[90m" + what + "\x1b[0m";
+                std::string prev = " · " + who + what;
                 std::string ltime = roomLastTime(st.db, rid, st.showSeconds,
                                                  st.clock12h);
                 if (!ltime.empty()) {
                     tail = ltime;
-                    int avail = leftW - displayWidth(head) - displayWidth(prev)
-                              - displayWidth(ltime) - 3;
-                    if (avail >= 6)
+                    // The preview fills whatever the name, icons and the
+                    // right-flushed time leave free (clipped, never
+                    // rejected because of its own length).
+                    int budget = leftW - displayWidth(head)
+                               - displayWidth(ltime) - 8;
+                    if (budget >= 6)
                         head += " \x1b[90m"
-                              + highlightMentions(clip(prev, avail)) + "\x1b[0m";
+                              + highlightMentions(clip(prev, budget)) + "\x1b[0m";
                 }
             }
         }
