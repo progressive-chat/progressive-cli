@@ -580,13 +580,13 @@ int populateDemoData(matrixcli::db::Database& dbi) {
         ts -= 3600000;
     }
 
-    // Power levels: alice admin (100), bob mod (50), the rest members.
+    // Power levels: alice owner (150), bob mod (50), the rest members.
     {
         matrix::Event pl;
         pl.event_id = "$demo_" + std::to_string(ts);
         pl.room_id = "!general:demo.local"; pl.sender = "@alice";
         pl.type = "m.room.power_levels";
-        pl.content = {{"users", {{"@alice", 100}, {"@bob", 50}, {"@charlie", 0}}}};
+        pl.content = {{"users", {{"@alice", 150}, {"@bob", 50}, {"@charlie", 0}}}};
         pl.origin_server_ts = ts;
         dbi.insertEvent(pl);
         ts -= 3600000;
