@@ -697,17 +697,11 @@ std::string drawFrameImpl(const UiState& st) {
                 if (wf > fullMember) fullMember = wf;
             }
             // The full matrix ids fit when they stay inside the clamp.
-            if (fullMember + 3 <= 30) longestMember = fullMember;
-            // The thread list at the bottom may need more room — but the
-            // panel stays capped so the chat never gets squeezed out.
-            if (st.showThreadsBottom) {
-                auto thr = roomThreadList(st.db, st.currentRoomId, 30, st.showIds);
-                for (const auto& t : thr) {
-                    int w = displayWidth(t);
-                    if (w > longestMember) longestMember = w;
-                }
-            }
             int rightMax = std::min(40, std::max(24, W / 3));
+            // The full matrix ids (mallory @matrix.org, wendy @mozilla.org)
+            // count too — whenever they fit under the panel cap the list
+            // shows them instead of the short localparts.
+            if (fullMember + 3 <= rightMax) longestMember = std::max(longestMember, fullMember);
             rightW = std::max(10, std::min(rightMax, longestMember + 3));
         }
     }
@@ -905,7 +899,7 @@ std::string drawFrameImpl(const UiState& st) {
     // Pre-build the center panel rows: one per message, with date separators
     // ("── Today ──") and the message time, so the viewport scrolls over
 
-    int scroll = std::max(0, st.scroll);
+    int scroll = st.scroll;  // < 0 = bottom (the newest rows), clamped inside
     return drawFrameChatImpl(st, centerW, horizMembers, W, leftW, rightW,
                              scroll, rows, PIPE, X, std::move(out), visible,
                              roomName);
