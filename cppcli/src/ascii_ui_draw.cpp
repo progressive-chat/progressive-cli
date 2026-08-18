@@ -38,6 +38,14 @@
 #include <unordered_set>
 #include <unordered_map>
 
+// The "----------" section rule inside the right panel (threads,
+// members, goal, notifications): grey, and gone when the user turned
+// the separators off (sep on|off).
+static std::string panelSepRule(const matrixcli::UiState& st) {
+    if (!st.db || st.db->getSetting("date_sep", "1") == "0") return "";
+    return "\x1b[90m----------\x1b[0m";
+}
+
 #ifdef _WIN32
 #include <io.h>
 #else
@@ -93,7 +101,8 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                 int thrWindow = std::max(1, rows - membersShown - 1);
                 int ts = std::min(std::max(0, st.threadsScroll),
                                   std::max(0, static_cast<int>(thr.size()) - thrWindow));
-                rightRows.push_back("----------");
+                std::string psep = panelSepRule(st);
+                if (!psep.empty()) rightRows.push_back(psep);
                 for (int k = 0; k < thrWindow && ts + k < static_cast<int>(thr.size());
                      ++k) {
                     rightRows.push_back(thr[static_cast<size_t>(ts + k)]);
@@ -164,13 +173,15 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
             if (!thr.empty() && free > 3) {
                 int thrN = std::min(static_cast<int>(thr.size()),
                                     std::max(1, free / 3));
-                rightRows.push_back("----------");
+                std::string psep = panelSepRule(st);
+                if (!psep.empty()) rightRows.push_back(psep);
                 for (int k = 0; k < thrN; ++k) rightRows.push_back(thr[k]);
                 free = rows - static_cast<int>(rightRows.size());
             }
             if (free > 2 && !st.members.empty()) {
                 int mn = std::min(static_cast<int>(st.members.size()), free - 1);
-                rightRows.push_back("----------");
+                std::string psep = panelSepRule(st);
+                if (!psep.empty()) rightRows.push_back(psep);
                 for (int k = 0; k < mn; ++k) {
                     rightRows.push_back(memberRowStr(st, st.members[k], true));
                 }
@@ -229,7 +240,8 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
             for (const auto& sg : goal.subgoals) {
                 rightRows.push_back(clip("  ▸ " + sg, rightW - 1));
             }
-            rightRows.push_back("----------");
+            std::string psep = panelSepRule(st);
+                if (!psep.empty()) rightRows.push_back(psep);
         }
         auto pushWrapped = [&](const std::string& line) {
             auto lines = wrapTextImpl(line, std::max(8, rightW - 1));
