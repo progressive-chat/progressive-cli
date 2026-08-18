@@ -529,7 +529,9 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
             stream.insert(stream.end(), allRows.begin(), allRows.end());
             section = " Rooms ";
         } else if (st.mobileTab == 1) {
-            stream.push_back(clip("── " + roomName + " ──", std::max(1, W - 1)));
+            if (st.db->getSetting("date_sep", "1") != "0") {
+                stream.push_back("\x1b[90m── " + roomName + " ──\x1b[0m");
+            }
             stream.insert(stream.end(), centerRows.begin(), centerRows.end());
             section = " Chat ";
         } else {
