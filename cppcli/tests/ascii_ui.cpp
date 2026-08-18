@@ -98,6 +98,8 @@ int cpWidth(uint32_t cp) {
     // pipes. The emoji blocks render TWO cells there like every terminal.
     // (The old "👑 🛡 🗳 📥 are narrow" overrides came from byte-column
     // checks, not real rendering — they shifted the header/panel pipes.)
+    if (cp == 0x1F451 || cp == 0x1F6E1) return 1;   // 👑 🛡 power badges are narrow
+    if (cp == 0x1F5F3) return 1;                    // 🗳 ballot box is narrow
     if (cp == 0x2B55) return 2;                     // ⭕ heavy circle renders wide
     if (cp >= 0x1F000 && cp <= 0x1FAFF) return 2;   // emoji blocks
     return 1;

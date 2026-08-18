@@ -289,7 +289,7 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                                                 ? it->second : k;
                         vstr += label + ": " + std::to_string(n);
                     }
-                    center += "  \xf0\x9f\x97\xb3 " + vstr;  // 🗳
+                    center += "  \x1b[32m\xf0\x9f\x97\xb3 " + vstr + "\x1b[0m";  // 🗳
                 }
             }
             // Reactions and edits aggregated for EVERY message row.
