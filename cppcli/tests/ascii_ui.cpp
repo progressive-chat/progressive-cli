@@ -211,7 +211,7 @@ std::vector<std::string> wrapTextImpl(const std::string& s, int width) {
             continue;
         }
         if (c == ' ' || c == '\n') {
-            if (c == ' ' && cur.empty()) {
+            if (c == ' ' && cur.empty() && word.empty()) {
                 // The leading spaces of a line (the code indentation)
                 // ride with the first word.
                 word += ' ';

@@ -149,10 +149,11 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                                 // panels. 6 = the "HH:MM " time prefix,
                                 // 11 = the "  (" and ")" wrappers.
                                 int effW = (st.mobile ? W : centerW) - 8;
-                                int budget = std::max(
-                                    6, effW - displayWidth(center) - 11);
-                                center += "  \x1b[90m("
-                                        + clip(qtext, budget) + ")\x1b[0m";
+                                int budget = effW - displayWidth(center) - 11;
+                                if (budget >= 8) {
+                                    center += "  \x1b[90m("
+                                            + clip(qtext, budget) + ")\x1b[0m";
+                                }
                             }
 
                         }
@@ -212,9 +213,13 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                 // at W - 8. 6 = the "HH:MM " time prefix, 18 = the
                 // "  (thread: " + ")" wrappers.
                 int effW = (st.mobile ? W : centerW) - 8;
-                int budget = std::max(6, effW - displayWidth(head) - 18);
-                center = head + "  \x1b[90m(thread: "
-                       + clip(preview, budget) + ")\x1b[0m";
+                int budget = effW - displayWidth(head) - 18;
+                if (budget >= 8) {
+                    center = head + "  \x1b[90m(thread: "
+                           + clip(preview, budget) + ")\x1b[0m";
+                } else {
+                    center = head;
+                }
             } else if (center.empty() && !rep.empty()) {
                 // Element-style ReplyChain: walk the m.in_reply_to chain
                 // (up to 3 levels) and stack the quoted previews, each
