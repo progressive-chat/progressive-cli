@@ -188,7 +188,7 @@
     },
     {
       "id": "powerlevels",
-      "name": "Power levels view (custom levels, overrides)",
+      "name": "Power levels (owner 👑150 / admin 🛡100 / mod 🛡50 badges with the level number)",
       "category": "cli",
       "status": "implemented",
       "since": "0.5.1",

@@ -141,6 +141,10 @@ int populateDemoData(matrixcli::db::Database& dbi) {
     for (auto& r : rooms) {
         nlohmann::json j;
         j["name"] = r.name; j["topic"] = r.topic; j["member_count"] = r.members;
+        // Room v12 (the m.room.create "creator"): @alice created every
+        // demo room, so she is the owner (150) per Matrix 1.12 rules.
+        j["creator"] = "@alice:demo.local";
+        j["version"] = 12;
         // The DMs are encrypted by default, like Element.
         if (std::string(r.id).find("!dm_") == 0) j["is_encrypted"] = 1;
         dbi.upsertRoom(j, r.id);

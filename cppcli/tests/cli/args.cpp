@@ -143,8 +143,12 @@ void printUsage() {
               << "The detailed flags: progressive-cli <command> --help\n";
 }
 
+std::string versionString() {
+    return "progressive-cli v0.5.2";
+}
+
 void printVersion() {
-    std::cout << "progressive-cli v0.5.2" << std::endl;
+    std::cout << versionString() << std::endl;
 }
 
 }} // namespace matrixcli::cli

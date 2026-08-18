@@ -62,7 +62,11 @@ void printAbout(const std::string& proxyLabel, const std::string& accountLabel) 
     std::cout << " /\\/\n";
     std::cout << "/" << X << "\n";
     std::cout << "      — chat progress, always increasing —\n\n";
-    std::cout << "Version: 0.5.0\n";
+    std::string ver = cli::versionString();
+    // "progressive-cli v0.5.2" → just the number part.
+    size_t v = ver.rfind('v');
+    std::cout << "Version: " << (v == std::string::npos ? ver : ver.substr(v + 1))
+              << "\n";
     std::cout << "License: AGPL-3.0\n";
     std::cout << "https://github.com/progressive-chat/progressive-cli\n";
     (void)proxyLabel; (void)accountLabel;

@@ -16,6 +16,7 @@ struct Args {
 Args parseArgs(int argc, char* argv[]);
 
 void printUsage();
+std::string versionString();  // "progressive-cli vX.Y.Z"
 void printVersion();
 
 }} // namespace matrixcli::cli

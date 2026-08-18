@@ -941,14 +941,26 @@ std::string memberRowStr(const UiState& st, const std::string& mem,
     std::string m = std::string(pc) + "[" + letter + "]" + "\x1b[0m " + namePart
                   + " (" + mx + ")";
     auto pl = st.powerLevels.find(mem);
-    if (pl != st.powerLevels.end()) {
-        // The crown carries its own wide glyph box; the narrow shield
-        // needs an explicit space so the letter isn't glued to it. The
-        // CUSTOM levels (not 0/50/100) get the numeric badge.
-        if (pl->second >= 100) m = "\xf0\x9f\x91\x91" + m;
-        else if (pl->second >= 50) m = "\xf0\x9f\x9b\xa1 " + m;
-        else if (pl->second > 0)
-            m = "\x1b[90m[" + std::to_string(pl->second) + "]\x1b[0m " + m;
+    if (pl != st.powerLevels.end() && pl->second > 0) {
+        int lvl = pl->second;
+        // Room v12+ (the m.room.create "creator"): the creator is the
+        // owner (150) even when no explicit power level is set.
+        for (const auto& r : st.rooms) {
+            if (r.value("room_id", "") != st.currentRoomId) continue;
+            if (r.value("version", 0) >= 12 && lvl < 150) {
+                std::string cr = r.value("creator", "");
+                std::string crLocal = cr.substr(0, cr.find(':'));
+                if (crLocal == mem) lvl = 150;
+            }
+            break;
+        }
+        // The tiers: owner 👑150 / admin 🛡100 / mod 🛡50 / custom [n].
+        // The badge carries the numeric level so the owner and the
+        // admins stay apart at a glance.
+        if (lvl >= 150) m = "\xf0\x9f\x91\x91\x1b[90m" + std::to_string(lvl) + "\x1b[0m" + m;
+        else if (lvl >= 100) m = "\xf0\x9f\x9b\xa1\x1b[90m" + std::to_string(lvl) + "\x1b[0m" + m;
+        else if (lvl >= 50) m = "\xf0\x9f\x9b\xa1\x1b[90m" + std::to_string(lvl) + "\x1b[0m" + m;
+        else m = "\x1b[90m[" + std::to_string(lvl) + "]\x1b[0m " + m;
     }
     return m;
 }
