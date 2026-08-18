@@ -95,6 +95,7 @@ struct UiState {
     std::vector<matrix::Event> threadReplies;  // replies of threadRootId
     std::vector<Notification> notifications;   // corner list (newest first)
     bool showNotifications = true;             // the corner list on/off
+    bool showRoomInviteMark = true;            // the "📨 (invited …)" room-list hint
 };
 
 // The rendering + the state helpers (defined in ascii_ui.cpp).

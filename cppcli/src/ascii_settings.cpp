@@ -227,6 +227,7 @@ bool asciiSettingsCommand(UiState& st, db::Database& dbi, const cli::Args& a) {
             add("  account   " + st.accountLabel);
             add("  proxy     " + st.proxyLabel);
             add("  invites   " + std::string(st.showInvites ? "on" : "off") + "  (invites on / invites off)  [" + std::to_string(st.invites) + " open]" + (st.showInvitesLegend ? ", legend on" : ", legend off") + "  (invites legend on|off)");
+            add("  invmark   " + std::string(st.showRoomInviteMark ? "on" : "off") + "  (invite mark on / invite mark off)  [the \"\U0001f4e8 (invited \u2026)\" hint on invited room rows]");
             add("  notif     " + std::string(st.showNotifications ? "on" : "off") + "  (notifications on / notifications off)  [bottom-right corner]");
             {
                 std::string mon;
@@ -271,6 +272,17 @@ bool asciiSettingsCommand(UiState& st, db::Database& dbi, const cli::Args& a) {
             } else {
                 std::cout << "Usage: invreason <chat|menu> <on|off>" << std::endl;
             }
+            return true;
+        }
+        // ---- invite mark on|off: the "(invited …)" hint on invited rows ----
+        if (a.command == "invite" && !a.positional.empty()
+            && a.positional[0] == "mark") {
+            const bool on = a.positional.size() < 2 || a.positional[1] != "off";
+            st.showRoomInviteMark = on;
+            dbi.setSetting("room_invite_mark", on ? "1" : "0");
+            st.statusNote = std::string("the invited-room hint (\U0001f4e8 invited \u2026): ")
+                          + (on ? "shown" : "hidden");
+            std::cout << drawFrame(st) << std::flush;
             return true;
         }
         // ---- sendpreset original|compact|full: the media sending preset ----

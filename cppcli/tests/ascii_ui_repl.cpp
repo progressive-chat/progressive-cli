@@ -98,6 +98,7 @@ int cmdAsciiUi(const cli::Args& args) {
     st.showInvites = dbi.getSetting("show_invites", "1") != "0";
     st.showInvitesLegend = dbi.getSetting("show_invites_legend", "1") != "0";
     st.showNotifications = dbi.getSetting("show_notifications", "1") != "0";
+    st.showRoomInviteMark = dbi.getSetting("room_invite_mark", "1") != "0";
     st.limitRows = std::max(0, std::atoi(dbi.getSetting("rows", "0").c_str()));
     try { st.leftPanelW = std::stoi(dbi.getSetting("panel_left", "-1")); } catch (...) {}
     try { st.rightPanelW = std::stoi(dbi.getSetting("panel_right", "-1")); } catch (...) {}

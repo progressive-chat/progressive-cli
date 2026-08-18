@@ -1169,9 +1169,14 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                       + (st.showEmoji ? "" : ")");
             }
             if (invIt != st.inviteByRoom.end()) {
-                // No preview: the row shows when the invitation arrived
-                // ("📨 2h ago") — the compact form fits the narrow panel.
-                left += " [90m📨 " + relativeTime(invIt->second.ts) + "[0m";
+                // No preview: the row shows when the invitation arrived —
+                // the meaning of the 📨 glyph written out in parentheses,
+                // like "(invited 2h ago)". 'invite mark off' hides it.
+                if (st.showRoomInviteMark) {
+                    left += st.showEmoji ? " [90m📨 [0m([90minvited "
+                                        : " ([90minvited ";
+                    left += relativeTime(invIt->second.ts) + "[0m)";
+                }
             } else {
                 // The last message preview, like Element's room list.
                 std::string last = roomLastMsg(st.db, rid, st.rooms);
