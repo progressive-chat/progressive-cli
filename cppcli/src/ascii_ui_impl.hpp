@@ -23,7 +23,8 @@ uint32_t utf8FirstCp(const std::string& s);
 int cpWidth(uint32_t cp);
 int displayWidth(const std::string& s);
 std::string clip(const std::string& s, int width);
-std::vector<std::string> wrapTextImpl(const std::string& s, int width);
+std::vector<std::string> wrapTextImpl(const std::string& s, int width,
+                                      int firstW = -1);
 std::string pad(const std::string& s, int width);
 std::string repeat(char c, size_t n);
 std::string highlightMentions(const std::string& body);

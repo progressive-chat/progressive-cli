@@ -608,7 +608,9 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                     // Reserve the time at the first line's right edge.
                     std::string inner = prefix + row + idSuffix;
                     int reserve = displayWidth(timeStr) + 1;
-                    auto tLines = wrapTextImpl(inner, std::max(8, wrapW - reserve));
+                    auto tLines = wrapTextImpl(
+                        inner, std::max(8, wrapW - reserve),
+                        (st.mobile ? W : centerW) - 1 - reserve);
                     for (size_t li = 0; li < tLines.size(); ++li) {
                         if (li == 0) {
                             int padN = wrapW + 8 - displayWidth(tLines[0])
@@ -621,7 +623,8 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                     }
                 } else {
                     std::string first = prefix + timeStr + " " + row + idSuffix;
-                    std::vector<std::string> lines = wrapTextImpl(first, wrapW);
+                    std::vector<std::string> lines = wrapTextImpl(
+                        first, wrapW, (st.mobile ? W : centerW) - 1);
                     for (size_t li = 0; li < lines.size(); ++li) {
                         if (li == 0) {
                             centerRows.push_back(lines[0]);

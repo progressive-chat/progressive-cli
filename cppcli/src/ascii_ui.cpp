@@ -180,14 +180,21 @@ std::string clip(const std::string& s, int width) {
 // Word-wrap a string to a display width. ANSI escape sequences are
 // atomic and zero-width; long words are hard-split; explicit \n forces
 // a line break. Continuation lines are indented by the caller.
-std::vector<std::string> wrapTextImpl(const std::string& s, int width) {
+// Wrap to a display width; the FIRST line may use a wider budget
+// (firstW >= 0) — the message rows carry the time and a hint on line
+// one, which can fill the panel where their continuations cannot.
+std::vector<std::string> wrapTextImpl(const std::string& s, int width,
+                                      int firstW) {
     std::vector<std::string> lines;
     std::string cur;
     std::string word;
+    auto lineWidth = [&]() {
+        return lines.empty() && firstW >= 0 ? firstW : width;
+    };
     auto flushWord = [&]() {
         if (word.empty()) return;
         int wd = displayWidth(word);
-        if (!cur.empty() && displayWidth(cur) + 1 + wd > width) {
+        if (!cur.empty() && displayWidth(cur) + 1 + wd > lineWidth()) {
             lines.push_back(cur);
             cur.clear();
         }
@@ -224,7 +231,7 @@ std::vector<std::string> wrapTextImpl(const std::string& s, int width) {
                 // bodies) — a break pushes the line only when it has text.
                 if (!cur.empty()) lines.push_back(cur);
                 cur.clear();
-            } else if (!cur.empty() && displayWidth(cur) + 1 > width) {
+            } else if (!cur.empty() && displayWidth(cur) + 1 > lineWidth()) {
                 lines.push_back(cur);
                 cur.clear();
             }
@@ -238,7 +245,7 @@ std::vector<std::string> wrapTextImpl(const std::string& s, int width) {
             else if ((c & 0xF8) == 0xF0) len = 4;
         }
         word += s.substr(i, len);
-        if (displayWidth(word) >= width) {  // hard-split overlong words
+        if (displayWidth(word) >= lineWidth()) {  // hard-split overlong words
             flushWord();
             if (!cur.empty()) {
                 lines.push_back(cur);
