@@ -36,6 +36,7 @@
 #include <vector>
 #include <map>
 #include <unordered_set>
+#include <unordered_map>
 
 #ifdef _WIN32
 #include <io.h>
@@ -1131,78 +1132,120 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
     visCount = std::max(visCount, static_cast<int>(rightRows.size()));
     int maxScroll = std::max(0, visCount - rows);
     scroll = std::min(scroll, maxScroll);
+    // ---- The left panel, built once per frame (Element-style): invited
+    // rooms first (a "📨 Invites" header), then each space as its own
+    // section ("▸ Tech Space (n)" — sized to how many rooms it needs),
+    // then the rooms with no space as the second part. Every row uses
+    // the full panel: the preview is clipped and the last-message time
+    // is flushed right against the pipe.
+    std::vector<std::string> leftRows;
+    std::vector<std::string> bucketName;   // the spaces, first seen order
+    std::unordered_map<std::string, int> spaceIdx;
+    for (const auto& r : st.rooms) {
+        if (!r.value("is_space", false)) continue;
+        std::string sid = r.value("room_id", "");
+        if (!spaceIdx.count(sid)) {
+            spaceIdx[sid] = static_cast<int>(bucketName.size());
+            bucketName.push_back(r.value("name", "?"));
+        }
+    }
+    const int noSpaceBucket = static_cast<int>(bucketName.size());
+    std::vector<std::vector<std::string> > bucketRows(bucketName.size() + 1);
+    std::vector<std::string> invRows;
+    for (const auto* r : visible) {
+        std::string rid = r->value("room_id", "");
+        bool invited = st.invited.count(rid) != 0;
+        std::string name = roomDisplayNameImpl(*r);
+        if (r->value("is_direct", false))
+            name = (st.showEmoji ? "💬 " : "[DM] ") + name;
+        std::string head = std::string(1, rid == st.currentRoomId ? '*' : ' ')
+                         + "\x1b[1m" + name + "\x1b[0m ("
+                         + std::to_string(roomMessageCount(st.db, rid)) + ")";
+        if (r->value("is_encrypted", false))
+            head += st.showEmoji ? " 🔒" : " [E2EE]";
+        if (st.mutedRooms.count(rid)) head += st.showEmoji ? " 🔇" : " [muted]";
+        if (st.starredRooms.count(rid)) head += " ★";
+        if (st.db->getSetting("threads_off", "0") == "0") {
+            int thr = roomThreadCount(st.db, rid);
+            if (thr > 0)
+                head += (st.showEmoji ? " 🧵" : " (threads ") + std::to_string(thr)
+                      + (st.showEmoji ? "" : ")");
+        }
+        std::string tail;  // the right-flushed suffix ("(invited …)" or the time)
+        if (invited && st.showRoomInviteMark) {
+            auto invIt = st.inviteByRoom.find(rid);
+            std::string when;
+            if (invIt != st.inviteByRoom.end() && invIt->second.ts > 0)
+                when = "invited " + relativeTime(invIt->second.ts);
+            tail = (st.showEmoji ? "📨 (" : "(") + when + ")";
+        } else if (!invited) {
+            std::string last = roomLastMsg(st.db, rid, st.rooms);
+            if (!last.empty()) {
+                auto colon = last.find(':');
+                std::string who = colon == std::string::npos
+                                      ? last : last.substr(0, colon + 1);
+                std::string what = colon == std::string::npos
+                                       ? "" : last.substr(colon + 1);
+                std::string prev = " · " + who + "\x1b[90m" + what + "\x1b[0m";
+                std::string ltime = roomLastTime(st.db, rid, st.showSeconds,
+                                                 st.clock12h);
+                if (!ltime.empty()) {
+                    tail = ltime;
+                    int avail = leftW - displayWidth(head) - displayWidth(prev)
+                              - displayWidth(ltime) - 3;
+                    if (avail >= 6)
+                        head += " \x1b[90m"
+                              + highlightMentions(clip(prev, avail)) + "\x1b[0m";
+                }
+            }
+        }
+        std::string row = head;
+        if (!tail.empty()) {
+            int slack = leftW - displayWidth(row) - displayWidth(tail) - 1;
+            if (slack > 0) row += std::string(slack, ' ') + "\x1b[90m" + tail + "\x1b[0m";
+            else row += " \x1b[90m" + tail + "\x1b[0m";
+        }
+        row = clip(row, leftW - 1);
+        if (invited) {
+            invRows.push_back(row);
+        } else {
+            std::string sp = r->value("space", "");
+            auto si = spaceIdx.find(sp);
+            int b = si != spaceIdx.end() ? si->second : noSpaceBucket;
+            bucketRows[static_cast<size_t>(b)].push_back(row);
+        }
+    }
+    if (!invRows.empty()) {
+        leftRows.push_back(" \x1b[1m📨 Invites\x1b[0m");
+        leftRows.insert(leftRows.end(), invRows.begin(), invRows.end());
+    }
+    bool anySpace = false;
+    for (size_t b = 0; b < bucketName.size(); ++b) {
+        if (bucketRows[b].empty()) continue;
+        anySpace = true;
+        leftRows.push_back("  \x1b[1m▸ " + bucketName[b] + "\x1b[0m \x1b[90m("
+                         + std::to_string(bucketRows[b].size()) + ")\x1b[0m");
+        leftRows.insert(leftRows.end(), bucketRows[b].begin(), bucketRows[b].end());
+    }
+    if (!bucketRows[static_cast<size_t>(noSpaceBucket)].empty()) {
+        if (anySpace)
+            leftRows.push_back("  \x1b[1m-- No space (" + std::to_string(bucketRows[static_cast<size_t>(noSpaceBucket)].size()) + ") --\x1b[0m");
+        leftRows.insert(leftRows.end(),
+                        bucketRows[static_cast<size_t>(noSpaceBucket)].begin(),
+                        bucketRows[static_cast<size_t>(noSpaceBucket)].end());
+    }
     // The rooms list can scroll on its own (--scroll-left): only the
     // left panel moves, the chat and members stay put.
     int leftScroll = std::min(std::max(0, st.leftScroll),
-                              std::max(0, static_cast<int>(visible.size()) - rows));
+                              std::max(0, static_cast<int>(leftRows.size()) - rows));
     if (scroll > 0) out += "  ^ more above (scroll up)\n";
     if (scroll + rows < contentRowsImpl(st)) out += "  v more below (scroll down)\n";
     for (int i = 0; i < rows; ++i) {
         int src = scroll + i;  // the content row this view row shows
         int leftSrc = leftScroll + i;  // the rooms row (scrolled separately)
         std::string left, center, right;
-        if (leftSrc < static_cast<int>(visible.size())) {
-            const auto& r = *visible[static_cast<size_t>(leftSrc)];
-            std::string rid = r.value("room_id", "");
-            std::string mark = rid == st.currentRoomId ? "*" : " ";
-            std::string name = roomDisplayNameImpl(r);
-            if (r.value("is_direct", false))
-                name = (st.showEmoji ? "💬 " : "[DM] ") + name;
-            left = mark + "[1m" + name + "[0m ("
-                 + std::to_string(roomMessageCount(st.db, rid)) + ")";
-            // Invited rooms: the remembered invitation date replaces the
-            // last-message preview below ("📨 2h ago").
-            auto invIt = st.inviteByRoom.find(rid);
-            if (r.value("is_encrypted", false)) {
-                left += (st.showEmoji ? " 🔒" : " [E2EE]");
-            }
-            if (st.mutedRooms.count(rid)) {
-                left += (st.showEmoji ? " 🔇" : " [muted]");
-            }
-            if (st.starredRooms.count(rid)) {
-                left += " ★";  // ★
-            }
-            int thr = st.db->getSetting("threads_off", "0") == "0"
-                          ? roomThreadCount(st.db, rid) : 0;
-            if (thr > 0) {
-                left += (st.showEmoji ? " 🧵" : " (threads ") + std::to_string(thr)
-                      + (st.showEmoji ? "" : ")");
-            }
-            if (invIt != st.inviteByRoom.end()) {
-                // No preview: the row shows when the invitation arrived —
-                // the meaning of the 📨 glyph written out in parentheses,
-                // like "(invited 2h ago)". 'invite mark off' hides it.
-                if (st.showRoomInviteMark) {
-                    left += st.showEmoji ? " [90m📨 [0m([90minvited "
-                                        : " ([90minvited ";
-                    left += relativeTime(invIt->second.ts) + "[0m)";
-                }
-            } else {
-                // The last message preview, like Element's room list.
-                std::string last = roomLastMsg(st.db, rid, st.rooms);
-                if (!last.empty()) {
-                    // The preview leaves room for the last-message time at
-                    // the row's end (the Element-style room list).
-                    int avail = leftW - displayWidth(left) - 9;
-                    if (avail >= 6) {
-                        // Nickname in the normal color, the message dimmed.
-                        auto colon = last.find(':');
-                        std::string who = colon == std::string::npos
-                                              ? last : last.substr(0, colon + 1);
-                        std::string what = colon == std::string::npos
-                                               ? "" : last.substr(colon + 1);
-                        int used = displayWidth(who) + 2;  // the " · " separator
-                        left += " [90m· [0m" + who
-                              + "[90m"
-                              + highlightMentions(clip(what, std::max(2, avail - used)))
-                              + "[0m";
-                        left += " [90m"
-                              + roomLastTime(st.db, rid, st.showSeconds,
-                                             st.clock12h)
-                              + "[0m";
-                    }
-                }
-            }
+        if (leftSrc < static_cast<int>(leftRows.size())) {
+            left = leftRows[static_cast<size_t>(leftSrc)];
         }
         if (src < static_cast<int>(centerRows.size())) {
             center = centerRows[static_cast<size_t>(src)];
