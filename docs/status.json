@@ -1,8 +1,8 @@
 {
   "generated": {
-    "version": "v0.5.2-36-g32cb315",
-    "commit": "32cb315262a119d4b8b2e22c6b4c69aeb4f3ad93",
-    "builtAt": "2026-08-18T20:38:18+00:00",
+    "version": "v0.5.2-38-gc139e8b",
+    "commit": "c139e8b601ce976eed6cae0f701035a4537799a5",
+    "builtAt": "2026-08-18T20:53:28+00:00",
     "generator": "docs/gen.mjs"
   },
   "note": "This file is generated. Edit docs/features.json instead.",
@@ -486,7 +486,7 @@
         "file": "src/ascii_ui_helpers.cpp",
         "pattern": "st.notifications.clear",
         "missing": false,
-        "line": 399
+        "line": 400
       }
     },
     {
@@ -512,7 +512,7 @@
         "file": "src/ascii_ui_helpers.cpp",
         "pattern": "Power levels first",
         "missing": false,
-        "line": 312
+        "line": 313
       }
     },
     {
