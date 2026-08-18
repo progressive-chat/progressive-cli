@@ -743,14 +743,16 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
     for (size_t b = 0; b < bucketName.size(); ++b) {
         if (bucketRows[b].empty()) continue;
         anySpace = true;
-        // People from all rooms vs. the members of this space's rooms,
-        // on the same line as the space name.
+        // People from all rooms: the members across THIS space's rooms;
+        // "in space": the space's own members — both on the space line.
         int allPeople = 0, spacePeople = 0;
         for (const auto& r : st.rooms) {
-            if (r.value("is_space", false)) continue;
-            int mc = r.value("member_count", 0);
-            allPeople += mc;
-            if (r.value("space", "") == bucketSid[b]) spacePeople += mc;
+            if (r.value("is_space", false)) {
+                if (r.value("room_id", "") == bucketSid[b])
+                    spacePeople = r.value("member_count", 0);
+            } else if (r.value("space", "") == bucketSid[b]) {
+                allPeople += r.value("member_count", 0);
+            }
         }
         leftRows.push_back("  \x1b[1m▸ " + bucketName[b] + "\x1b[0m \x1b[90m("
                          + std::to_string(bucketRows[b].size()) + ") "
