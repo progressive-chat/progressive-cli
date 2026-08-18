@@ -171,6 +171,15 @@ std::string toolSchemasJson() {
            "Search the saved agent sessions for a keyword and return the "
            "matching excerpts (the RAG over the conversation history).",
            {{"query", {{"type", "string"}}}}, {"query"});
+    schema("request_history",
+           "The user's request history: the prompts the user sent the "
+           "agent in the previous sessions (stored separately from the "
+           "chat rooms in .agent-sessions/). Newest sessions first, each "
+           "with its user requests (truncated to 160 chars) and the turn "
+           "count. Useful to see what the user asked before.",
+           {{"limit", {{"type", "integer"},
+                       {"description", "max sessions to show (default 10)"}}}},
+           {});
     {
         json props = json::object();
         props["target"] = {{"type", "string"}, {"enum", {"memory", "user"}}};

@@ -435,6 +435,71 @@ std::string searchSessions(const std::string& query) {
     return out.empty() ? "(no matches in the sessions)" : out;
 }
 
+// The user's request history: the prompts the user sent the agent in the
+// saved sessions (stored separately from the chat rooms in
+// .agent-sessions/). Newest sessions first, each with its user requests
+// (truncated) and a rough turn count.
+std::string requestHistory(int limit) {
+    if (limit <= 0) limit = 10;
+    glob_t g{};
+    if (glob(".agent-sessions/*.json", 0, nullptr, &g) != 0) {
+        globfree(&g);
+        return "(no saved sessions)";
+    }
+    std::vector<std::pair<time_t, std::string>> files;
+    for (size_t i = 0; i < g.gl_pathc; ++i) {
+        struct stat st{};
+        if (stat(g.gl_pathv[i], &st) != 0) continue;
+        files.push_back({st.st_mtime, g.gl_pathv[i]});
+    }
+    globfree(&g);
+    std::sort(files.begin(), files.end(),
+              [](const auto& a, const auto& b) { return a.first > b.first; });
+    std::string out;
+    int shown = 0;
+    for (const auto& [mtime, path] : files) {
+        if (shown >= limit) break;
+        std::ifstream f(path);
+        if (!f) continue;
+        std::ostringstream ss;
+        ss << f.rdbuf();
+        json arr;
+        try {
+            arr = json::parse(ss.str());
+        } catch (...) {
+            continue;
+        }
+        if (!arr.is_array()) continue;
+        std::string reqs;
+        int turns = 0;
+        for (const auto& m : arr) {
+            std::string role = m.value("role", "");
+            if (role != "user" && role != "assistant") continue;
+            turns++;
+            if (role != "user") continue;
+            std::string content = m.value("content", "");
+            if (content.empty()) continue;
+            if (!reqs.empty()) reqs += "\n";
+            if (content.size() > 160) content = content.substr(0, 160) + "...";
+            for (char& ch : content)
+                if (ch == '\n') ch = ' ';
+            reqs += "  - " + content;
+        }
+        if (reqs.empty()) continue;
+        char ts[32];
+        std::tm tm{};
+        localtime_r(&mtime, &tm);
+        std::strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M", &tm);
+        std::string name = path;
+        size_t slash = name.find_last_of('/');
+        if (slash != std::string::npos) name = name.substr(slash + 1);
+        out += name + " (" + ts + ", " + std::to_string(turns) + " turns):\n"
+             + reqs + "\n";
+        shown++;
+    }
+    return out.empty() ? "(no user requests in the sessions)" : out;
+}
+
 // ---- the MCP client (stdio JSON-RPC) ----
 // The per-tool glob rules: the LAST matching rule wins (opencode-style).
 Verdict checkPermission(const Config& cfg, const std::string& tool,

@@ -218,6 +218,7 @@ std::string webFetch(const std::string& url, int maxChars);
 std::string todoTool(const std::string& argsJson);
 std::string memoryTool(const std::string& argsJson);
 std::string searchSessions(const std::string& query);
+std::string requestHistory(int limit);
 Message parseOpenAiResponse(const nlohmann::json& resp);
 
 enum class Verdict { Allow, Ask, Deny };

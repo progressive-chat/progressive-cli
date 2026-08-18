@@ -258,6 +258,7 @@ std::string executeTool(const Config& cfg, const std::string& name,
     if (name == "memory") return memoryTool(argsJson);
     if (name == "notes") return notesTool(argsJson);
     if (name == "search_sessions") return searchSessions(str("query"));
+    if (name == "request_history") return requestHistory(i64("limit", 10));
     if (name == "lsp") {
         return lspQuery(cfg, str("operation"), str("path"), i64("line", 1),
                         i64("character", 1));
@@ -757,7 +758,7 @@ Result run(const Config& cfg, const std::string& prompt,
         auto isReadOnly = [](const std::string& n) {
             return n == "read_file" || n == "glob" || n == "grep" ||
                    n == "webfetch" || n == "clock" || n == "search_sessions" ||
-                   n == "skill" || n == "lsp";
+                   n == "request_history" || n == "skill" || n == "lsp";
         };
         // The read-only calls run in parallel, the mutating ones
         // sequentially (in the order).
