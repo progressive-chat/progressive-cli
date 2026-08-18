@@ -743,9 +743,8 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
     for (size_t b = 0; b < bucketName.size(); ++b) {
         if (bucketRows[b].empty()) continue;
         anySpace = true;
-        leftRows.push_back("  \x1b[1m▸ " + bucketName[b] + "\x1b[0m \x1b[90m("
-                         + std::to_string(bucketRows[b].size()) + ")\x1b[0m");
-        // People from all rooms vs. the members of this space's rooms.
+        // People from all rooms vs. the members of this space's rooms,
+        // on the same line as the space name.
         int allPeople = 0, spacePeople = 0;
         for (const auto& r : st.rooms) {
             if (r.value("is_space", false)) continue;
@@ -753,9 +752,11 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
             allPeople += mc;
             if (r.value("space", "") == bucketSid[b]) spacePeople += mc;
         }
-        leftRows.push_back("   \x1b[90mPeople from all rooms: "
-                         + std::to_string(allPeople) + ", in space: "
-                         + std::to_string(spacePeople) + "\x1b[0m");
+        leftRows.push_back("  \x1b[1m▸ " + bucketName[b] + "\x1b[0m \x1b[90m("
+                         + std::to_string(bucketRows[b].size()) + ") "
+                         + "People from all rooms: " + std::to_string(allPeople)
+                         + ", in space: " + std::to_string(spacePeople)
+                         + "\x1b[0m");
         leftRows.insert(leftRows.end(), bucketRows[b].begin(), bucketRows[b].end());
     }
     if (!bucketRows[static_cast<size_t>(noSpaceBucket)].empty()) {
