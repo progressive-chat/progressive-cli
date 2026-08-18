@@ -137,17 +137,24 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                         }
                         if (!chosen.empty())
                             center += " \x1b[36m" + chosen + "\x1b[0m";
-                        // A dim hint under the row: which voting this vote
-                        // belongs to, so the chat shows what is being voted
-                        // about at a glance.
+                        // The voting's question, inline grey on the SAME
+                        // line as the vote (clipped to the row's width).
                         auto q = pev.content.find("question");
                         if (q != pev.content.end() && q->is_object()) {
                             std::string qtext = q->value("text", "");
                             if (!qtext.empty()) {
-                                center += "\n  \x1b[90m"
-                                        + clip(qtext, std::max(20, centerW - 4))
-                                        + "\x1b[0m";
+                                // In mobile the chat column is the
+                                // full terminal width (the rows wrap at
+                                // W - 8); centerW only tracks the desktop
+                                // panels. 6 = the "HH:MM " time prefix,
+                                // 11 = the "  (" and ")" wrappers.
+                                int effW = (st.mobile ? W : centerW) - 8;
+                                int budget = std::max(
+                                    6, effW - displayWidth(center) - 11);
+                                center += "  \x1b[90m("
+                                        + clip(qtext, budget) + ")\x1b[0m";
                             }
+
                         }
                     }
                 } else if (mt == "m.sticker") {
@@ -190,15 +197,24 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
             std::string thr = eventThreadRoot(ev);
             std::string rep = eventReplyTo(ev);
             if (center.empty() && !thr.empty()) {
-                // The thread hint lives on its own dim line under the
-                // body, so the ⤷ row wraps word-cleanly and the hint is
-                // never cut mid-word by the panel edge.
-                std::string preview = eventPreview(st.db, st.currentRoomId, thr);
-                center = "[" + chatName(st, st.currentRoomId, ev.sender) + "] \u2937 " + body
-                       + "\n  \x1b[90m(thread: "
-                       + clip(preview.empty() ? thr : preview,
-                              std::max(8, centerW - 22))
-                       + ")\x1b[0m";
+                // The thread hint sits on the SAME line as the message
+                // (grey, no author — the sender is already in the row),
+                // clipped to the remaining panel width.
+                std::string preview;
+                matrix::Event rootEv;
+                if (st.db && st.db->getEventById(thr, rootEv))
+                    preview = eventBodyImpl(rootEv);
+                if (preview.empty()) preview = thr;
+                std::string head = "[" + chatName(st, st.currentRoomId, ev.sender)
+                                 + "] \u2937 " + body;
+                // In mobile the chat column is the full terminal width,
+                // centerW only tracks the desktop panels; the rows wrap
+                // at W - 8. 6 = the "HH:MM " time prefix, 18 = the
+                // "  (thread: " + ")" wrappers.
+                int effW = (st.mobile ? W : centerW) - 8;
+                int budget = std::max(6, effW - displayWidth(head) - 18);
+                center = head + "  \x1b[90m(thread: "
+                       + clip(preview, budget) + ")\x1b[0m";
             } else if (center.empty() && !rep.empty()) {
                 // Element-style ReplyChain: walk the m.in_reply_to chain
                 // (up to 3 levels) and stack the quoted previews, each
@@ -289,7 +305,16 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                                                 ? it->second : k;
                         vstr += label + ": " + std::to_string(n);
                     }
-                    center += "  \x1b[32m\xf0\x9f\x97\xb3 " + vstr + "\x1b[0m";  // 🗳
+                    // Inline when it fits ("23:10 [alice] ⭕ poll: … 🗳 …");
+                    // otherwise the counts go on their own dim line so the
+                    // question text never wraps mid-word.
+                    int effW = (st.mobile ? W : centerW) - 8;
+                    int used = 6 + static_cast<int>(center.size()) + 4
+                             + static_cast<int>(vstr.size());
+                    if (used <= effW)
+                        center += "  \x1b[32m\xf0\x9f\x97\xb3 " + vstr + "\x1b[0m";  // 🗳
+                    else
+                        center += "\n  \x1b[32m\xf0\x9f\x97\xb3 " + vstr + "\x1b[0m";
                 }
             }
             // Reactions and edits aggregated for EVERY message row.
@@ -403,7 +428,9 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                 if (static_cast<int>(sep.size()) < centerW) {
                     sep = std::string((centerW - static_cast<int>(sep.size())) / 2, ' ') + sep;
                 }
-                centerRows.push_back(sep);
+                if (st.db->getSetting("date_sep", "1") != "0") {
+                    centerRows.push_back("\x1b[90m" + sep + "\x1b[0m");
+                }
                 prevDay = day;
             }
             // Element-style "viewing an earlier message" banner, right
