@@ -1175,8 +1175,18 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
         if (invited && st.showRoomInviteMark) {
             auto invIt = st.inviteByRoom.find(rid);
             std::string when;
-            if (invIt != st.inviteByRoom.end() && invIt->second.ts > 0)
+            if (invIt != st.inviteByRoom.end() && invIt->second.ts > 0) {
                 when = "invited " + relativeTime(invIt->second.ts);
+                // Who sent the invite: the member event's sender, shown
+                // by its localpart ("invited 2h ago by alice").
+                if (!invIt->second.inviter.empty()) {
+                    std::string by = invIt->second.inviter;
+                    size_t at = by.rfind(':');
+                    if (at != std::string::npos) by = by.substr(1, at - 1);
+                    else if (!by.empty() && by[0] == '@') by = by.substr(1);
+                    when += " by " + by;
+                }
+            }
             tail = (st.showEmoji ? "📨 (" : "(") + when + ")";
         } else if (!invited) {
             std::string last = roomLastMsg(st.db, rid, st.rooms);
