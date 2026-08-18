@@ -142,12 +142,39 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                     // The vote row uses plain text — the 🗳 glyph renders
                     // one cell in the phone terminal and shifted the pipes.
                     center = "[" + senderShortImpl(ev.sender) + "] voted";
-                    // A dim hint under the row: which voting this vote
-                    // belongs to, so the chat shows what is being voted
-                    // about at a glance.
+                    // The picked options: the selections carry the answer
+                    // ids; map them to the option texts of the poll start
+                    // event so the row shows the choice directly.
                     matrix::Event pev;
                     if (st.db && st.db->getEventById(target, pev)
                         && pev.content.is_object()) {
+                        std::string chosen;
+                        auto sel = ev.content.find("selections");
+                        auto ans = pev.content.find("answers");
+                        if (sel != ev.content.end() && sel->is_array()
+                            && ans != pev.content.end() && ans->is_array()) {
+                            for (const auto& sid : *sel) {
+                                if (!sid.is_string()) continue;
+                                for (const auto& av : *ans) {
+                                    if (!av.is_object()) continue;
+                                    if (av.value("id", "")
+                                        == sid.get<std::string>()) {
+                                        std::string txt = av.value("text", "");
+                                        if (!txt.empty()) {
+                                            if (!chosen.empty())
+                                                chosen += ", ";
+                                            chosen += txt;
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if (!chosen.empty())
+                            center += " \x1b[36m" + chosen + "\x1b[0m";
+                        // A dim hint under the row: which voting this vote
+                        // belongs to, so the chat shows what is being voted
+                        // about at a glance.
                         auto q = pev.content.find("question");
                         if (q != pev.content.end() && q->is_object()) {
                             std::string qtext = q->value("text", "");
