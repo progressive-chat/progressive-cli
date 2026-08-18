@@ -699,9 +699,10 @@ std::string drawFrameImpl(const UiState& st) {
             // The full matrix ids fit when they stay inside the clamp.
             int rightMax = std::min(40, std::max(24, W / 3));
             // The full matrix ids (mallory @matrix.org, wendy @mozilla.org)
-            // count too — whenever they fit under the panel cap the list
-            // shows them instead of the short localparts.
-            if (fullMember + 3 <= rightMax) longestMember = std::max(longestMember, fullMember);
+            // count too — whenever the panel cap covers them (the +3 pad
+            // is clipped by the cap) the list shows them instead of the
+            // short localparts.
+            if (fullMember <= rightMax) longestMember = std::max(longestMember, fullMember);
             rightW = std::max(10, std::min(rightMax, longestMember + 3));
         }
     }
