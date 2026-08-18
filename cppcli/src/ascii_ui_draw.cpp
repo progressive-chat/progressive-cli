@@ -1190,29 +1190,34 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                                                  st.clock12h);
                 if (!ltime.empty()) {
                     tail = ltime;
-                    // The preview fills whatever the name, icons and the
-                    // right-flushed time leave free: the "·" separator is
+                    // The preview fills the free columns exactly (one
+                    // space stays before the time): the "·" separator is
                     // dim, the nickname keeps the normal color and only
                     // the message text is dimmed (like before).
                     int budget = leftW - displayWidth(head)
-                               - displayWidth(ltime) - 8;
-                    if (budget >= 6)
+                               - displayWidth(ltime) - 1;
+                    if (budget >= displayWidth(who) + 6)
                         head += " \x1b[90m· \x1b[0m" + who + "\x1b[90m"
                               + highlightMentions(clip(
                                     what,
                                     std::max(2, budget
-                                                  - displayWidth(who) - 4)))
+                                                  - displayWidth(who) - 3)))
                               + "\x1b[0m";
                 }
             }
         }
         std::string row = head;
         if (!tail.empty()) {
-            int slack = leftW - displayWidth(row) - displayWidth(tail) - 1;
+            // The time sits at the very last column — the pipe right
+            // after it, no trailing padding (the left panel is never
+            // the full terminal width, so there is no wrap artifact).
+            int slack = leftW - displayWidth(row) - displayWidth(tail);
             if (slack > 0) row += std::string(slack, ' ') + "\x1b[90m" + tail + "\x1b[0m";
             else row += " \x1b[90m" + tail + "\x1b[0m";
         }
-        row = clip(row, leftW - 1);
+        // A safety net for the (rare) over-long head; the paint pads
+        // the row to the panel width, so nothing ever spills past it.
+        row = clip(row, leftW);
         if (invited) {
             invRows.push_back(row);
         } else {
