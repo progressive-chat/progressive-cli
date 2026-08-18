@@ -1,8 +1,8 @@
 {
  "generated": {
-  "version": "v0.5.2-0-g4660a6e",
-  "commit": "4660a6e926a6ca4409a77988f1f7b09c9ebf4110",
-  "builtAt": "2026-08-17T21:29:42+00:00",
+  "version": "v0.5.2-6-gfefd9f3",
+  "commit": "fefd9f30fc955d0ccf65b6dac509290dff1f4533",
+  "builtAt": "2026-08-18T06:55:23+00:00",
   "generator": "docs/gen.mjs"
  },
  "note": "This file is generated. Edit docs/features.json instead.",
@@ -224,7 +224,7 @@
   },
   {
    "id": "powerlevels",
-   "name": "Power levels view (custom levels, overrides)",
+   "name": "Power levels (owner \ud83d\udc51150 / admin \ud83d\udee1100 / mod \ud83d\udee150 badges with the level number)",
    "category": "cli",
    "status": "implemented",
    "since": "0.5.1",
@@ -442,7 +442,7 @@
     "file": "src/ascii_ui_draw.cpp",
     "pattern": "m.receipt",
     "missing": false,
-    "line": 442
+    "line": 470
    }
   },
   {
@@ -534,7 +534,7 @@
     "file": "src/ascii_ui_repl.cpp",
     "pattern": "readLineWithHistory",
     "missing": false,
-    "line": 486
+    "line": 487
    }
   },
   {
@@ -884,7 +884,7 @@
     "file": "src/ascii_ui_draw.cpp",
     "pattern": "m.room.tombstone",
     "missing": false,
-    "line": 429
+    "line": 457
    }
   }
  ]
