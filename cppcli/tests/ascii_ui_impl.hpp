@@ -76,6 +76,10 @@ std::string fullMxid(const UiState& st, const std::string& mem);
 std::string memberRowStr(const UiState& st, const std::string& mem,
                          bool fullIds = false);
 std::string drawFrameImpl(const UiState& st);
+// The chat panel's rows (ascii_ui_draw_center.cpp) — split out of the
+// frame builder so every translation unit stays under ~1000 lines.
+std::vector<std::string> buildCenterRows(const UiState& st, int centerW, int W,
+                                         bool horizMembers);
 std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                               int W, int leftW, int rightW, int scroll,
                               int rows, const char* PIPE, const char* X,

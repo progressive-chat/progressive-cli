@@ -33,6 +33,7 @@ set(SOURCES
     ascii_ui_about.cpp
     ascii_ui_helpers.cpp
     ascii_ui_draw.cpp
+    ascii_ui_draw_center.cpp
     ascii_ui_repl.cpp
     ascii_ui_repl_a.cpp
     ascii_ui_repl_b.cpp
