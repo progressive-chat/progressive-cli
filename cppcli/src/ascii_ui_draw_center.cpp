@@ -143,16 +143,19 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                         if (q != pev.content.end() && q->is_object()) {
                             std::string qtext = q->value("text", "");
                             if (!qtext.empty()) {
-                                // In mobile the chat column is the
-                                // full terminal width (the rows wrap at
-                                // W - 8); centerW only tracks the desktop
-                                // panels. 6 = the "HH:MM " time prefix,
-                                // 11 = the "  (" and ")" wrappers.
-                                int effW = (st.mobile ? W : centerW) - 8;
-                                int budget = effW - displayWidth(center) - 11;
-                                if (budget >= 8) {
-                                    center += "  \x1b[90m("
-                                            + clip(qtext, budget) + ")\x1b[0m";
+                                // The question is never truncated either: the same
+                                // inline → own line → drop three-way
+                                // choice as the thread hint.
+                                int W1 = (st.mobile ? W : centerW) - 1 - 6;
+                                int Wc = (st.mobile ? W : centerW) - 8;
+                                int vW = displayWidth(center);
+                                std::string vtail = "\x1b[90m(" + qtext
+                                                  + ")\x1b[0m";
+                                int vtW = displayWidth(qtext) + 2;
+                                if (vW + 2 + vtW <= W1) {
+                                    center += "  " + vtail;
+                                } else if (vtW <= Wc) {
+                                    center += "\n" + vtail;
                                 }
                             }
 
@@ -208,15 +211,21 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                 if (preview.empty()) preview = thr;
                 std::string head = "[" + chatName(st, st.currentRoomId, ev.sender)
                                  + "] \u2937 " + body;
-                // In mobile the chat column is the full terminal width,
-                // centerW only tracks the desktop panels; the rows wrap
-                // at W - 8. 6 = the "HH:MM " time prefix, 18 = the
-                // "  (thread: " + ")" wrappers.
-                int effW = (st.mobile ? W : centerW) - 8;
-                int budget = effW - displayWidth(head) - 18;
-                if (budget >= 8) {
-                    center = head + "  \x1b[90m(thread: "
-                           + clip(preview, budget) + ")\x1b[0m";
+                // The hint is never truncated: it goes inline when the whole
+                // row fits the first line (time + border included), onto
+                // its own grey continuation line when the message line is
+                // too tight, and is dropped only when even that is too
+                // small. 6 = the "HH:MM " time prefix, 1 = the border;
+                // the continuation lines wrap at W - 8 (mobile) or
+                // centerW - 8 (desktop).
+                int W1 = (st.mobile ? W : centerW) - 1 - 6;
+                int Wc = (st.mobile ? W : centerW) - 8;
+                std::string tail = "\x1b[90m(thread: " + preview + ")\x1b[0m";
+                int tW = 10 + displayWidth(preview);
+                if (displayWidth(head) + 2 + tW <= W1) {
+                    center = head + "  " + tail;
+                } else if (tW <= Wc) {
+                    center = head + "\n" + tail;
                 } else {
                     center = head;
                 }
