@@ -835,6 +835,17 @@ bool Client::unbanUser(const std::string& room_id, const std::string& user_id) {
     return resp.ok();
 }
 
+bool Client::reportEvent(const std::string& room_id,
+                         const std::string& event_id,
+                         const std::string& reason, int score) {
+    json body = json::object();
+    body["score"] = score;
+    if (!reason.empty()) body["reason"] = reason;
+    auto resp = authPost("/_matrix/client/r0/rooms/" + room_id +
+                         "/report/" + event_id, body.dump());
+    return resp.ok();
+}
+
 std::string Client::setRoomName(const std::string& room_id, const std::string& name) {
     json content = {{"name", name}};
     return sendStateEvent(room_id, "m.room.name", "", content);

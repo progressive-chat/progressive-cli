@@ -472,7 +472,7 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
             if (ev.type == "m.room.tombstone") {
                 std::string succ = tombstoneSuccessor(st.messages);
                 centerRows.push_back("\x1b[90m\u266b room upgraded \xe2\x86\x92 successor "
-                    + (succ.empty() ? "\xfffd" : succ) + " \x1b[0m");
+                    + (succ.empty() ? "\xEF\xBF\xBD" : succ) + " \x1b[0m");
                 continue;
             }
             if (ev.type == "m.reaction" || ev.type == "m.room.power_levels" ||

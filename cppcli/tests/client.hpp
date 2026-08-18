@@ -131,6 +131,11 @@ public:
     bool banUser(const std::string& room_id, const std::string& user_id,
                  const std::string& reason = "");
     bool unbanUser(const std::string& room_id, const std::string& user_id);
+    // Report an event to the homeserver admin (the CS API moderation
+    // endpoint, POST /rooms/{roomId}/report/{eventId}): score -100..100
+    // (negative = bad), reason is what the admin sees.
+    bool reportEvent(const std::string& room_id, const std::string& event_id,
+                     const std::string& reason = "", int score = -100);
     bool ignoreUser(const std::string& user_id);
     bool unignoreUser(const std::string& user_id);
 

@@ -211,6 +211,46 @@ int populateDemoData(matrixcli::db::Database& dbi) {
         day++;
     }
 
+    // A deep #general history: ~3 days of back-and-forth, inserted
+    // OLDER than the seed above (so scrolling up reveals it) but newer
+    // than the extras below. 15-minute cadence — enough rows to make
+    // the chat window scroll a few screens past the visible height.
+    {
+        const char* genSenders[] = {"@alice", "@bob", "@carol", "@dave",
+                                    "@erin", "@frank", "@grace"};
+        const char* genBodies[] = {
+            "Morning everyone, how's it going?",
+            "Just finished the build, tests are green.",
+            "Anyone up for a code review later?",
+            "Coffee's brewing, let's talk APIs.",
+            "The new sync endpoint landed — docs updated.",
+            "I keep forgetting the flag order, ugh.",
+            "Pushed a fix for the crash on startup.",
+            "Meeting moved to 15:00, heads up.",
+            "That bug only repros on the release build.",
+            "Can someone check the merge request?",
+            "Logs look clean now, nice work.",
+            "Reminder: the demo is on Friday.",
+            "What's everyone working on today?",
+            "Haha, classic off-by-one.",
+            "The spec says otherwise — let me quote it.",
+            "Already rebased, ready when you are.",
+        };
+        constexpr int genCount = 288;             // 3 days at 15 min
+        int64_t genTs = ts - dayMs;               // one day before the seed
+        for (int i = 0; i < genCount; ++i) {
+            genTs -= 900000;                      // 15 minutes between posts
+            matrix::Event ev;
+            ev.event_id = "$demo_hist_" + std::to_string(genTs);
+            ev.room_id = "!general:demo.local";
+            ev.sender = genSenders[i % 7];
+            ev.type = "m.room.message";
+            ev.content = {{"body", genBodies[i % 16]}, {"msgtype", "m.text"}};
+            ev.origin_server_ts = genTs;
+            dbi.insertEvent(ev);
+        }
+    }
+
     // Content for the extra rooms: mentions, urls, files, audio.
     {
         struct { const char* room; const char* sender; const char* body; } extra[] = {

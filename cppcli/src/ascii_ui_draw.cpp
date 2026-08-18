@@ -760,7 +760,7 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                 allPeople += r.value("member_count", 0);
             }
         }
-        leftRows.push_back("  \x1b[1m▸ " + bucketName[b] + "\x1b[0m \x1b[90m("
+        leftRows.push_back("\x1b[1m▸ " + bucketName[b] + "\x1b[0m \x1b[90m("
                          + std::to_string(bucketRows[b].size()) + ") "
                          + "People from all rooms: " + std::to_string(allPeople)
                          + ", in space: " + std::to_string(spacePeople)

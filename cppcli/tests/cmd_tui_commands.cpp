@@ -587,7 +587,7 @@ void tuiHandleCommand(matrixcli::tui::ChatView& chat,
                         std::vector<std::string> cmds = {"join","leave","kick","ban","invite","op","deop",
                             "whois","ignore","pin","unpin","pins","stats","fav","mirror","markdown","upgrade",
                             "export","statusmsg","remind","notify","directory","nick","topic","react","vote",
-                            "search","voice","sticker","location","todo","create","upload","redact","read","online","away"};
+                            "search","voice","sticker","location","todo","create","upload","redact","read","online","away","report"};
                         std::string best;
                         int bestDist = 999;
                         for (auto& c : cmds) {
@@ -626,8 +626,10 @@ void tuiHandleCommand(matrixcli::tui::ChatView& chat,
                     std::string roomId = chat.activeRoomId();
                     auto sp = args.find(' ');
                     if (!roomId.empty() && sp != std::string::npos)
-                        try { client.sendEvent(roomId, "m.room.report",
-                            nlohmann::json{{"event_id",args.substr(0,sp)},{"reason",args.substr(sp+1)}}); } catch (...) {}
+                        try {
+                            client.reportEvent(roomId, args.substr(0, sp),
+                                               args.substr(sp + 1));
+                        } catch (...) {}
                 } else if (cmd == "forward") {
                     std::string roomId = chat.activeRoomId();
                     auto sp = args.find(' ');

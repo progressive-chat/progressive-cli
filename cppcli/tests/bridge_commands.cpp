@@ -296,6 +296,36 @@ void registerBuiltinCommands() {
         return 0;
     });
 
+    // ── Report a message (to the homeserver admin) ──
+    reg.registerCli("report", [findRoom, friendlyError](const cli::Args& args) -> int {
+        if (args.positional.size() < 2) {
+            std::cerr << "Usage: progressive-cli report <room> <event_id> [--reason r] [--score N]"
+                      << std::endl;
+            return 1;
+        }
+        using namespace matrixcli;
+        matrix::Client client;
+        db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+        auto acc = dbi.loadAccount();
+        if (!acc.is_logged_in()) { std::cerr << "Not logged in" << std::endl; return 1; }
+        client.setHomeserverURL(acc.homeserver_url); client.setAccessToken(acc.access_token);
+        std::string reason = args.options.count("reason") ? args.options.at("reason") : "";
+        int score = -100;
+        if (args.options.count("score")) {
+            try { score = std::stoi(args.options.at("score")); } catch (...) {}
+        }
+        try {
+            if (!client.reportEvent(findRoom(args.positional[0]), args.positional[1],
+                                    reason, score))
+                throw std::runtime_error("the homeserver rejected the report");
+            std::cout << "Reported " << args.positional[1] << " to the homeserver admin"
+                      << (reason.empty() ? "" : " (" + reason + ")") << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << friendlyError(e.what()) << std::endl; return 1;
+        }
+        return 0;
+    });
+
     // ── Knock on room ──
     reg.registerCli("knock", [](const cli::Args& args) -> int {
         if (args.positional.empty()) { std::cerr << "Usage: progressive-cli knock <room_id|alias> [reason]" << std::endl; return 1; }

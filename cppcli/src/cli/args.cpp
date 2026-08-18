@@ -82,6 +82,7 @@ void printUsage() {
               << "  info          Show the room info\n"
               << "  invite        Invite a user: invite <room> <@user> [--reason r]\n"
               << "  kick/ban/unban  The moderator actions: kick|ban|unban <room> <@user> [--reason r]\n"
+              << "  report        Report a message to the homeserver admin: report <room> <event_id> [--reason r] [--score N]\n"
               << "  knock         Knock on a room\n"
               << "  markdown      Render markdown to HTML: markdown <text> | echo <text> | progressive-cli markdown\n"
               << "  members       The room members: members <room>\n"
