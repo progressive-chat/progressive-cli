@@ -194,11 +194,12 @@ std::vector<std::string> wrapTextImpl(const std::string& s, int width,
     auto flushWord = [&]() {
         if (word.empty()) return;
         int wd = displayWidth(word);
-        if (!cur.empty() && displayWidth(cur) + 1 + wd > lineWidth()) {
+        int sep = word.front() == ' ' ? 0 : 1;
+        if (!cur.empty() && displayWidth(cur) + sep + wd > lineWidth()) {
             lines.push_back(cur);
             cur.clear();
         }
-        if (!cur.empty()) cur += " ";
+        if (!cur.empty() && word.front() != ' ') cur += " ";
         cur += word;
         word.clear();
     };
@@ -231,9 +232,13 @@ std::vector<std::string> wrapTextImpl(const std::string& s, int width,
                 // bodies) — a break pushes the line only when it has text.
                 if (!cur.empty()) lines.push_back(cur);
                 cur.clear();
-            } else if (!cur.empty() && displayWidth(cur) + 1 > lineWidth()) {
-                lines.push_back(cur);
-                cur.clear();
+            } else if (c == ' ') {
+                if (!cur.empty() && displayWidth(cur) + 1 > lineWidth()) {
+                    lines.push_back(cur);
+                    cur.clear();
+                } else {
+                    word += ' ';  // keep the separator (double spaces stay)
+                }
             }
             i++;
             continue;

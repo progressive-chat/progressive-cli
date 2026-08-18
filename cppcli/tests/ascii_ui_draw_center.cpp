@@ -145,7 +145,7 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                             if (!qtext.empty()) {
                                 // The question fills the rest of the same line (never a
                                 // line of its own).
-                                int budget = (st.mobile ? W : centerW) - 1 - 6
+                                int budget = (st.mobile ? W - 1 : centerW) - 6
                                            - displayWidth(center) - 4;
                                 if (budget >= 8) {
                                     center += "  \x1b[90m("
@@ -206,10 +206,11 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                 std::string head = "[" + chatName(st, st.currentRoomId, ev.sender)
                                  + "] \u2937 " + body;
                 // The hint sits on the SAME line as the message and fills it
-                // edge to edge: budget = first line (time + border) minus
-                // the head and the "  (thread: " + ")" wrappers. Missing
-                // the space means no hint at all.
-                int budget = (st.mobile ? W : centerW) - 1 - 6
+                // edge to edge: budget = first line (the panel itself,
+                // W - 1 on mobile; time and border already counted)
+                // minus the head and the "  (thread: " + ")" wrappers.
+                // Missing the space means no hint at all.
+                int budget = (st.mobile ? W - 1 : centerW) - 6
                            - displayWidth(head) - 12;
                 if (budget >= 8) {
                     center = head + "  \x1b[90m(thread: "
@@ -610,7 +611,7 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                     int reserve = displayWidth(timeStr) + 1;
                     auto tLines = wrapTextImpl(
                         inner, std::max(8, wrapW - reserve),
-                        (st.mobile ? W : centerW) - 1 - reserve);
+                        (st.mobile ? W - 1 : centerW) - reserve);
                     for (size_t li = 0; li < tLines.size(); ++li) {
                         if (li == 0) {
                             int padN = wrapW + 8 - displayWidth(tLines[0])
@@ -624,7 +625,7 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                 } else {
                     std::string first = prefix + timeStr + " " + row + idSuffix;
                     std::vector<std::string> lines = wrapTextImpl(
-                        first, wrapW, (st.mobile ? W : centerW) - 1);
+                        first, wrapW, st.mobile ? W - 1 : centerW);
                     for (size_t li = 0; li < lines.size(); ++li) {
                         if (li == 0) {
                             centerRows.push_back(lines[0]);
