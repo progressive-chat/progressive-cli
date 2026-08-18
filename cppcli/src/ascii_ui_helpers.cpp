@@ -269,23 +269,24 @@ void loadRoomIntoStateImpl(UiState& st, const std::string& query) {
     // (the chat window may not reach the joins).
     auto allEvs = st.db->getEvents(st.currentRoomId, 2000);
     for (const auto& ev : allEvs) {
-        if (st.memberNames.count(ev.sender)) continue;  // newest wins
-        if (ev.type == "m.room.member" && ev.content.is_object()) {
-            auto dn = ev.content.find("displayname");
-            if (dn != ev.content.end() && dn->is_string() &&
-                !dn->get<std::string>().empty()) {
-                st.memberNames[ev.sender] = dn->get<std::string>();
-            }
-        }
-        // Power levels: the state event may be far older than the visible
-        // window — scan the whole history so admins/mods sort correctly.
         if (ev.type == "m.room.power_levels" && ev.content.is_object()) {
+            // The name-dedup skip below would swallow this: the pl event's
+            // sender is usually the first member seen (newest first), so
+            // the levels are read here, before any skip.
             st.powerLevelsEvent = ev.content;
             auto users = ev.content.find("users");
             if (users != ev.content.end() && users->is_object()) {
                 for (auto& [uid, lvl] : users->items()) {
                     if (lvl.is_number()) st.powerLevels[uid] = lvl.get<int>();
                 }
+            }
+        }
+        if (st.memberNames.count(ev.sender)) continue;  // newest wins
+        if (ev.type == "m.room.member" && ev.content.is_object()) {
+            auto dn = ev.content.find("displayname");
+            if (dn != ev.content.end() && dn->is_string() &&
+                !dn->get<std::string>().empty()) {
+                st.memberNames[ev.sender] = dn->get<std::string>();
             }
         }
     }

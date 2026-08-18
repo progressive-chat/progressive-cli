@@ -621,21 +621,22 @@ int populateDemoData(matrixcli::db::Database& dbi) {
     }
 
     // Power levels: alice owner (150), bob mod (50), a few custom levels
-    // in the -1..99 band (charlie 20, dave -1, erin 30, frank 90, grace 10),
-    // and some of the formerly-plain members get theirs too (kate 99,
-    // heidi 42, wendy 33, julia 7, trent 3, ivan 1, mallory -1); the rest
-    // stay plain members (0 / unlisted).
+    // in the -1..99 band (charlie 20, carol 25, dave -1, erin 30, frank 90,
+    // grace 10), and some of the formerly-plain members get theirs too
+    // (kate 99, heidi 42, wendy 33, julia 7, trent 3, ivan 1, mallory -1,
+    // alice:matrix.org 2); the rest stay plain members (0 / unlisted).
     {
         matrix::Event pl;
         pl.event_id = "$demo_" + std::to_string(ts);
         pl.room_id = "!general:demo.local"; pl.sender = "@alice";
         pl.type = "m.room.power_levels";
         pl.content = {{"users", {{"@alice", 150}, {"@bob", 50}, {"@charlie", 20},
-                                 {"@dave", -1}, {"@erin", 30}, {"@frank", 90},
-                                 {"@grace", 10}, {"@kate", 99}, {"@heidi", 42},
-                                 {"@wendy:mozilla.org", 33}, {"@julia", 7},
-                                 {"@trent:element.io", 3}, {"@ivan", 1},
-                                 {"@mallory:matrix.org", -1}}}};
+                                 {"@carol", 25}, {"@dave", -1}, {"@erin", 30},
+                                 {"@frank", 90}, {"@grace", 10}, {"@kate", 99},
+                                 {"@heidi", 42}, {"@wendy:mozilla.org", 33},
+                                 {"@julia", 7}, {"@trent:element.io", 3},
+                                 {"@ivan", 1}, {"@mallory:matrix.org", -1},
+                                 {"@alice:matrix.org", 2}}}};
         pl.origin_server_ts = ts;
         dbi.insertEvent(pl);
         ts -= 3600000;
