@@ -458,12 +458,18 @@ std::string roomLastTime(db::Database* db, const std::string& roomId,
     return buf;
 }
 
-// The timestamp of a room's last event (for activity sorting; 0 = none).
+// The timestamp of a room's last MESSAGE event (for activity sorting
+// and the room-list times; 0 = none). State/pin events — the newest
+// entries — must not decide recency.
 int64_t roomLastTs(db::Database* db, const std::string& roomId) {
     if (!db) return 0;
-    auto evs = db->getEvents(roomId, 1);
-    if (evs.empty()) return 0;
-    return evs.front().origin_server_ts;
+    auto evs = db->getEvents(roomId, 30);
+    for (const auto& e : evs) {
+        if (e.type == "m.room.message" || e.type == "m.sticker")
+            return e.origin_server_ts;
+    }
+    if (!evs.empty()) return evs.front().origin_server_ts;
+    return 0;
 }
 
 

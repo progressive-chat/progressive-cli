@@ -303,6 +303,29 @@ void populateDemoDataExtras(matrixcli::db::Database& dbi) {
         }
     }
 
+    // The join rules of the invited rooms — the invite rows show whether
+    // the room is open (public: anyone can preview/join) or closed
+    // (invite-only / restricted).
+    {
+        struct { const char* room; const char* rule; } rules[] = {
+            {"!design:demo.local", "public"},
+            {"!travel:demo.local", "public"},
+            {"!crypto:demo.local", "invite"},
+            {"!books:demo.local", "invite"},
+            {"!food:demo.local", "invite"},
+            {"!ai-art:demo.local", "restricted"},
+        };
+        for (const auto& r : rules) {
+            matrix::Event ev;
+            ev.event_id = "$demo_jr_" + std::string(r.room);
+            ev.room_id = r.room; ev.sender = "@alice";
+            ev.type = "m.room.join_rules";
+            ev.content = {{"join_rule", r.rule}};
+            ev.origin_server_ts = ts - 5LL * 86400 * 1000;
+            dbi.insertEvent(ev);
+        }
+    }
+
     // A real THREAD (m.thread relation): a root message + replies. The
     // ASCII UI and the view command render these with the thread marker.
     {
@@ -453,6 +476,16 @@ void populateDemoDataExtras(matrixcli::db::Database& dbi) {
             {"!dm_carol:demo.local", "@charlie", "The crew is discussing useful tips in this room."},
             {"!dm_dave:demo.local", "@erin", "The maintainers posted new screenshots in this room."},
         };
+        // A few rooms keep older last messages (days ago) so the room
+        // list mixes "HH:MM" and "MM-DD" timestamps, in recency order
+        // (their older events sort them to the bottom of the list).
+        struct { const char* room; int days; } older[] = {
+            {"!podcasts:demo.local", 1},
+            {"!memes:demo.local", 2},
+            {"!diy:demo.local", 3},
+            {"!finance:demo.local", 5},
+            {"!dm_carol:demo.local", 8},
+        };
         int64_t t0 = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
         for (int fi = 0; fi < int(sizeof(fresh) / sizeof(fresh[0])); ++fi) {
@@ -462,6 +495,13 @@ void populateDemoDataExtras(matrixcli::db::Database& dbi) {
             ev.type = "m.room.message";
             ev.content = {{"msgtype", "m.text"}, {"body", fresh[fi].body}};
             ev.origin_server_ts = t0 - int64_t(fi) * 137000 - int64_t(fi % 5) * 23000;
+            for (const auto& o : older) {
+                if (std::string(o.room) == fresh[fi].room) {
+                    ev.origin_server_ts = t0 - int64_t(o.days) * 86400000LL
+                                        - int64_t(fi) * 137000 - int64_t(fi % 5) * 23000;
+                    break;
+                }
+            }
             dbi.insertEvent(ev);
         }
     }

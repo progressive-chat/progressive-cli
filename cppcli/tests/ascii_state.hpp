@@ -75,6 +75,7 @@ struct UiState {
     bool showInvitesLegend = true;  // the "(invites)" explanation after the count
     bool showNames = true;      // Element: show sender display names
     bool showReceipts = true;   // Element: show read receipts
+    std::vector<std::string> hiddenReceiptUsers;  // their ✓ readers are hidden
     bool showJoins = true;      // Element: show join/leave messages
     bool showLinks = true;      // Element: enable URL previews (the pills)
     bool clock12h = false;      // Element: 12/24-hour clock

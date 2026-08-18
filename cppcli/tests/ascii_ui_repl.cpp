@@ -111,6 +111,21 @@ int cmdAsciiUi(const cli::Args& args) {
     }
     st.showNames = dbi.getSetting("names") != "0";
     st.showReceipts = dbi.getSetting("receipts") != "0";
+    st.hiddenReceiptUsers.clear();
+    {
+        // "receipts hide <user>" — the comma-separated list of users whose
+        // ✓ readers never show.
+        std::string rh = dbi.getSetting("receipts_hide", "");
+        size_t pos = 0;
+        while (pos <= rh.size()) {
+            size_t comma = rh.find(',', pos);
+            std::string tok = rh.substr(pos, comma == std::string::npos
+                                             ? std::string::npos : comma - pos);
+            if (!tok.empty()) st.hiddenReceiptUsers.push_back(tok);
+            if (comma == std::string::npos) break;
+            pos = comma + 1;
+        }
+    }
     st.showJoins = dbi.getSetting("joins") != "0";
     st.showLinks = dbi.getSetting("links") != "0";
     st.clock12h = dbi.getSetting("clock12h") == "1";

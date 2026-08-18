@@ -494,6 +494,21 @@ void loadRoomIntoStateImpl(UiState& st, const std::string& query) {
 // The thread rows of a room ("⤷ preview (N)") for the right panel.
 // Resolve a thread root: "3" = the N-th thread of the room (the list
 // order), otherwise the root id or a substring of it. Empty = not found.
+// The room's join rule ("public", "invite", "restricted", "knock") from
+// the first m.room.join_rules event — the invite rows show whether the
+// room is open or closed.
+std::string roomJoinRule(db::Database* db, const std::string& roomId) {
+    if (!db) return "";
+    auto evs = db->getEvents(roomId, 300);
+    for (const auto& ev : evs) {
+        if (ev.type != "m.room.join_rules" || !ev.content.is_object()) continue;
+        auto r = ev.content.find("join_rule");
+        if (r == ev.content.end() || !r->is_string()) return "";
+        return r->get<std::string>();
+    }
+    return "";
+}
+
 std::string resolveThreadRoot(db::Database* db, const std::string& roomId,
                               const std::string& sel) {
     if (!db || sel.empty()) return "";

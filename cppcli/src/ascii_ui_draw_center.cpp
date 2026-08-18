@@ -383,8 +383,23 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                     if (ev2.type != "m.room.message" && ev2.type != "m.sticker") continue;
                     dayCount++;
                 }
+                // The day's message rate: count / the hours elapsed in
+                // that day (a partial day counts only its elapsed part).
+                double hours = 24.0;
+                {
+                    int64_t dayStart = static_cast<int64_t>(day) * 86400000LL;
+                    int64_t dayEnd = dayStart + 86400000LL;
+                    int64_t nowMs = static_cast<int64_t>(std::time(nullptr)) * 1000LL;
+                    hours = static_cast<double>(
+                        (std::min(nowMs, dayEnd) - dayStart)) / 3600000.0;
+                    if (hours <= 0.05) hours = 24.0;
+                }
                 std::string sep = "── " + label + " ──  " + std::to_string(dayCount)
                                 + " msgs";
+                char rateBuf[24];
+                std::snprintf(rateBuf, sizeof(rateBuf), " (%.1f/hr)",
+                              dayCount / hours);
+                sep += rateBuf;
                 if (static_cast<int>(sep.size()) < centerW) {
                     sep = std::string((centerW - static_cast<int>(sep.size())) / 2, ' ') + sep;
                 }
@@ -455,6 +470,24 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                 auto rIt = st.receipts.find(ev.event_id);
                 if (st.showReceipts && rIt != st.receipts.end() && !rIt->second.empty()) {
                     std::string rd = rIt->second;
+                    // 'receipts hide <user>' — their ✓ reader drops out
+                    // of the list (matched by the short name).
+                    if (!st.hiddenReceiptUsers.empty()) {
+                        std::string filtered;
+                        std::istringstream frs(rd);
+                        std::string fw;
+                        while (frs >> fw) {
+                            bool hide = false;
+                            for (const auto& h : st.hiddenReceiptUsers) {
+                                if (h == fw) { hide = true; break; }
+                            }
+                            if (!hide) {
+                                if (!filtered.empty()) filtered += " ";
+                                filtered += fw;
+                            }
+                        }
+                        rd = filtered;
+                    }
                     // Cap the reader list: 'a b c +5' instead of the full set.
                     std::string shown;
                     int count = 0;
@@ -468,7 +501,8 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                     int total = 1;
                     for (char ch : rd) if (ch == ' ') total++;
                     if (count < total) shown += " +" + std::to_string(total - count);
-                    row += "  \x1b[90m\u2713 " + shown + "\x1b[0m";  // ✓ readers
+                    if (!shown.empty())
+                        row += "  \x1b[90m\u2713 " + shown + "\x1b[0m";  // ✓ readers
                 }
                 std::time_t t = static_cast<std::time_t>(ev.origin_server_ts / 1000)
                                + static_cast<std::time_t>(st.tzOffset) * 3600;

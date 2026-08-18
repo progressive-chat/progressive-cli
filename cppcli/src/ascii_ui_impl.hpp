@@ -58,6 +58,9 @@ int contentRowsImpl(const UiState& st);
 void loadRoomIntoStateImpl(UiState& st, const std::string& query);
 std::string resolveThreadRoot(db::Database* db, const std::string& roomId,
                               const std::string& hint);
+// The room's join rule ("public" / "invite" / ...) — the openness sign
+// on the invite rows.
+std::string roomJoinRule(db::Database* db, const std::string& roomId);
 std::vector<std::string> roomThreadList(db::Database* db,
                                         const std::string& roomId, int clipW,
                                         bool showIds);

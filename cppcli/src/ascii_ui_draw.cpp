@@ -591,6 +591,7 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
     // is flushed right against the pipe.
     std::vector<std::string> leftRows;
     std::vector<std::string> bucketName;   // the spaces, first seen order
+    std::vector<std::string> bucketSid;    // their room ids (for the people counts)
     std::unordered_map<std::string, int> spaceIdx;
     for (const auto& r : st.rooms) {
         if (!r.value("is_space", false)) continue;
@@ -598,6 +599,7 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
         if (!spaceIdx.count(sid)) {
             spaceIdx[sid] = static_cast<int>(bucketName.size());
             bucketName.push_back(r.value("name", "?"));
+            bucketSid.push_back(sid);
         }
     }
     const int noSpaceBucket = static_cast<int>(bucketName.size());
@@ -673,6 +675,14 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                         role = "custom powerlevel (" + std::to_string(lvl) + ")";
                     else role = "normal user";
                     when += ", " + role;
+                    // The openness sign: whether the room is open (public
+                    // — anyone can preview/join) or closed (invite-only /
+                    // restricted / knock).
+                    std::string rule = roomJoinRule(st.db, rid);
+                    if (rule == "public") when += ", open";
+                    else if (rule == "invite") when += ", invite-only";
+                    else if (rule == "restricted") when += ", restricted";
+                    else if (rule == "knock") when += ", knock";
                 }
             }
             tail = (st.showEmoji ? "📨 (" : "(") + when + ")";
@@ -735,6 +745,17 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
         anySpace = true;
         leftRows.push_back("  \x1b[1m▸ " + bucketName[b] + "\x1b[0m \x1b[90m("
                          + std::to_string(bucketRows[b].size()) + ")\x1b[0m");
+        // People from all rooms vs. the members of this space's rooms.
+        int allPeople = 0, spacePeople = 0;
+        for (const auto& r : st.rooms) {
+            if (r.value("is_space", false)) continue;
+            int mc = r.value("member_count", 0);
+            allPeople += mc;
+            if (r.value("space", "") == bucketSid[b]) spacePeople += mc;
+        }
+        leftRows.push_back("   \x1b[90mPeople from all rooms: "
+                         + std::to_string(allPeople) + ", in space: "
+                         + std::to_string(spacePeople) + "\x1b[0m");
         leftRows.insert(leftRows.end(), bucketRows[b].begin(), bucketRows[b].end());
     }
     if (!bucketRows[static_cast<size_t>(noSpaceBucket)].empty()) {

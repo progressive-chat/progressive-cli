@@ -27,18 +27,60 @@ bool asciiSettingsCommand(UiState& st, db::Database& dbi, const cli::Args& a) {
             return true;
         }
         // ---- receipts: the display + the per-room SEND policy ----
-        if (a.command == "receipts") {
-            if (a.positional.empty()) {
-                std::cout << "receipts show: " << (st.showReceipts ? "on" : "off")
-                          << " | send (this room): "
-                          << (dbi.receiptsEnabled(st.currentRoomId) ? "on" : "off")
-                          << std::endl
-                          << "  receipts show on|off — whether to SHOW them\n"
-                          << "  receipts send on|off — whether to SEND them (this room)\n"
-                          << "  receipts on|off       — the display toggle (the Element habit)"
-                          << std::endl;
-                return true;
-            }
+            if (a.command == "receipts") {
+                if (a.positional.empty()) {
+                    std::cout << "receipts show: " << (st.showReceipts ? "on" : "off")
+                              << " | send (this room): "
+                              << (dbi.receiptsEnabled(st.currentRoomId) ? "on" : "off")
+                              << (st.hiddenReceiptUsers.empty() ? "" : " | hidden readers:")
+                              << std::endl;
+                    for (const auto& h : st.hiddenReceiptUsers)
+                        std::cout << "  hidden: " << h << std::endl;
+                    std::cout << "  receipts show on|off — whether to SHOW them\n"
+                              << "  receipts send on|off — whether to SEND them (this room)\n"
+                              << "  receipts hide <user> — never show their ✓ reader\n"
+                              << "  receipts hide off     — show everyone again\n"
+                              << "  receipts on|off       — the display toggle (the Element habit)"
+                              << std::endl;
+                    return true;
+                }
+                if (a.positional[0] == "hide") {
+                    // "hide <user>" adds a user, "hide off" clears the list.
+                    if (a.positional.size() < 2) {
+                        std::cout << (st.hiddenReceiptUsers.empty()
+                                          ? "no hidden readers."
+                                          : "hidden readers:")
+                                  << std::endl;
+                        for (const auto& h : st.hiddenReceiptUsers)
+                            std::cout << "  " << h << std::endl;
+                        return true;
+                    }
+                    std::string who = a.positional[1];
+                    if (who == "off" || who == "clear" || who == "none") {
+                        st.hiddenReceiptUsers.clear();
+                    } else {
+                        // Normalize: "@bob:server" -> "bob" (the readers
+                        // show as short names).
+                        if (!who.empty() && who[0] == '@') who = who.substr(1);
+                        auto colon = who.find(':');
+                        if (colon != std::string::npos) who = who.substr(0, colon);
+                        bool has = false;
+                        for (const auto& h : st.hiddenReceiptUsers)
+                            if (h == who) has = true;
+                        if (!has) st.hiddenReceiptUsers.push_back(who);
+                    }
+                    std::string joined;
+                    for (const auto& h : st.hiddenReceiptUsers) {
+                        if (!joined.empty()) joined += ",";
+                        joined += h;
+                    }
+                    dbi.setSetting("receipts_hide", joined);
+                    st.statusNote = "read receipts hidden for: "
+                                  + (st.hiddenReceiptUsers.empty()
+                                         ? "(none)" : joined);
+                    std::cout << drawFrame(st) << std::flush;
+                    return true;
+                }
             if (a.positional[0] == "send") {
                 const bool on = a.positional.size() < 2 || a.positional[1] != "off";
                 dbi.setReceiptsEnabled(st.currentRoomId, on);
