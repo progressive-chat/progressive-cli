@@ -8,6 +8,8 @@ const std::vector<LlmPreset>& llmPresets() {
         {"anthropic", "anthropic", "https://api.anthropic.com",
          "claude-3-5-haiku-20241022", false},
         {"deepseek", "openai", "https://api.deepseek.com", "deepseek-chat", false},
+        {"opencode-zen", "openai", "https://opencode.ai/zen",
+         "deepseek-v4-flash-free", false},
         {"qwen", "openai", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
          "qwen-plus", false},
         {"openrouter", "openai", "https://openrouter.ai/api/v1",

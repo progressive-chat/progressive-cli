@@ -68,6 +68,10 @@ void buildOpenAiMessages(const std::vector<Message>& history,
                            {"content", m.content}});
         } else if (m.role == "assistant") {
             json j = {{"role", "assistant"}, {"content", m.content}};
+            // Thinking models (DeepSeek V4 family) demand the reasoning
+            // content echoed back on every follow-up request.
+            if (!m.reasoningContent.empty())
+                j["reasoning_content"] = m.reasoningContent;
             if (!m.calls.empty()) {
                 json tcs = json::array();
                 for (const auto& c : m.calls) {
@@ -130,6 +134,8 @@ Message parseOpenAiResponse(const json& resp) {
     auto msg = choice[0].value("message", json::object());
     if (msg.contains("content") && msg["content"].is_string())
         m.content = msg["content"].get<std::string>();
+    if (msg.contains("reasoning_content") && msg["reasoning_content"].is_string())
+        m.reasoningContent = msg["reasoning_content"].get<std::string>();
     auto tcs = msg.value("tool_calls", json::array());
     for (const auto& t : tcs) {
         if (!t.is_object()) continue;

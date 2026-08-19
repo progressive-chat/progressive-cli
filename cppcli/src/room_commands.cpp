@@ -5,6 +5,7 @@
 #include "pcore.hpp"
 #include "config.hpp"
 #include "globals.hpp"
+#include "ascii_ui_impl.hpp"
 #include "../lib/database/db.hpp"
 #include "../lib/util/string_utils.hpp"
 #include <progressive/markdown.hpp>
@@ -29,11 +30,8 @@ using namespace matrixcli;
 static std::string resolveRoom(const std::string& query) {
     db::Database dbi;
     if (dbi.open("matrixcli.db")) {
-        for (auto& r : dbi.listRooms()) {
-            std::string id = r.value("room_id", "");
-            std::string name = r.value("name", "");
-            if (id == query || name == query || name.find(query) == 0) return id;
-        }
+        std::string id = matchRoomInCache(dbi.listRooms(), query);
+        if (!id.empty()) return id;
     }
     return query;
 }

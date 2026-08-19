@@ -35,6 +35,12 @@ int roomThreadCount(db::Database* db, const std::string& roomId);
 int64_t parseDayMsImpl(const std::string& s);
 std::string eventBodyRaw(const matrix::Event& ev);
 std::string roomDisplayNameImpl(const UiState& st, const nlohmann::json& r);
+// The single room-resolution used by every user-input path: matches the
+// room id, the canonical alias (#design) and the display name, exact,
+// prefix or substring, case-insensitively. Returns "" when nothing
+// matched (never the input itself).
+std::string matchRoomInCache(const std::vector<nlohmann::json>& rooms,
+                             const std::string& query);
 int roomMessageCount(db::Database* db, const std::string& roomId);
 std::string senderShortImpl(const std::string& sender);
 std::string eventPreview(db::Database* db, const std::string& roomId,

@@ -1,5 +1,6 @@
 #include "commands.hpp"
 #include "globals.hpp"
+#include "ascii_ui_impl.hpp"
 #include "../lib/irc/irc_client.hpp"
 #include "../lib/matrix/client.hpp"
 #include "../lib/database/db.hpp"
@@ -157,29 +158,12 @@ void registerBuiltinCommands() {
         return 0;
     });
 
-    // ── Fuzzy room matching helper ──
+    // ── Fuzzy room matching helper (id | alias | name, any case) ──
     auto findRoom = [](const std::string& query) -> std::string {
         db::Database dbi;
         if (!dbi.open("matrixcli.db")) return query;
-        auto rooms = dbi.listRooms();
-        std::string best; int bestScore = 0;
-        for (auto& r : rooms) {
-            std::string id = r.value("room_id", "");
-            std::string name = r.value("name", "");
-            // Exact match
-            if (id == query || name == query) return id;
-            // Prefix match
-            if (name.find(query) == 0 || id.find(query) == 0) {
-                int score = 100 - name.size();
-                if (score > bestScore) { bestScore = score; best = id; }
-            }
-            // Substring match
-            if (name.find(query) != std::string::npos) {
-                int score = 50;
-                if (score > bestScore) { bestScore = score; best = id; }
-            }
-        }
-        return best.empty() ? query : best;
+        std::string id = matchRoomInCache(dbi.listRooms(), query);
+        return id.empty() ? query : id;
     };
 
     // ── Human-readable errors ──

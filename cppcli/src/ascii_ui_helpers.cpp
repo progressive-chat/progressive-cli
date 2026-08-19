@@ -226,35 +226,45 @@ std::unordered_set<std::string> pinnedIds(db::Database* db,
     return out;
 }
 
-void loadRoomIntoStateImpl(UiState& st, const std::string& query) {
-    st.currentRoomId.clear();
-    // Accept the id ("!room:server"), the full alias ("#alias:server") or
-    // the short alias/name ("#alias", "alias").
+std::string matchRoomInCache(const std::vector<nlohmann::json>& rooms,
+                             const std::string& query) {
     std::string q = query;
     if (q.size() > 1 && q[0] == '#') {
         auto colon = q.find(':');
-        if (colon != std::string::npos) q = q.substr(0, colon);  // #alias:server -> #alias
+        if (colon != std::string::npos) q = q.substr(0, colon);
     }
-    for (const auto& r : st.rooms) {
+    if (q.empty()) return "";
+    auto lower = [](std::string s) {
+        std::transform(s.begin(), s.end(), s.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        return s;
+    };
+    std::string lq = lower(q);
+    std::string best;
+    int bestScore = 0;
+    for (const auto& r : rooms) {
         std::string id = r.value("room_id", "");
         std::string name = r.value("name", "");
         std::string alias = r.value("canonical_alias", "");
-        bool byId = !q.empty() && q[0] == '!' && id == q;
-        bool byName = !q.empty() && (name == q ||
-                                     name.find(q) == 0 ||
-                                     name.find(q) != std::string::npos);
-        // The alias ("#design", "#design:demo.local" or a bare "design")
-        // resolves to the room too — independent of the display-name mode.
-        bool byAlias = false;
-        if (!alias.empty()) {
-            std::string qs = q.size() > 1 && q[0] == '#' ? q.substr(1) : q;
-            byAlias = alias == q || (!qs.empty() && alias.find(qs) != std::string::npos);
-        }
-        if (byId || byName || byAlias) {
-            st.currentRoomId = id;
-            break;
-        }
+        std::string a = alias.size() > 1 && alias[0] == '#'
+                            ? alias.substr(1) : alias;
+        std::string lid = lower(id), la = lower(a), ln = lower(name);
+        if (lid == lq || la == lq || ln == lq) return id;
+        auto score = [&](int s) -> bool {
+            if (s > bestScore) { bestScore = s; best = id; return true; }
+            return false;
+        };
+        if (lid.find(lq) == 0 || la.find(lq) == 0 || ln.find(lq) == 0)
+            score(100 - static_cast<int>(name.size()));
+        if (ln.find(lq) != std::string::npos || la.find(lq) != std::string::npos)
+            score(50);
     }
+    return best;
+}
+
+void loadRoomIntoStateImpl(UiState& st, const std::string& query) {
+    st.currentRoomId.clear();
+    st.currentRoomId = matchRoomInCache(st.rooms, query);
     if (st.currentRoomId.empty() && !st.rooms.empty() && query.empty()) {
         st.currentRoomId = st.rooms.front().value("room_id", "");
     }

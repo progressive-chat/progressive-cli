@@ -128,6 +128,7 @@ struct Message {
     std::vector<ToolCall> calls;    // assistant tool calls
     std::string toolCallId;         // for role == "tool"
     std::string toolName;           // for role == "tool"
+    std::string reasoningContent;   // thinking models (DeepSeek V4 & co)
 };
 
 // The user's answer to a permission prompt.
