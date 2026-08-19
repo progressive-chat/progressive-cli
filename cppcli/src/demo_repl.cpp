@@ -356,6 +356,10 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
         if (args.options.count("limit")) uiArgs.options["limit"] = args.options.at("limit");
         if (args.options.count("rows")) uiArgs.options["rows"] = args.options.at("rows");
         if (args.options.count("scroll")) uiArgs.options["scroll"] = args.options.at("scroll");
+        if (args.options.count("scroll-center"))
+            uiArgs.options["scroll-center"] = args.options.at("scroll-center");
+        if (args.options.count("scroll-right"))
+            uiArgs.options["scroll-right"] = args.options.at("scroll-right");
         if (args.options.count("scroll-line")) uiArgs.options["scroll-line"] = "true";
         if (args.options.count("scroll-lines"))
             uiArgs.options["scroll-lines"] = args.options.at("scroll-lines");

@@ -33,7 +33,10 @@ struct UiState {
     std::vector<std::string> members;    // unique senders in the room
     int limit = 200;  // the chat window — deep enough for the threads
     int scroll = 0;                      // viewport offset (rows)
+    int scrollStep = 0;                  // +N rows (--scroll-line / -lines)
+    int scrollPage = 0;                  // +N viewport pages (--scroll-page)
     int leftScroll = 0;                  // rooms-list-only offset (desktop)
+    int rightScroll = 0;                 // right-panel-only offset (--scroll-right)
     int threadsScroll = 0;               // threads-section offset (desktop right)
     int viaLimit = 3;                    // via args in permalinks; 0 = all
     int tzOffset = 0;                    // timezone offset in hours (display)

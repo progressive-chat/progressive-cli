@@ -352,6 +352,15 @@ int cmdAsciiUi(const cli::Args& args) {
         const std::string& v = args.options.at("scroll-page");
         try { st.scrollPage += v.empty() || v == "true" ? 1 : std::stoi(v); } catch (...) {}
     }
+    // Per-panel scrolling: --scroll-center (or --scroll) moves the chat,
+    // --scroll-left only the rooms list, --scroll-right only the right
+    // panel. Negatives count from the bottom of each panel.
+    if (args.options.count("scroll-center")) {
+        try { st.scroll = std::stoi(args.options.at("scroll-center")); } catch (...) {}
+    }
+    if (args.options.count("scroll-right")) {
+        try { st.rightScroll = std::stoi(args.options.at("scroll-right")); } catch (...) {}
+    }
     // --jump <YYYY-MM-DD>: position the viewport at that day (static).
     if (args.options.count("jump")) {
         int64_t dayMs = parseDayMs(args.options.at("jump"));

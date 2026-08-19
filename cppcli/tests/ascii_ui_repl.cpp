@@ -340,6 +340,27 @@ int cmdAsciiUi(const cli::Args& args) {
     if (args.options.count("scroll")) {
         try { st.scroll = std::stoi(args.options.at("scroll")); } catch (...) {}
     }
+    // Relative scroll steps on top of the base: --scroll-line (one row),
+    // --scroll-lines N (a custom amount) and --scroll-page [N] (whole
+    // viewport pages — the page size is the frame height, resolved at
+    // draw time). They stack with --scroll (and with each other).
+    if (args.options.count("scroll-line")) st.scrollStep += 1;
+    if (args.options.count("scroll-lines")) {
+        try { st.scrollStep += std::stoi(args.options.at("scroll-lines")); } catch (...) {}
+    }
+    if (args.options.count("scroll-page")) {
+        const std::string& v = args.options.at("scroll-page");
+        try { st.scrollPage += v.empty() || v == "true" ? 1 : std::stoi(v); } catch (...) {}
+    }
+    // Per-panel scrolling: --scroll-center (or --scroll) moves the chat,
+    // --scroll-left only the rooms list, --scroll-right only the right
+    // panel. Negatives count from the bottom of each panel.
+    if (args.options.count("scroll-center")) {
+        try { st.scroll = std::stoi(args.options.at("scroll-center")); } catch (...) {}
+    }
+    if (args.options.count("scroll-right")) {
+        try { st.rightScroll = std::stoi(args.options.at("scroll-right")); } catch (...) {}
+    }
     // --jump <YYYY-MM-DD>: position the viewport at that day (static).
     if (args.options.count("jump")) {
         int64_t dayMs = parseDayMs(args.options.at("jump"));

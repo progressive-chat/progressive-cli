@@ -776,14 +776,22 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                         bucketRows[static_cast<size_t>(noSpaceBucket)].end());
     }
     // The rooms list can scroll on its own (--scroll-left): only the
-    // left panel moves, the chat and members stay put.
-    int leftScroll = std::min(std::max(0, st.leftScroll),
-                              std::max(0, static_cast<int>(leftRows.size()) - rows));
+    // left panel moves, the chat and members stay put. Same for the right
+    // panel (--scroll-right). Negatives count from each panel's bottom.
+    int leftMax = std::max(0, static_cast<int>(leftRows.size()) - rows);
+    int leftScroll = st.leftScroll < 0
+                         ? std::max(0, leftMax + st.leftScroll + 1)
+                         : std::min(st.leftScroll, leftMax);
+    int rightMax = std::max(0, static_cast<int>(rightRows.size()) - rows);
+    int rightScroll = st.rightScroll < 0
+                          ? std::max(0, rightMax + st.rightScroll + 1)
+                          : std::min(st.rightScroll, rightMax);
     if (scroll > 0) out += "  ^ more above (scroll up)\n";
     if (scroll + rows < contentRowsImpl(st)) out += "  v more below (scroll down)\n";
     for (int i = 0; i < rows; ++i) {
         int src = scroll + i;  // the content row this view row shows
         int leftSrc = leftScroll + i;  // the rooms row (scrolled separately)
+        int rightSrc = rightScroll + i;  // the right panel (scrolled separately)
         std::string left, center, right;
         if (leftSrc < static_cast<int>(leftRows.size())) {
             left = leftRows[static_cast<size_t>(leftSrc)];
@@ -791,8 +799,8 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
         if (src < static_cast<int>(centerRows.size())) {
             center = centerRows[static_cast<size_t>(src)];
         }
-        if (src < static_cast<int>(rightRows.size())) {
-            right = rightRows[static_cast<size_t>(src)];
+        if (rightSrc < static_cast<int>(rightRows.size())) {
+            right = rightRows[static_cast<size_t>(rightSrc)];
         }
         std::string rightOut = clip(right, static_cast<size_t>(rightW));
         if (rightOut.find('\x1b') != std::string::npos) rightOut += "\x1b[0m";
@@ -812,6 +820,15 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
             + std::to_string(contentRowsImpl(st)) + "]";
     }
     out += "proxy: " + st.proxyLabel + " | scroll: up/down/top/bottom" + pos;
+    if (st.rightScroll != 0 && !rightRows.empty()) {
+        int rc = static_cast<int>(rightRows.size());
+        int rm = std::max(0, rc - rows);
+        int rs = st.rightScroll < 0 ? rm + st.rightScroll + 1
+                                    : std::min(st.rightScroll, rm);
+        out += " [right: rows " + std::to_string(rs + 1) + "-"
+             + std::to_string(std::min(rs + rows, rc)) + " of " + std::to_string(rc)
+             + "]";
+    }
     if (!st.statusNote.empty()) {
         // The last action's summary lives in the RIGHT-BOTTOM corner.
         out += " | " + st.statusNote;
