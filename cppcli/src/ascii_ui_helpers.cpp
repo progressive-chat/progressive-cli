@@ -641,16 +641,19 @@ std::string renderMarkdownBody(const std::string& body) {
                 }
             }
             if (t[i] == '[') {
-                // The [text](url) link: the blue text + the dim URL.
+                // The [text](url) link: an OSC 8 hyperlink, blue underlined
+                // text + the dim URL (renders as plain text elsewhere).
                 auto close = t.find("](", i + 1);
                 if (close != std::string::npos && close + 1 < t.size() &&
                     t[close + 1] == '(') {
                     auto end = t.find(')', close + 2);
                     if (end != std::string::npos) {
-                        r += "\x1b[34m" + t.substr(i + 1, close - i - 1)
-                           + "\x1b[0m\x1b[90m("
-                           + t.substr(close + 2, end - close - 2)
-                           + ")\x1b[0m";
+                        std::string url =
+                            t.substr(close + 2, end - close - 2);
+                        r += "\x1b]8;;" + url + "\x1b\\\x1b[4;34m"
+                           + t.substr(i + 1, close - i - 1)
+                           + "\x1b[0m\x1b]8;;\x1b\\"
+                           + "\x1b[90m(" + url + ")\x1b[0m";
                         i = end + 1;
                         continue;
                     }
