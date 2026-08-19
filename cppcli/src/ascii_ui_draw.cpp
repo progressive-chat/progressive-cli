@@ -863,7 +863,6 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
         return out;
     }
     if (scroll > 0) out += "  ^ more above (scroll up)\n";
-    if (scroll + rows < contentRowsImpl(st)) out += "  v more below (scroll down)\n";
     for (int i = 0; i < rows; ++i) {
         int src = scroll + i;  // the content row this view row shows
         int leftSrc = leftScroll + i;  // the rooms row (scrolled separately)
