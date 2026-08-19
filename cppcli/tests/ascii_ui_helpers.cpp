@@ -630,6 +630,16 @@ std::string renderMarkdownBody(const std::string& body) {
                     continue;
                 }
             }
+            if (t[i] == '*') {
+                // The *italic* pair; the **bold** branch above already won.
+                auto end = t.find('*', i + 1);
+                if (end != std::string::npos) {
+                    r += ANSI_ITALIC + t.substr(i + 1, end - i - 1)
+                       + ANSI_RESET;
+                    i = end + 1;
+                    continue;
+                }
+            }
             if (t[i] == '[') {
                 // The [text](url) link: the blue text + the dim URL.
                 auto close = t.find("](", i + 1);
