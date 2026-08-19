@@ -47,6 +47,7 @@ struct UiState {
     bool msgShare = false;               // --msgshr: per-room msgs/hr in the left panel
     std::string nameCol[3];              // per-panel ANSI codes for display names (left/center/right)
     std::string mxidCol[3];              // per-panel ANSI codes for matrix ids
+    bool markerCol = false;              // reserve the left-marker column (--markers)
     std::string senderFilter;            // "from @user": only their messages
     std::unordered_set<std::string> hiddenRooms;   // temporarily hidden
     std::unordered_set<std::string> mutedRooms;    // no unread/indicators

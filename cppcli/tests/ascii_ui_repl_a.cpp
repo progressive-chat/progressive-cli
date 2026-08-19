@@ -251,6 +251,16 @@ int asciiReplDispatchA(UiState& st, db::Database& dbi, const cli::Args& a) {
             std::cout << drawFrameImpl(st) << std::flush;
             return 1;
         }
+        // ---- marker on|off: reserve the left marker column in the room list.
+        if (a.command == "marker") {
+            if (a.positional.empty() || a.positional[0] == "on") st.markerCol = true;
+            else if (a.positional[0] == "off") st.markerCol = false;
+            else st.markerCol = !st.markerCol;
+            dbi.setSetting("marker_col", st.markerCol ? "1" : "0");
+            st.statusNote = std::string("marker column ") + (st.markerCol ? "reserved" : "off");
+            std::cout << drawFrameImpl(st) << std::flush;
+            return 1;
+        }
         if (a.command == "names" || a.command == "aliases") {
             st.roomNames = a.command == "names";
             dbi.setSetting("room_names", st.roomNames ? "1" : "0");

@@ -623,7 +623,16 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
         std::string name = roomDisplayNameImpl(st, *r);
         if (r->value("is_direct", false))
             name = (st.showEmoji ? "💬 " : "[DM] ") + name;
-        std::string head = std::string(1, rid == st.currentRoomId ? '*' : ' ')
+        // The leading marker column: the current-room '*' (or the reserved
+        // space when --markers is on) plus the front-placed star for starred
+        // rooms. Everything here pushes the name + preview to the right; by
+        // default a row starts directly at column 0 with its name.
+        std::string pre;
+        if (rid == st.currentRoomId) pre = "*";
+        else if (st.markerCol) pre = " ";
+        if (st.starredRooms.count(rid))
+            pre += st.showEmoji ? " ★" : " *";
+        std::string head = pre
                          + colourOpen(st.nameCol[0], true) + name + "\x1b[0m ("
                          + std::to_string(roomMessageCount(st.db, rid)) + ")";
         // --msgshr: the room's message rate on its most recent day with
@@ -663,7 +672,6 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
         if (r->value("is_encrypted", false))
             head += st.showEmoji ? " 🔒" : " [E2EE]";
         if (st.mutedRooms.count(rid)) head += st.showEmoji ? " 🔇" : " [muted]";
-        if (st.starredRooms.count(rid)) head += " ★";
         if (st.db->getSetting("threads_off", "0") == "0") {
             int thr = roomThreadCount(st.db, rid);
             if (thr > 0)

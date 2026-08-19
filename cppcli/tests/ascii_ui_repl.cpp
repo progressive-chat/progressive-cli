@@ -96,6 +96,7 @@ int cmdAsciiUi(const cli::Args& args) {
     st.showImages = dbi.getSetting("images") == "1";
     st.showEmoji = dbi.getSetting("emoji") != "0";
     st.roomNames = dbi.getSetting("room_names") != "0";
+    st.markerCol = dbi.getSetting("marker_col") == "1";
     st.showInvites = dbi.getSetting("show_invites", "1") != "0";
     st.showInvitesLegend = dbi.getSetting("show_invites_legend", "1") != "0";
     st.showNotifications = dbi.getSetting("show_notifications", "1") != "0";
@@ -383,6 +384,9 @@ int cmdAsciiUi(const cli::Args& args) {
         applyColourSpec(args.options.at("names"), st.nameCol);
     if (args.options.count("mxids"))
         applyColourSpec(args.options.at("mxids"), st.mxidCol);
+    // --markers: reserve the left marker column (room rows line up under
+    // the current-room '*'); by default rows start directly at column 0.
+    if (args.options.count("markers")) st.markerCol = true;
     // --jump <YYYY-MM-DD>: position the viewport at that day (static).
     if (args.options.count("jump")) {
         int64_t dayMs = parseDayMs(args.options.at("jump"));

@@ -380,6 +380,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
             uiArgs.options["panel-only"] = args.options.at("panel-only");
         if (args.options.count("absolute")) uiArgs.options["absolute"] = "true";
         if (args.options.count("msgshr")) uiArgs.options["msgshr"] = "true";
+        if (args.options.count("markers")) uiArgs.options["markers"] = "true";
         if (args.options.count("names"))
             uiArgs.options["names"] = args.options.at("names");
         if (args.options.count("mxids"))
