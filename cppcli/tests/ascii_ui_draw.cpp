@@ -588,7 +588,7 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
     visCount = std::max(visCount, static_cast<int>(centerRows.size()));
     visCount = std::max(visCount, static_cast<int>(rightRows.size()));
     int maxScroll = std::max(0, visCount - rows);
-    if (scroll < 0) scroll = maxScroll;  // --scroll -1 = jump to the bottom
+    if (scroll < 0) scroll = std::max(0, maxScroll + scroll + 1);  // -1 = bottom row, -2 = one older, ...
     else scroll = std::min(scroll, maxScroll);
     // ---- The left panel, built once per frame (Element-style): invited
     // rooms first (a "📨 Invites" header), then each space as its own
