@@ -29,6 +29,8 @@ set(SOURCES
     call_commands.cpp
     proxy_commands.cpp
     ascii_ui.cpp
+    ascii_ui_text.cpp
+    ascii_ui_rooms.cpp
     ascii_ui_impl.hpp
     ascii_ui_about.cpp
     ascii_ui_helpers.cpp
