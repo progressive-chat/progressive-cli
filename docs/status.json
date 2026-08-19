@@ -1,8 +1,8 @@
 {
   "generated": {
-    "version": "v0.5.2-46-g63a4f31-dirty",
-    "commit": "63a4f31e96594a802d6685227c91bdd196d7536a",
-    "builtAt": "2026-08-19T03:53:41+00:00",
+    "version": "v0.5.2-47-gd112cfa-dirty",
+    "commit": "d112cfab7aea13a41862b39d3f09bf88ef5c03a2",
+    "builtAt": "2026-08-19T05:12:46+00:00",
     "generator": "docs/gen.mjs"
   },
   "note": "This file is generated. Edit docs/features.json instead.",
@@ -275,7 +275,7 @@
         "file": "src/ascii_ui_repl_a.cpp",
         "pattern": "presence fetched",
         "missing": false,
-        "line": 532
+        "line": 542
       }
     },
     {
@@ -486,7 +486,7 @@
         "file": "src/ascii_ui_helpers.cpp",
         "pattern": "st.notifications.clear",
         "missing": false,
-        "line": 400
+        "line": 408
       }
     },
     {
@@ -512,7 +512,7 @@
         "file": "src/ascii_ui_helpers.cpp",
         "pattern": "Power levels first",
         "missing": false,
-        "line": 313
+        "line": 321
       }
     },
     {
@@ -526,7 +526,7 @@
         "file": "src/ascii_ui_repl.cpp",
         "pattern": "readLineWithHistory",
         "missing": false,
-        "line": 523
+        "line": 527
       }
     },
     {

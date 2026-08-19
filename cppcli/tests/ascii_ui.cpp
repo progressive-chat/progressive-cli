@@ -400,11 +400,22 @@ std::string eventBodyRaw(const matrix::Event& ev) {
     return "";
 }
 
-std::string roomDisplayNameImpl(const nlohmann::json& r) {
+std::string roomDisplayNameImpl(const UiState& st, const nlohmann::json& r) {
     std::string id = r.value("room_id", "");
     std::string name = r.value("name", "");
-    if (name.empty()) name = id;
-    return name;
+    std::string alias = r.value("canonical_alias", "");
+    if (st.roomNames) {
+        // Names mode: the human title first, then the alias as a fallback.
+        if (!name.empty()) return name;
+        if (!alias.empty()) return alias;
+        return id;
+    }
+    // Aliases mode (default): the #handle first; legacy rows stored the
+    // alias in the name column ("#general"), so that shows too.
+    if (!alias.empty()) return alias;
+    if (!name.empty() && name[0] == '#') return name;
+    if (!name.empty()) return name;
+    return id;
 }
 
 // Message count comes from the DB (listRooms json carries no count).
@@ -612,7 +623,7 @@ std::string drawFrameImpl(const UiState& st) {
         for (const auto& r : st.rooms) {
             if (r.value("is_space", false)) continue;
             std::string rid = r.value("room_id", "");
-            std::string nm = roomDisplayNameImpl(r);
+            std::string nm = roomDisplayNameImpl(st, r);
             if (r.value("is_direct", false)) nm = "  " + nm;
             int w = displayWidth(" " + nm + " ("
                                  + std::to_string(roomMessageCount(st.db, rid)) + ")");
@@ -725,7 +736,7 @@ std::string drawFrameImpl(const UiState& st) {
     std::string e2eeMark;  // the lock for the open room
     for (const auto& r : st.rooms) {
         if (r.value("room_id", "") == st.currentRoomId) {
-            roomName = roomDisplayNameImpl(r);
+            roomName = roomDisplayNameImpl(st, r);
             if (r.value("is_encrypted", false)) {
                 e2eeMark = (st.showEmoji ? " 🔒 " : " [E2EE] ");
             }
@@ -912,7 +923,10 @@ void loadRoomIntoState(UiState& st, const std::string& query) {
     loadRoomIntoStateImpl(st, query);
 }
 int terminalWidth() { return terminalWidthImpl(); }
-std::string roomDisplayName(const nlohmann::json& r) { return roomDisplayNameImpl(r); }
+std::string roomDisplayName(const nlohmann::json& r) {
+    UiState st;
+    return roomDisplayNameImpl(st, r);
+}
 std::string senderShort(const std::string& sender) { return senderShortImpl(sender); }
 int contentRows(const UiState& st) { return contentRowsImpl(st); }
 

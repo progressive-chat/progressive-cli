@@ -120,6 +120,11 @@ void Database::migrate() {
         exec("ALTER TABLE rooms ADD COLUMN is_space INTEGER DEFAULT 0");
         exec("ALTER TABLE rooms ADD COLUMN space TEXT DEFAULT ''");
     }
+    // The room's canonical alias (#name:server) — kept separate from the
+    // display name so the ui can show either.
+    if (!tableHasColumn(_db, "rooms", "canonical_alias")) {
+        exec("ALTER TABLE rooms ADD COLUMN canonical_alias TEXT DEFAULT ''");
+    }
     // Room v12+: the creator owns the room (power level 150). The room
     // record keeps the version and the creator so the ui can badge it.
     if (!tableHasColumn(_db, "rooms", "version")) {
@@ -174,7 +179,7 @@ StoredAccount Database::loadAccount() const {
 
 bool Database::upsertRoom(const std::string& room_id, const matrix::SyncRoom& room) {
     // Extract name/topic from state events
-    std::string name, topic, avatar_url;
+    std::string name, topic, avatar_url, alias;
     for (auto& ev : room.state.events) {
         if (ev.type == "m.room.name" && ev.content.contains("name")) {
             name = ev.content["name"].get<std::string>();
@@ -182,6 +187,9 @@ bool Database::upsertRoom(const std::string& room_id, const matrix::SyncRoom& ro
             topic = ev.content["topic"].get<std::string>();
         } else if (ev.type == "m.room.avatar" && ev.content.contains("url")) {
             avatar_url = ev.content["url"].get<std::string>();
+        } else if (ev.type == "m.room.canonical_alias"
+                   && ev.content.contains("alias")) {
+            alias = ev.content["alias"].get<std::string>();
         }
     }
 
@@ -189,6 +197,7 @@ bool Database::upsertRoom(const std::string& room_id, const matrix::SyncRoom& ro
     j["name"] = name;
     j["topic"] = topic;
     j["avatar_url"] = avatar_url;
+    j["canonical_alias"] = alias;
     j["member_count"] = room.joined_member_count;
     return upsertRoom(j, room_id);
 }
@@ -196,8 +205,8 @@ bool Database::upsertRoom(const std::string& room_id, const matrix::SyncRoom& ro
 bool Database::upsertRoom(const json& room_data, const std::string& room_id) {
     sqlite3_stmt* stmt;
     const char* sql = R"(
-        INSERT OR REPLACE INTO rooms(room_id, name, topic, avatar_url, member_count, is_encrypted, is_space, space, version, creator)
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO rooms(room_id, name, topic, avatar_url, member_count, is_encrypted, is_space, space, version, creator, canonical_alias)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
     std::string name = room_data.value("name", "");
     std::string topic = room_data.value("topic", "");
@@ -208,6 +217,7 @@ bool Database::upsertRoom(const json& room_data, const std::string& room_id) {
     std::string space = room_data.value("space", "");
     int version = room_data.value("version", 0);
     std::string creator = room_data.value("creator", "");
+    std::string alias = room_data.value("canonical_alias", "");
 
     sqlite3_prepare_v2(_db, sql, -1, &stmt, nullptr);
     if (!stmt) {
@@ -225,6 +235,7 @@ bool Database::upsertRoom(const json& room_data, const std::string& room_id) {
     sqlite3_bind_text(stmt, 8, space.c_str(), space.size(), SQLITE_TRANSIENT);
     sqlite3_bind_int(stmt, 9, version);
     sqlite3_bind_text(stmt, 10, creator.c_str(), creator.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 11, alias.c_str(), alias.size(), SQLITE_TRANSIENT);
     sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     return true;
@@ -264,7 +275,7 @@ bool Database::clearRoom(const std::string& room_id) {
 std::vector<json> Database::listRooms() const {
     std::vector<json> result;
     sqlite3_stmt* stmt;
-    sqlite3_prepare_v2(_db, "SELECT room_id, name, topic, avatar_url, is_direct, is_encrypted, member_count, is_space, space, version, creator FROM rooms ORDER BY name", -1, &stmt, nullptr);
+    sqlite3_prepare_v2(_db, "SELECT room_id, name, topic, avatar_url, is_direct, is_encrypted, member_count, is_space, space, version, creator, canonical_alias FROM rooms ORDER BY name", -1, &stmt, nullptr);
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         json r;
         auto rid = (const char*)sqlite3_column_text(stmt, 0);
@@ -284,6 +295,8 @@ std::vector<json> Database::listRooms() const {
         r["version"] = sqlite3_column_int(stmt, 9);
         auto cr = (const char*)sqlite3_column_text(stmt, 10);
         if (cr) r["creator"] = cr; else r["creator"] = "";
+        auto al = (const char*)sqlite3_column_text(stmt, 11);
+        if (al) r["canonical_alias"] = al; else r["canonical_alias"] = "";
         result.push_back(r);
     }
     sqlite3_finalize(stmt);

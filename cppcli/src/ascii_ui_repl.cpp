@@ -95,6 +95,7 @@ int cmdAsciiUi(const cli::Args& args) {
     st.showIds = dbi.getSetting("ids") == "1";
     st.showImages = dbi.getSetting("images") == "1";
     st.showEmoji = dbi.getSetting("emoji") != "0";
+    st.roomNames = dbi.getSetting("room_names") == "1";
     st.showInvites = dbi.getSetting("show_invites", "1") != "0";
     st.showInvitesLegend = dbi.getSetting("show_invites_legend", "1") != "0";
     st.showNotifications = dbi.getSetting("show_notifications", "1") != "0";
@@ -361,6 +362,9 @@ int cmdAsciiUi(const cli::Args& args) {
     if (args.options.count("scroll-right")) {
         try { st.rightScroll = std::stoi(args.options.at("scroll-right")); } catch (...) {}
     }
+    // --room-names/--room-aliases: which label the room list shows.
+    if (args.options.count("room-names")) st.roomNames = true;
+    if (args.options.count("room-aliases")) st.roomNames = false;
     // --jump <YYYY-MM-DD>: position the viewport at that day (static).
     if (args.options.count("jump")) {
         int64_t dayMs = parseDayMs(args.options.at("jump"));

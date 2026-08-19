@@ -455,7 +455,7 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
             for (const auto* r : visible) {
                 std::string rid = r->value("room_id", "");
                 std::string mark = rid == st.currentRoomId ? "*" : " ";
-                std::string name = roomDisplayNameImpl(*r);
+                std::string name = roomDisplayNameImpl(st, *r);
                 if (r->value("is_direct", false))
                     name = (st.showEmoji ? "💬 " : "[DM] ") + name;
                 if (st.invited.count(rid)) {
@@ -615,7 +615,7 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
     for (const auto* r : visible) {
         std::string rid = r->value("room_id", "");
         bool invited = st.invited.count(rid) != 0;
-        std::string name = roomDisplayNameImpl(*r);
+        std::string name = roomDisplayNameImpl(st, *r);
         if (r->value("is_direct", false))
             name = (st.showEmoji ? "💬 " : "[DM] ") + name;
         std::string head = std::string(1, rid == st.currentRoomId ? '*' : ' ')

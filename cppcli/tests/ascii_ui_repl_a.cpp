@@ -221,6 +221,16 @@ int asciiReplDispatchA(UiState& st, db::Database& dbi, const cli::Args& a) {
             std::cout << drawFrameImpl(st) << std::flush;
             return 1;
         }
+        // ---- names | aliases: the room list shows display titles or
+        // #handles (persisted, both in the REPL and the static frame). ----
+        if (a.command == "names" || a.command == "aliases") {
+            st.roomNames = a.command == "names";
+            dbi.setSetting("room_names", st.roomNames ? "1" : "0");
+            st.statusNote = st.roomNames ? "room list: names"
+                                         : "room list: aliases";
+            std::cout << drawFrameImpl(st) << std::flush;
+            return 1;
+        }
         if (a.command == "spaces") {
             std::cout << "Spaces:" << std::endl;
             for (const auto& r : st.rooms) {
@@ -402,7 +412,7 @@ int asciiReplDispatchA(UiState& st, db::Database& dbi, const cli::Args& a) {
             std::string roomLabel = st.currentRoomId;
             for (const auto& r : st.rooms) {
                 if (r.value("room_id", "") == st.currentRoomId) {
-                    roomLabel = roomDisplayNameImpl(r);
+                    roomLabel = roomDisplayNameImpl(st, r);
                     break;
                 }
             }

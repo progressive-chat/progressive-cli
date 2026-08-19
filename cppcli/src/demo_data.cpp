@@ -140,7 +140,15 @@ int populateDemoData(matrixcli::db::Database& dbi) {
     };
     for (auto& r : rooms) {
         nlohmann::json j;
-        j["name"] = r.name; j["topic"] = r.topic; j["member_count"] = r.members;
+        // The room NAME is the display title ("Privacy tools"), the ALIAS
+        // is its #handle — the ui can show either (names/aliases).
+        // The demo topics double as the titles; DMs carry no topic and no
+        // alias, just their label ("Alice").
+        bool isDm = std::string(r.id).find("!dm_") == 0;
+        j["name"] = isDm || std::string(r.topic).empty() ? std::string(r.name)
+                                                         : std::string(r.topic);
+        j["canonical_alias"] = isDm ? "" : r.name;
+        j["topic"] = r.topic; j["member_count"] = r.members;
         // Room v12 (the m.room.create "creator"): @alice created every
         // demo room, so she is the owner (150) per Matrix 1.12 rules.
         j["creator"] = "@alice:demo.local";

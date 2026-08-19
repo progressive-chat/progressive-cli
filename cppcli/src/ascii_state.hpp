@@ -41,6 +41,7 @@ struct UiState {
     int viaLimit = 3;                    // via args in permalinks; 0 = all
     int tzOffset = 0;                    // timezone offset in hours (display)
     int hiddenSeconds = 12;              // hide duration; 0 = until reload
+    bool roomNames = false;              // show room names instead of aliases
     std::string senderFilter;            // "from @user": only their messages
     std::unordered_set<std::string> hiddenRooms;   // temporarily hidden
     std::unordered_set<std::string> mutedRooms;    // no unread/indicators

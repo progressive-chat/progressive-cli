@@ -238,11 +238,19 @@ void loadRoomIntoStateImpl(UiState& st, const std::string& query) {
     for (const auto& r : st.rooms) {
         std::string id = r.value("room_id", "");
         std::string name = r.value("name", "");
+        std::string alias = r.value("canonical_alias", "");
         bool byId = !q.empty() && q[0] == '!' && id == q;
         bool byName = !q.empty() && (name == q ||
                                      name.find(q) == 0 ||
                                      name.find(q) != std::string::npos);
-        if (byId || byName) {
+        // The alias ("#design", "#design:demo.local" or a bare "design")
+        // resolves to the room too — independent of the display-name mode.
+        bool byAlias = false;
+        if (!alias.empty()) {
+            std::string qs = q.size() > 1 && q[0] == '#' ? q.substr(1) : q;
+            byAlias = alias == q || (!qs.empty() && alias.find(qs) != std::string::npos);
+        }
+        if (byId || byName || byAlias) {
             st.currentRoomId = id;
             break;
         }

@@ -34,7 +34,7 @@ std::string eventReplyTo(const matrix::Event& ev);
 int roomThreadCount(db::Database* db, const std::string& roomId);
 int64_t parseDayMsImpl(const std::string& s);
 std::string eventBodyRaw(const matrix::Event& ev);
-std::string roomDisplayNameImpl(const nlohmann::json& r);
+std::string roomDisplayNameImpl(const UiState& st, const nlohmann::json& r);
 int roomMessageCount(db::Database* db, const std::string& roomId);
 std::string senderShortImpl(const std::string& sender);
 std::string eventPreview(db::Database* db, const std::string& roomId,
