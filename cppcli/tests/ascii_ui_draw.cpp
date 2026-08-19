@@ -373,8 +373,13 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
                         localtime_r(&t2, &tm2);
                         clockOnly = notifClock(tm2);
                     }
-                    std::string roomClip =
-                        clip(n.room, std::max(3, rightW / 3));
+                    // The room label takes EVERY free cell of the meta row
+                    // (never a fixed third): the row is marker + time +
+                    // room, so the room gets the rest and is only clipped
+                    // when the panel is genuinely full.
+                    std::string roomClip = clip(
+                        n.room, std::max(3, budget - displayWidth(ts)
+                                                - displayWidth(marker) - 2));
                     std::string meta =
                         "\x1b[90m" + ts + " " + roomClip + "\x1b[0m ";  // date + room
                     std::string metaNoDate =
@@ -786,6 +791,43 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
     int rightScroll = st.rightScroll < 0
                           ? std::max(0, rightMax + st.rightScroll + 1)
                           : std::min(st.rightScroll, rightMax);
+    // --panel-only left|center|right: ONE panel, alone, at the same width
+    // it has in the full frame (its own scroll applies).
+    if (st.panelOnly > 0) {
+        const std::vector<std::string>* pane = nullptr;
+        int pw = 0, pScroll = scroll;
+        std::string pTitle = roomName;
+        if (st.panelOnly == 1) { pane = &leftRows; pw = leftW; pScroll = leftScroll; pTitle = "Rooms"; }
+        else if (st.panelOnly == 2) { pane = &centerRows; pw = centerW; }
+        else { pane = &rightRows; pw = rightW; pScroll = rightScroll; pTitle = "Members"; }
+        int pRows = static_cast<int>(pane->size());
+        int off = 0;  // absolute mode: the panel keeps its frame slot
+        if (st.panelAbsolute)
+            off = st.panelOnly == 1 ? 0
+                : st.panelOnly == 2 ? leftW + 1
+                : leftW + centerW + 2;
+        auto posline = [off](const std::string& s) {
+            return off > 0 ? std::string(static_cast<size_t>(off), ' ') + s : s;
+        };
+        out = posline(" " + pTitle) + "\n";
+        out += posline(repeat('-', std::max(0, pw))) + "\n";
+        for (int i = 0; i < rows; ++i) {
+            int src = pScroll + i;
+            out += (src < pRows) ? posline(clip((*pane)[static_cast<size_t>(src)], pw)) + "\n"
+                                 : posline("") + "\n";
+        }
+        out += posline(repeat('=', std::max(0, pw))) + "\n";
+        std::string pos;
+        if (pRows > rows) {
+            int end = std::min(pScroll + rows, pRows);
+            pos = " [rows " + std::to_string(pScroll + 1) + "-"
+                + std::to_string(end) + " of " + std::to_string(pRows) + "]";
+        }
+        out += posline("proxy: " + st.proxyLabel + " | scroll: up/down/top/bottom" + pos
+                       + (st.panelAbsolute ? " | abs" : "")
+                       + (st.statusNote.empty() ? "" : " | " + st.statusNote)) + "\n";
+        return out;
+    }
     if (scroll > 0) out += "  ^ more above (scroll up)\n";
     if (scroll + rows < contentRowsImpl(st)) out += "  v more below (scroll down)\n";
     for (int i = 0; i < rows; ++i) {
@@ -820,6 +862,12 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
             + std::to_string(contentRowsImpl(st)) + "]";
     }
     out += "proxy: " + st.proxyLabel + " | scroll: up/down/top/bottom" + pos;
+    if (!st.mobile) {
+        // The unused columns the panels leave on the right (the auto
+        // sizing caps each panel, so wide terminals keep a margin).
+        int spare = std::max(0, (W - 1) - (leftW + 1 + centerW + 1 + rightW));
+        out += " | spare: " + std::to_string(spare) + " cols";
+    }
     if (st.rightScroll != 0 && !rightRows.empty()) {
         int rc = static_cast<int>(rightRows.size());
         int rm = std::max(0, rc - rows);

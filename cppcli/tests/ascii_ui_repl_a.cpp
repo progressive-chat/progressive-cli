@@ -223,6 +223,27 @@ int asciiReplDispatchA(UiState& st, db::Database& dbi, const cli::Args& a) {
         }
         // ---- names | aliases: the room list shows display titles or
         // #handles (persisted, both in the REPL and the static frame). ----
+        // ---- only left|center|right|all: ONE panel at its full-frame width
+        // (its own scroll applies); "all" restores the three-panel frame. ----
+        if (a.command == "only") {
+            const std::string& w = a.positional.empty() ? std::string("all")
+                                                        : a.positional[0];
+            if (w == "left") st.panelOnly = 1;
+            else if (w == "center" || w == "middle") st.panelOnly = 2;
+            else if (w == "right") st.panelOnly = 3;
+            else st.panelOnly = 0;
+            st.statusNote = st.panelOnly == 0
+                                ? "panels: all" : "panel: " + w;
+            std::cout << drawFrameImpl(st) << std::flush;
+            return 1;
+        }
+        // ---- absolute: toggle frame-slot positioning for panel-only output.
+        if (a.command == "absolute") {
+            st.panelAbsolute = !st.panelAbsolute;
+            st.statusNote = st.panelAbsolute ? "pos: absolute" : "pos: flow";
+            std::cout << drawFrameImpl(st) << std::flush;
+            return 1;
+        }
         if (a.command == "names" || a.command == "aliases") {
             st.roomNames = a.command == "names";
             dbi.setSetting("room_names", st.roomNames ? "1" : "0");

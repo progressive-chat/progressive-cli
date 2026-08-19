@@ -376,6 +376,9 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
         if (args.options.count("msg-line")) uiArgs.options["msg-line"] = args.options.at("msg-line");
         if (args.options.count("room-names")) uiArgs.options["room-names"] = "true";
         if (args.options.count("room-aliases")) uiArgs.options["room-aliases"] = "true";
+        if (args.options.count("panel-only"))
+            uiArgs.options["panel-only"] = args.options.at("panel-only");
+        if (args.options.count("absolute")) uiArgs.options["absolute"] = "true";
         for (const char* k : {"agent", "agent-provider", "agent-endpoint",
                               "agent-model", "agent-key", "agent-trust"}) {
             if (args.options.count(k)) uiArgs.options[k] = args.options.at(k);

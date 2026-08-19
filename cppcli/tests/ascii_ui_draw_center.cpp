@@ -425,8 +425,13 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                 std::string sep = "── " + label + " ──  " + std::to_string(dayCount)
                                 + " msgs";
                 char rateBuf[24];
-                std::snprintf(rateBuf, sizeof(rateBuf), " (%.1f/hr)",
-                              dayCount / hours);
+                double rate = dayCount / hours;
+                if (rate >= 100.0)
+                    std::snprintf(rateBuf, sizeof(rateBuf), " (%.0f/hr)", rate);
+                else if (rate >= 10.0)
+                    std::snprintf(rateBuf, sizeof(rateBuf), " (%.1f/hr)", rate);
+                else
+                    std::snprintf(rateBuf, sizeof(rateBuf), " (%.2f/hr)", rate);
                 sep += rateBuf;
                 if (static_cast<int>(sep.size()) < centerW) {
                     sep = std::string((centerW - static_cast<int>(sep.size())) / 2, ' ') + sep;

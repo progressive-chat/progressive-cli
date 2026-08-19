@@ -95,7 +95,7 @@ int cmdAsciiUi(const cli::Args& args) {
     st.showIds = dbi.getSetting("ids") == "1";
     st.showImages = dbi.getSetting("images") == "1";
     st.showEmoji = dbi.getSetting("emoji") != "0";
-    st.roomNames = dbi.getSetting("room_names") == "1";
+    st.roomNames = dbi.getSetting("room_names") != "0";
     st.showInvites = dbi.getSetting("show_invites", "1") != "0";
     st.showInvitesLegend = dbi.getSetting("show_invites_legend", "1") != "0";
     st.showNotifications = dbi.getSetting("show_notifications", "1") != "0";
@@ -365,6 +365,16 @@ int cmdAsciiUi(const cli::Args& args) {
     // --room-names/--room-aliases: which label the room list shows.
     if (args.options.count("room-names")) st.roomNames = true;
     if (args.options.count("room-aliases")) st.roomNames = false;
+    // --panel-only left|center|right: one panel at its full-frame width.
+    if (args.options.count("panel-only")) {
+        const std::string& p = args.options.at("panel-only");
+        if (p == "left") st.panelOnly = 1;
+        else if (p == "center" || p == "middle") st.panelOnly = 2;
+        else if (p == "right") st.panelOnly = 3;
+    }
+    // --absolute: --panel-only output keeps its slot in the full frame
+    // (the right panel stays right-aligned, the middle one stays centered).
+    if (args.options.count("absolute")) st.panelAbsolute = true;
     // --jump <YYYY-MM-DD>: position the viewport at that day (static).
     if (args.options.count("jump")) {
         int64_t dayMs = parseDayMs(args.options.at("jump"));
