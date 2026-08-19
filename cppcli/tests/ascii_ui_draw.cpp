@@ -626,6 +626,40 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
         std::string head = std::string(1, rid == st.currentRoomId ? '*' : ' ')
                          + "\x1b[1m" + name + "\x1b[0m ("
                          + std::to_string(roomMessageCount(st.db, rid)) + ")";
+        // --msgshr: the room's message rate on its most recent day with
+        // activity (same day-count / elapsed-hours math as the center
+        // panel's "-- date -- N msgs (X/hr)" separators).
+        if (st.msgShare) {
+            int64_t lastDay = 0, dayCount = 0;
+            auto evs = st.db->getEvents(rid, 1000);
+            for (const auto& ev : evs) {
+                if (ev.type != "m.room.message" && ev.type != "m.sticker") continue;
+                int64_t d = ev.origin_server_ts / 86400000;
+                if (d > lastDay) lastDay = d;
+            }
+            for (const auto& ev : evs) {
+                if (ev.type != "m.room.message" && ev.type != "m.sticker") continue;
+                if (ev.origin_server_ts / 86400000 == lastDay) dayCount++;
+            }
+            double hours = 24.0;
+            if (lastDay > 0) {
+                int64_t dayStart = lastDay * 86400000LL;
+                int64_t dayEnd = dayStart + 86400000LL;
+                int64_t nowMs = static_cast<int64_t>(std::time(nullptr)) * 1000LL;
+                hours = static_cast<double>(
+                    (std::min(nowMs, dayEnd) - dayStart)) / 3600000.0;
+                if (hours <= 0.05) hours = 24.0;
+            }
+            char rateBuf[24];
+            double rate = dayCount / hours;
+            if (rate >= 100.0)
+                std::snprintf(rateBuf, sizeof(rateBuf), " (%.0f/hr)", rate);
+            else if (rate >= 10.0)
+                std::snprintf(rateBuf, sizeof(rateBuf), " (%.1f/hr)", rate);
+            else
+                std::snprintf(rateBuf, sizeof(rateBuf), " (%.2f/hr)", rate);
+            head += rateBuf;
+        }
         if (r->value("is_encrypted", false))
             head += st.showEmoji ? " 🔒" : " [E2EE]";
         if (st.mutedRooms.count(rid)) head += st.showEmoji ? " 🔇" : " [muted]";

@@ -44,6 +44,7 @@ struct UiState {
     bool roomNames = false;              // show room names instead of aliases
     int panelOnly = 0;                   // 0 = all panels, 1=left, 2=center, 3=right
     bool panelAbsolute = false;          // panel-only output keeps its frame slot
+    bool msgShare = false;               // --msgshr: per-room msgs/hr in the left panel
     std::string senderFilter;            // "from @user": only their messages
     std::unordered_set<std::string> hiddenRooms;   // temporarily hidden
     std::unordered_set<std::string> mutedRooms;    // no unread/indicators

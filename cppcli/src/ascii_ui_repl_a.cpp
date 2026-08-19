@@ -238,6 +238,13 @@ int asciiReplDispatchA(UiState& st, db::Database& dbi, const cli::Args& a) {
             return 1;
         }
         // ---- absolute: toggle frame-slot positioning for panel-only output.
+                // ---- msgshr: toggle per-room "N/hr" labels in the left panel.
+        if (a.command == "msgshr") {
+            st.msgShare = !st.msgShare;
+            st.statusNote = st.msgShare ? "msg/hr: on" : "msg/hr: off";
+            std::cout << drawFrameImpl(st) << std::flush;
+            return 1;
+        }
         if (a.command == "absolute") {
             st.panelAbsolute = !st.panelAbsolute;
             st.statusNote = st.panelAbsolute ? "pos: absolute" : "pos: flow";

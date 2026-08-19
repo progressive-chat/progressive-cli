@@ -375,6 +375,8 @@ int cmdAsciiUi(const cli::Args& args) {
     // --absolute: --panel-only output keeps its slot in the full frame
     // (the right panel stays right-aligned, the middle one stays centered).
     if (args.options.count("absolute")) st.panelAbsolute = true;
+    // --msgshr: per-room "N/hr" rate labels in the left panel.
+    if (args.options.count("msgshr")) st.msgShare = true;
     // --jump <YYYY-MM-DD>: position the viewport at that day (static).
     if (args.options.count("jump")) {
         int64_t dayMs = parseDayMs(args.options.at("jump"));
