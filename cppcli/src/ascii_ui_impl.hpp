@@ -78,13 +78,18 @@ std::string displayName(const UiState& st, const std::string& roomId,
                         const std::string& sender);
 std::string chatName(const UiState& st, const std::string& roomId,
                      const std::string& sender);
+std::string chatNameColoured(const UiState& st, const std::string& roomId,
+                             const std::string& sender);
 std::string highlightCodeLine(const std::string& line, bool cFamily);
 std::string renderMarkdownBody(const std::string& body);
 std::string senderTag(const UiState& st, const std::string& roomId,
                       const std::string& sender);
 std::string fullMxid(const UiState& st, const std::string& mem);
+std::string ansiColourCode(const std::string& name);
+void applyColourSpec(const std::string& spec, std::string (&dst)[3]);
+std::string colourOpen(const std::string& code, bool bold);
 std::string memberRowStr(const UiState& st, const std::string& mem,
-                         bool fullIds = false);
+                         bool fullIds = false, int panel = 2);
 std::string drawFrameImpl(const UiState& st);
 // The chat panel's rows (ascii_ui_draw_center.cpp) — split out of the
 // frame builder so every translation unit stays under ~1000 lines.

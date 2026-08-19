@@ -377,6 +377,12 @@ int cmdAsciiUi(const cli::Args& args) {
     if (args.options.count("absolute")) st.panelAbsolute = true;
     // --msgshr: per-room "N/hr" rate labels in the left panel.
     if (args.options.count("msgshr")) st.msgShare = true;
+    // --names/--mxids <colour|panel:colour[,...]>: per-panel colours for
+    // display names and matrix ids ("grey", "left:grey,middle:blue", ...).
+    if (args.options.count("names"))
+        applyColourSpec(args.options.at("names"), st.nameCol);
+    if (args.options.count("mxids"))
+        applyColourSpec(args.options.at("mxids"), st.mxidCol);
     // --jump <YYYY-MM-DD>: position the viewport at that day (static).
     if (args.options.count("jump")) {
         int64_t dayMs = parseDayMs(args.options.at("jump"));

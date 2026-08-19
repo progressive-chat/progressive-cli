@@ -49,48 +49,6 @@
 
 namespace matrixcli {
 
-std::string roomLastMsg(db::Database* db, const std::string& roomId,
-                        const std::vector<nlohmann::json>& rooms) {
-    if (!db) return "";
-    // The newest MESSAGE — pins/state events (the newest entries) must not
-    // swallow the preview. (By value: the pointer into the temporary
-    // getEvents vector was a dangling-reference crash.)
-    matrix::Event ev = roomLastEvent(db, roomId);
-    if (ev.event_id.empty()) return "";
-    std::string preview;
-    if (ev.type == "m.room.message" || ev.type == "m.sticker") {
-        std::string body = eventBody(ev);
-        std::string mt;
-        auto mtIt = ev.content.find("msgtype");
-        if (mtIt != ev.content.end() && mtIt->is_string()) mt = mtIt->get<std::string>();
-        if (mt == "m.file") preview = "📄 " + body;
-        else if (mt == "m.audio") preview = "🎵 " + body;
-        else if (mt == "m.image") preview = "🖼 " + body;
-        else if (mt == "m.poll.start") {
-            auto q = ev.content.find("question");
-            if (q != ev.content.end() && q->is_object()) {
-                auto t = q->find("text");
-                if (t != q->end() && t->is_string()) preview = t->get<std::string>();
-            }
-            preview = "⭕ poll: " + preview;
-        }
-        else if (ev.type == "m.sticker") preview = "👻 " + body;
-        else preview = highlightUrls(renderPermalinks(body, rooms, db));
-    } else if (ev.type == "m.room.member") {
-        std::string m = ev.content.value("membership", "");
-        preview = (m == "leave" || m == "ban") ? "❌ left"
-                                               : "✓ joined";
-    }
-    if (preview.empty()) return "";
-    return senderShortImpl(ev.sender) + ": " + preview;
-}
-
-
-// ---- the frame ----
-
-
-// The row index of an event inside the chat timeline (day separators
-// included) — mirrors the centerRows builder in drawFrame.
 int centerRowIndexOfImpl(const UiState& st, const std::string& eventId) {
     int row = 0;
     int64_t prevDay = -1;
@@ -127,19 +85,6 @@ int centerRowIndexOfImpl(const UiState& st, const std::string& eventId) {
 
 // The m.room.tombstone successor of the room ("" when none) — the receive
 // side of a room upgrade.
-std::string tombstoneSuccessor(const std::vector<matrix::Event>& events) {
-    for (const auto& ev : events) {
-        if (ev.type != "m.room.tombstone" || !ev.content.is_object()) continue;
-        auto s = ev.content.find("successor_room_id");
-        if (s != ev.content.end() && s->is_string()) {
-            std::string v = s->get<std::string>();
-            if (!v.empty()) return v;
-        }
-    }
-    return "";
-}
-
-// Element-style room list: most recently active rooms first.
 void sortRoomsByActivity(UiState& st) {
     // Starred (anchored) rooms are pinned to the top, like Element's
     // Favourite; the rest sorts by last activity.
@@ -516,161 +461,6 @@ void loadRoomIntoStateImpl(UiState& st, const std::string& query) {
 // The room's join rule ("public", "invite", "restricted", "knock") from
 // the first m.room.join_rules event — the invite rows show whether the
 // room is open or closed.
-std::string roomJoinRule(db::Database* db, const std::string& roomId) {
-    if (!db) return "";
-    auto evs = db->getEvents(roomId, 300);
-    for (const auto& ev : evs) {
-        if (ev.type != "m.room.join_rules" || !ev.content.is_object()) continue;
-        auto r = ev.content.find("join_rule");
-        if (r == ev.content.end() || !r->is_string()) return "";
-        return r->get<std::string>();
-    }
-    return "";
-}
-
-std::string resolveThreadRoot(db::Database* db, const std::string& roomId,
-                              const std::string& sel) {
-    if (!db || sel.empty()) return "";
-    auto evs = db->getEvents(roomId, 300);
-    std::vector<std::string> roots;
-    for (const auto& ev : evs) {
-        int rc = 0;
-        for (const auto& ev2 : evs) {
-            if (eventThreadRoot(ev2) == ev.event_id) rc++;
-        }
-        if (rc > 0) roots.push_back(ev.event_id);
-    }
-    bool isNum = !sel.empty() &&
-        std::all_of(sel.begin(), sel.end(),
-                    [](unsigned char c) { return std::isdigit(c); });
-    if (isNum) {
-        int n = std::atoi(sel.c_str());
-        if (n >= 1 && n <= static_cast<int>(roots.size())) {
-            return roots[static_cast<size_t>(n - 1)];
-        }
-        return "";
-    }
-    for (const auto& r : roots) {
-        if (r == sel) return r;
-    }
-    for (const auto& r : roots) {
-        if (r.find(sel) != std::string::npos) return r;
-    }
-    return "";
-}
-
-std::vector<std::string> roomThreadList(db::Database* db,
-                                         const std::string& roomId, int clipW,
-                                         bool showIds) {
-    std::vector<std::string> thr;
-    if (!db || roomId.empty()) return thr;
-    auto evs = db->getEvents(roomId, 300);
-    for (const auto& ev : evs) {
-        int rc = 0;
-        const matrix::Event* last = nullptr;  // the newest reply
-        for (const auto& ev2 : evs) {
-            if (eventThreadRoot(ev2) == ev.event_id) {
-                rc++;
-                if (ev2.event_id != ev.event_id &&
-                    (!last || ev2.origin_server_ts > last->origin_server_ts)) {
-                    last = &ev2;
-                }
-            }
-        }
-        if (rc > 0) {
-            thr.push_back("⤷ " + clip(eventBody(ev), clipW) + " ("
-                          + std::to_string(rc) + ")");
-            // The last reply under it: nickname + time, like Element.
-            if (last) {
-                std::time_t t = static_cast<std::time_t>(last->origin_server_ts / 1000);
-                std::tm tm{};
-                localtime_r(&t, &tm);
-                char buf[8];
-                std::snprintf(buf, sizeof(buf), "%02d:%02d", tm.tm_hour, tm.tm_min);
-                thr.push_back("  " + senderShortImpl(last->sender) + " · "
-                              + buf);
-            }
-            // With --ids: the thread master's full id on the next line.
-            if (showIds) {
-                thr.push_back("  ‹" + clip(ev.event_id, clipW - 2)
-                              + "›");
-            }
-        }
-    }
-    return thr;
-}
-
-// Resolve a space query (id, #alias[:server] or name) to the space id.
-std::string resolveSpace(const std::vector<nlohmann::json>& rooms,
-                         const std::string& q) {
-    std::string qq = q;
-    if (qq.size() > 1 && qq[0] == '#') {
-        auto colon = qq.find(':');
-        if (colon != std::string::npos) qq = qq.substr(0, colon);
-    }
-    std::string localpart;
-    if (!qq.empty() && qq[0] == '#') {
-        localpart = qq.substr(1);
-        auto colon = localpart.find(':');
-        if (colon != std::string::npos) localpart = localpart.substr(0, colon);
-    }
-    for (const auto& r : rooms) {
-        if (!r.value("is_space", false)) continue;
-        std::string id = r.value("room_id", "");
-        std::string name = r.value("name", "");
-        if (id == qq || name == qq ||
-            (!localpart.empty() && id.find(localpart) != std::string::npos)) {
-            return id;
-        }
-    }
-    std::string ql = q;
-    for (auto& ch : ql) ch = static_cast<char>(std::tolower(ch));
-    for (const auto& r : rooms) {
-        if (!r.value("is_space", false)) continue;
-        std::string name = r.value("name", "");
-        for (auto& ch : name) ch = static_cast<char>(std::tolower(ch));
-        if (!ql.empty() && name.find(ql) != std::string::npos) {
-            return r.value("room_id", "");
-        }
-    }
-    return "";
-}
-
-
-// The via arguments for a permalink: the distinct server names of the
-// room's members. limit = 0 means ALL of them (the user's choice), else
-// the first N — Element sends 3 by default.
-std::string viaSuffix(db::Database* db, const std::string& roomId, int limit) {
-    if (!db || roomId.empty()) return "";
-    auto evs = db->getEvents(roomId, 500);
-    std::vector<std::string> servers;
-    for (const auto& ev : evs) {
-        std::string s = ev.sender;
-        auto colon = s.find(':');
-        if (colon == std::string::npos) continue;
-        std::string domain = s.substr(colon + 1);
-        if (domain.empty()) continue;
-        bool seen = false;
-        for (const auto& sv : servers) {
-            if (sv == domain) { seen = true; break; }
-        }
-        if (!seen) servers.push_back(domain);
-    }
-    if (servers.empty()) return "";
-    std::string out;
-    int n = (limit <= 0) ? static_cast<int>(servers.size())
-                         : std::min(limit, static_cast<int>(servers.size()));
-    for (int i = 0; i < n; ++i) {
-        out += (i == 0 ? "?" : "&");
-        out += "via=" + servers[static_cast<size_t>(i)];
-    }
-    return out;
-}
-
-// One member row: presence letter (colored), power badge, name.
-// Users without a presence entry (server with presence off, not yet
-// fetched) show as offline [F] — never without a letter.
-// The per-room display name (the "nick" setting) or the short sender.
 std::string displayName(const UiState& st, const std::string& roomId,
                         const std::string& sender) {
     auto it = st.roomNicks.find(roomId + "|" + sender);
@@ -946,8 +736,60 @@ std::string fullMxid(const UiState& st, const std::string& mem) {
     return mem;
 }
 
+// A colour name → the ANSI SGR code ("" = default/none). Names cover the
+// basic palette + grey + the bright variants.
+std::string ansiColourCode(const std::string& name) {
+    static const std::map<std::string, std::string> cols = {
+        {"black", "30"},   {"red", "31"},       {"green", "32"},
+        {"yellow", "33"},  {"blue", "34"},      {"magenta", "35"},
+        {"cyan", "36"},    {"white", "37"},     {"grey", "90"},
+        {"gray", "90"},    {"brightred", "91"}, {"brightgreen", "92"},
+        {"brightyellow", "93"}, {"brightblue", "94"}, {"brightmagenta", "95"},
+        {"brightcyan", "96"},   {"brightwhite", "97"},
+    };
+    auto it = cols.find(name);
+    return it != cols.end() ? it->second : "";
+}
+
+// A colour spec for --names/--mxids: either one colour for every panel
+// ("grey") or per-panel pairs ("left:grey,center:blue,middle:red").
+// dst[0]=left panel, dst[1]=center, dst[2]=right ("" = keep the default).
+void applyColourSpec(const std::string& spec, std::string (&dst)[3]) {
+    std::string part;
+    for (char c : spec + ",") {
+        if (c != ',') { part += c; continue; }
+        size_t colon = part.find(':');
+        if (colon == std::string::npos) {
+            std::string code = ansiColourCode(part);
+            for (int i = 0; i < 3; ++i) dst[i] = code;
+        } else {
+            std::string p = part.substr(0, colon);
+            int idx = 2;
+            if (p == "left") idx = 0;
+            else if (p == "center" || p == "middle") idx = 1;
+            dst[idx] = ansiColourCode(part.substr(colon + 1));
+        }
+        part.clear();
+    }
+}
+
+// A "panel:colour" aware SGR opener; "" means the default colour.
+std::string colourOpen(const std::string& code, bool bold) {
+    if (code.empty()) return bold ? "\x1b[1m" : "";
+    return bold ? "\x1b[1;" + code + "m" : "\x1b[" + code + "m";
+}
+
+// The centre-panel display name, coloured with --names centre:... ("" keeps
+// the default). The chatName feed: room nick > displayname > localpart.
+std::string chatNameColoured(const UiState& st, const std::string& roomId,
+                             const std::string& sender) {
+    std::string n = chatName(st, roomId, sender);
+    if (st.nameCol[1].empty()) return n;
+    return colourOpen(st.nameCol[1], false) + n + "\x1b[0m";
+}
+
 std::string memberRowStr(const UiState& st, const std::string& mem,
-                         bool fullIds) {
+                         bool fullIds, int panel) {
     std::string mx = fullIds ? fullMxid(st, mem) : senderShortImpl(mem);
     // The display name: a custom nick wins, then the member event's
     // displayname, then the mxid localpart.
@@ -959,9 +801,15 @@ std::string memberRowStr(const UiState& st, const std::string& mem,
         auto nit = st.memberNames.find(mem);
         if (nit != st.memberNames.end() && !nit->second.empty()) nm = nit->second;
     }
-    // A display name that differs from the mxid string is highlighted.
+    // A display name that differs from the mxid string is highlighted
+    // (user-selectable colour via --names, defaulting to blue).
     std::string namePart = nm;
-    if (nm != senderShortImpl(mem)) namePart = "\x1b[34m" + nm + "\x1b[0m";
+    std::string nc = (panel >= 0 && panel < 3) ? st.nameCol[panel] : "";
+    if (nc.empty()) {
+        if (nm != senderShortImpl(mem)) namePart = "\x1b[34m" + nm + "\x1b[0m";
+    } else {
+        namePart = colourOpen(nc, false) + nm + "\x1b[0m";
+    }
     std::string letter;
     auto pit = st.presence.find(mem);
     if (pit != st.presence.end() && !pit->second.empty()) {
@@ -972,8 +820,11 @@ std::string memberRowStr(const UiState& st, const std::string& mem,
     const char* pc = "\x1b[32m";
     if (letter == "A") pc = "\x1b[33m";
     else if (letter == "F") pc = "\x1b[31m";
-    std::string m = std::string(pc) + "[" + letter + "]" + "\x1b[0m " + namePart
-                  + " (" + mx + ")";
+    std::string m = std::string(pc) + "[" + letter + "]" + "\x1b[0m " + namePart;
+    // The mxid gets its own colour (--mxids), per panel.
+    std::string mc = (panel >= 0 && panel < 3) ? st.mxidCol[panel] : "";
+    if (!mc.empty()) m += " (" + colourOpen(mc, false) + mx + "\x1b[0m)";
+    else m += " (" + mx + ")";
     auto pl = st.powerLevels.find(mem);
     // Every member shows the numeric level (0 included): the tiers get
     // the badge + the number with one space between them, everyone else

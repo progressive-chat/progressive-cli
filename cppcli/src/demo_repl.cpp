@@ -380,6 +380,10 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
             uiArgs.options["panel-only"] = args.options.at("panel-only");
         if (args.options.count("absolute")) uiArgs.options["absolute"] = "true";
         if (args.options.count("msgshr")) uiArgs.options["msgshr"] = "true";
+        if (args.options.count("names"))
+            uiArgs.options["names"] = args.options.at("names");
+        if (args.options.count("mxids"))
+            uiArgs.options["mxids"] = args.options.at("mxids");
         for (const char* k : {"agent", "agent-provider", "agent-endpoint",
                               "agent-model", "agent-key", "agent-trust"}) {
             if (args.options.count(k)) uiArgs.options[k] = args.options.at(k);

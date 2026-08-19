@@ -624,7 +624,7 @@ std::string drawFrameChatImpl(const UiState& st, int centerW, bool horizMembers,
         if (r->value("is_direct", false))
             name = (st.showEmoji ? "💬 " : "[DM] ") + name;
         std::string head = std::string(1, rid == st.currentRoomId ? '*' : ' ')
-                         + "\x1b[1m" + name + "\x1b[0m ("
+                         + colourOpen(st.nameCol[0], true) + name + "\x1b[0m ("
                          + std::to_string(roomMessageCount(st.db, rid)) + ")";
         // --msgshr: the room's message rate on its most recent day with
         // activity (same day-count / elapsed-hours math as the center

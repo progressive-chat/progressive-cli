@@ -61,7 +61,7 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                 auto m = ev.content.find("membership");
                 if (m != ev.content.end() && m->is_string()) {
                     std::string ms = m->get<std::string>();
-                    std::string who = chatName(st, st.currentRoomId, ev.sender);
+                    std::string who = chatNameColoured(st, st.currentRoomId, ev.sender);
                     if (ms == "join") center = "[" + who + "] joined the room";
                     else if (ms == "leave") center = "[" + who + "] left the room";
                     else if (ms == "invite") {
@@ -203,7 +203,7 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                 if (st.db && st.db->getEventById(thr, rootEv))
                     preview = eventBodyImpl(rootEv);
                 if (preview.empty()) preview = thr;
-                std::string head = "[" + chatName(st, st.currentRoomId, ev.sender)
+                std::string head = "[" + chatNameColoured(st, st.currentRoomId, ev.sender)
                                  + "] \u2937 " + body;
                 // The hint sits on the SAME line as the message and fills it
                 // edge to edge: budget = first line (the panel itself,
@@ -234,7 +234,7 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                     // any overflow.
                     int chainW = st.mobile ? W : centerW;
                     chain += std::string(lvl, ' ') + "> ["
-                           + chatName(st, st.currentRoomId, prev.sender)
+                           + chatNameColoured(st, st.currentRoomId, prev.sender)
                            + "] " + clip(preview, std::max(20, chainW)) + "\n";
                     auto rel = prev.content.find("m.relates_to");
                     if (rel == prev.content.end() || !rel->is_object()) break;
@@ -244,7 +244,7 @@ std::vector<std::string> buildCenterRows(const UiState& st, int centerW,
                     if (eid == ir->end() || !eid->is_string()) break;
                     cur = eid->get<std::string>();
                 }
-                center = "[" + chatName(st, st.currentRoomId, ev.sender) + "] " + body
+                center = "[" + chatNameColoured(st, st.currentRoomId, ev.sender) + "] " + body
                        + (chain.empty() ? "" : "\n" + chain);
             } else if (center.empty()) {
                 center = senderTag(st, st.currentRoomId, ev.sender)
