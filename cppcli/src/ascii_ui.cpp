@@ -900,7 +900,8 @@ std::string drawFrameImpl(const UiState& st) {
     // Pre-build the center panel rows: one per message, with date separators
     // ("── Today ──") and the message time, so the viewport scrolls over
 
-    int scroll = st.scroll;  // < 0 = bottom (the newest rows), clamped inside
+    int scroll = st.scroll + st.scrollStep
+             + st.scrollPage * rows;  // < 0 = from the bottom, clamped inside
     return drawFrameChatImpl(st, centerW, horizMembers, W, leftW, rightW,
                              scroll, rows, PIPE, X, std::move(out), visible,
                              roomName);

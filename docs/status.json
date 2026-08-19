@@ -1,8 +1,8 @@
 {
   "generated": {
-    "version": "v0.5.2-44-g11702b4",
-    "commit": "11702b4d4226036253b8b2b59e127d01941a5494",
-    "builtAt": "2026-08-19T03:00:34+00:00",
+    "version": "v0.5.2-45-g07e4775-dirty",
+    "commit": "07e4775092ca7ae62687ff2e103997a4594374c6",
+    "builtAt": "2026-08-19T03:30:24+00:00",
     "generator": "docs/gen.mjs"
   },
   "note": "This file is generated. Edit docs/features.json instead.",
@@ -526,7 +526,7 @@
         "file": "src/ascii_ui_repl.cpp",
         "pattern": "readLineWithHistory",
         "missing": false,
-        "line": 502
+        "line": 514
       }
     },
     {
