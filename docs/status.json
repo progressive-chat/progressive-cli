@@ -1,8 +1,8 @@
 {
   "generated": {
-    "version": "v0.5.2-47-gd112cfa-dirty",
-    "commit": "d112cfab7aea13a41862b39d3f09bf88ef5c03a2",
-    "builtAt": "2026-08-19T05:12:46+00:00",
+    "version": "v0.5.2-58-gbfaf588-dirty",
+    "commit": "bfaf588f6dfb7906bb4e0f84611b5d85adb8c49e",
+    "builtAt": "2026-08-20T05:42:35.420Z",
     "generator": "docs/gen.mjs"
   },
   "note": "This file is generated. Edit docs/features.json instead.",
@@ -275,7 +275,7 @@
         "file": "src/ascii_ui_repl_a.cpp",
         "pattern": "presence fetched",
         "missing": false,
-        "line": 542
+        "line": 586
       }
     },
     {
@@ -378,6 +378,7 @@
       "category": "ui",
       "status": "implemented",
       "since": "0.5.1",
+      "note": "Renders the same sample the chat view uses. Supported: bold, italic (SGR 3), inline code, [text](url) as OSC 8 hyperlinks, #/##/### headers, bullets, - [x]/[ ] checkboxes, numbered lists, > quotes, fenced code blocks. Terminal realities: no font scaling exists, headers render bold; bold/italic need font faces (miss on many phone terminals); OSC 8 links are clickable only in OSC 8 terminals and in Konsole need profile Mouse 'Allow escape sequences for links' (+ optionally 'Open links by direct click'); the right-click Open Link item for OSC 8 links is unused upstream KDE gap (bug 520743, menued only for bare typed URLs); the click opens via the desktop default browser, so a dangling mimeapps default kills it (check gio mime x-scheme-handler/https); old emulators (VTE < 0.46.2, screen, tmux < 3.0) may strip the sequences",
       "anchor": {
         "file": "src/demo_repl.cpp",
         "pattern": "demoMarkdownShowcase",
@@ -434,7 +435,7 @@
         "file": "src/ascii_ui_draw_center.cpp",
         "pattern": "ev.type == \"m.receipt\"",
         "missing": false,
-        "line": 485
+        "line": 490
       }
     },
     {
@@ -445,9 +446,9 @@
       "since": "0.5.1",
       "anchor": {
         "file": "src/ascii_ui.cpp",
-        "pattern": "0x1F5F3",
+        "pattern": "showEmoji \\? \" \ud83d\udce5 \"",
         "missing": false,
-        "line": 102
+        "line": 295
       }
     },
     {
@@ -486,7 +487,7 @@
         "file": "src/ascii_ui_helpers.cpp",
         "pattern": "st.notifications.clear",
         "missing": false,
-        "line": 408
+        "line": 372
       }
     },
     {
@@ -512,7 +513,7 @@
         "file": "src/ascii_ui_helpers.cpp",
         "pattern": "Power levels first",
         "missing": false,
-        "line": 321
+        "line": 285
       }
     },
     {
@@ -526,7 +527,7 @@
         "file": "src/ascii_ui_repl.cpp",
         "pattern": "readLineWithHistory",
         "missing": false,
-        "line": 527
+        "line": 549
       }
     },
     {
@@ -849,7 +850,7 @@
         "file": "src/ascii_ui_draw_center.cpp",
         "pattern": "ev.type == \"m.room.tombstone\"",
         "missing": false,
-        "line": 472
+        "line": 477
       }
     }
   ]

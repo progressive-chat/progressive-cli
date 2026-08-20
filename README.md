@@ -97,6 +97,37 @@ The same vote flow reads any cache: with a real account the one-shot
 `matrixcli vote <room> <poll_event_id> <answer>` sends the vote to the
 homeserver.
 
+### Markdown rendering in the terminal
+
+`demo markdown` renders the same sample the chat view uses. Supported:
+**bold**, *italic*, `` `inline code` ``, `[text](url)` links, `#`/`##`/`###`
+headers, bullets, `- [x]`/`- [ ]` checkboxes, numbered lists, `> ` quotes
+and fenced code blocks. The terminal realities (verified against real
+terminals and terminal source code):
+
+- **No big text.** Terminals draw a fixed-size cell grid; no font-size
+  escape exists, so headers render as bold.
+- **Bold/italic need font faces.** If the terminal font has no bold or
+  italic face (common on phone terminals), the SGR codes (1, 3) still
+  parse but the glyphs look identical to normal text.
+- **Links are OSC 8 hyperlinks**, clickable in terminals that implement
+  OSC 8 (kitty, alacritty, foot, GNOME Terminal, Windows Terminal,
+  Konsole ≥ 21.08, ...). The URL is also printed dim, so the link
+  survives terminals without OSC 8. Old emulators (VTE < 0.46.2,
+  `screen`, tmux < 3.0) may strip or garble the sequences.
+- **Konsole specifics** (verified against Konsole source): OSC 8
+  interactions are opt-in per profile — *Settings → Edit Profile →
+  Mouse → "Allow escape sequences for links"*, optionally *"Open links
+  by direct click"*. The corner URL preview and Ctrl+Click appear once
+  enabled. Opening hands the URL to KIO, which launches your desktop
+  default browser — a dangling default (e.g. an uninstalled browser in
+  `mimeapps`) silently kills the click: `gio mime
+  x-scheme-handler/https` shows what KIO would use, and
+  `xdg-mime default <browser>.desktop x-scheme-handler/https` fixes it.
+  The right-click *Open Link* menu item exists only for bare typed
+  URLs; for OSC 8 links it is still an upstream Konsole gap
+  (KDE bug 520743).
+
 ### REST API (`matrixcli serve`)
 
 The server exposes a format-aware REST API under `/api/` (default port

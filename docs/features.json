@@ -327,6 +327,7 @@
       "category": "ui",
       "status": "implemented",
       "since": "0.5.1",
+      "note": "Renders the same sample the chat view uses. Supported: bold, italic (SGR 3), inline code, [text](url) as OSC 8 hyperlinks, #/##/### headers, bullets, - [x]/[ ] checkboxes, numbered lists, > quotes, fenced code blocks. Terminal realities: no font scaling exists, headers render bold; bold/italic need font faces (miss on many phone terminals); OSC 8 links are clickable only in OSC 8 terminals and in Konsole need profile Mouse 'Allow escape sequences for links' (+ optionally 'Open links by direct click'); the right-click Open Link item for OSC 8 links is unused upstream KDE gap (bug 520743, menued only for bare typed URLs); the click opens via the desktop default browser, so a dangling mimeapps default kills it (check gio mime x-scheme-handler/https); old emulators (VTE < 0.46.2, screen, tmux < 3.0) may strip the sequences",
       "anchor": {
         "file": "src/demo_repl.cpp",
         "pattern": "demoMarkdownShowcase"
@@ -384,7 +385,7 @@
       "since": "0.5.1",
       "anchor": {
         "file": "src/ascii_ui.cpp",
-        "pattern": "0x1F5F3"
+        "pattern": "showEmoji \\? \" 📥 \""
       }
     },
     {
