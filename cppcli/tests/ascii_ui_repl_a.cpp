@@ -84,8 +84,9 @@ int asciiReplDispatchA(UiState& st, db::Database& dbi, const cli::Args& a) {
                          "  markdown rendering: demo markdown (bold, italic, code, links\n"
                          "  as OSC 8 hyperlinks; headers are bold — terminals cannot scale\n"
                          "  fonts. Italic/bold need font faces; OSC 8 links open with\n"
-                         "  Ctrl+Click where supported: Konsole needs profile > Mouse >\n"
-                         "  'Allow escape sequences for links'. See README for the details.\n";
+                         "  Ctrl+Click where supported: Konsole needs the profile Mouse tab\n"
+                         "  > 'Allow escape sequences for links' (+ 'Open files/links by\n"
+                         "  direct click' for tap-to-open). See README for the details.\n";
             return 1;
         }
         if (asciiSettingsCommand(st, dbi, a)) return 1;

@@ -116,13 +116,15 @@ terminals and terminal source code):
   survives terminals without OSC 8. Old emulators (VTE < 0.46.2,
   `screen`, tmux < 3.0) may strip or garble the sequences.
 - **Konsole specifics** (verified against Konsole source): OSC 8
-  interactions are opt-in per profile — *Settings → Edit Profile →
-  Mouse → "Allow escape sequences for links"*, optionally *"Open links
-  by direct click"*. The corner URL preview and Ctrl+Click appear once
-  enabled. Opening hands the URL to KIO, which launches your desktop
-  default browser — a dangling default (e.g. an uninstalled browser in
-  `mimeapps`) silently kills the click: `gio mime
-  x-scheme-handler/https` shows what KIO would use, and
+  interactions are opt-in per profile — *Settings → Configure Konsole →
+  Edit Profile → Mouse tab → tick "Allow escape sequences for links"*
+  (a security warning appears; leave "Allowed link formats" at its
+  default). Optionally tick *"Open files/links by direct click"* to
+  open with a plain tap/click instead of Ctrl+Click. The corner URL
+  preview appears once enabled. Opening hands the URL to KIO, which
+  launches your desktop default browser — a dangling default (e.g. an
+  uninstalled browser in `mimeapps`) silently kills the click: `gio
+  mime x-scheme-handler/https` shows what KIO would use, and
   `xdg-mime default <browser>.desktop x-scheme-handler/https` fixes it.
   The right-click *Open Link* menu item exists only for bare typed
   URLs; for OSC 8 links it is still an upstream Konsole gap

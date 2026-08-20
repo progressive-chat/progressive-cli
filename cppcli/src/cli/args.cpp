@@ -137,11 +137,12 @@ void printUsage() {
               << "  headers, lists, - [x] checkboxes, quotes and fenced code. Terminals\n"
               << "  have a fixed cell grid, no font scaling exists: headers render bold.\n"
               << "  Bold/italic need font faces (often missing on phones). OSC 8 links\n"
-              << "  open with Ctrl+Click; in Konsole enable profile > Mouse > 'Allow\n"
-              << "  escape sequences for links' + 'Open links by direct click', and a\n"
-              << "  working default browser (gio mime x-scheme-handler/https shows what\n"
-              << "  KIO uses). The right-click Open Link item for hidden links is an\n"
-              << "  upstream Konsole gap (KDE bug 520743); bare URLs have it.\n\n";
+              << "  open with Ctrl+Click; in Konsole edit the profile: Mouse tab > tick\n"
+              << "  'Allow escape sequences for links' (+ 'Open files/links by direct\n"
+              << "  click' for tap-to-open), and have a working default browser (gio mime\n"
+              << "  x-scheme-handler/https shows what KIO uses). The right-click Open\n"
+              << "  Link item for hidden links is an upstream Konsole gap (KDE bug\n"
+              << "  520743); bare URLs have it.\n\n";
 
     std::cout << "Examples:\n"
               << "  progressive-cli login --homeserver https://matrix.org --username @me:matrix.org --password s3cret\n"
