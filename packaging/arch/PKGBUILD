@@ -56,6 +56,11 @@ package() {
     install -Dm644 gomuks/LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
     install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
 
+    # Optional systemd user unit for the notification forwarding daemon
+    # (installed, not enabled: systemctl --user enable progressive-cli-notify)
+    install -Dm644 packaging/arch/progressive-cli-notify.service \
+        "${pkgdir}/usr/lib/systemd/user/progressive-cli-notify.service"
+
     # Desktop entry
     install -dm755 "${pkgdir}/usr/share/applications"
     cat > "${pkgdir}/usr/share/applications/${pkgname}.desktop" << 'EOF'

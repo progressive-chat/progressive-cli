@@ -168,6 +168,20 @@ matrixcli notify host 127.0.0.1:27430         # persist; notify host off resets
 matrixcli notify test "hello, tray"           # now routed through the daemon
 ```
 
+**Optional: autostart the daemon as a systemd user service.** The Arch
+package ships `progressive-cli-notify.service` (installed but *not*
+enabled). As the desktop-owning user, opt in with:
+
+```bash
+systemctl --user enable --now progressive-cli-notify   # starts with each login
+systemctl --user disable --now progressive-cli-notify  # opt out any time
+```
+
+On non-Arch systems copy `packaging/arch/progressive-cli-notify.service`
+to `~/.config/systemd/user/` first, or just keep running the daemon
+manually as above. The service is harmless either way: it only listens
+on loopback and only forwards when a client sets `notify host`.
+
 The daemon forwards each notification to *its* session's daemon
 (`notify-send`, with the qdbus6 fallback), so the popup appears in that
 user's Plasma tray. Wire format is one line per notification

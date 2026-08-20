@@ -1,0 +1,26 @@
+# /usr/lib/systemd/user/progressive-cli-notify.service
+#
+# The optional notification forwarding daemon: it listens on a TCP port
+# (loopback) and shows every received notification in THIS user's desktop
+# session. Run the matrix client as another user/over SSH and point it here
+# with: matrixcli notify host 127.0.0.1:27430
+#
+# Installed but NOT enabled — opt in as the desktop-owning Linux user:
+#   systemctl --user enable --now progressive-cli-notify
+# and opt out any time with:
+#   systemctl --user disable --now progressive-cli-notify
+
+[Unit]
+Description=progressive-cli notification forwarding daemon
+Documentation=https://github.com/progressive-chat/progressive-cli
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/matrixcli notify daemon --port 27430
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
