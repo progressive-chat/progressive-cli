@@ -130,6 +130,51 @@ terminals and terminal source code):
   URLs; for OSC 8 links it is still an upstream Konsole gap
   (KDE bug 520743).
 
+### Native desktop notifications
+
+New messages can pop up as native desktop notifications (KDE Plasma,
+GNOME, ...): the program talks to the desktop's notification daemon via
+`libnotify` (`notify-send`), with a direct `qdbus6`/`qdbus` D-Bus call as
+the fallback (Plasma runs the same `org.freedesktop.Notifications`
+service in its tray), and always rings the terminal bell.
+
+```bash
+# Test the notification (should appear as a popup in your desktop)
+matrixcli notify test "hello, tray"
+matrixcli notify test                  # the default test text
+matrixcli notify last                  # re-send the newest unread message
+matrixcli notify on|off                # the persisted switch (default on)
+```
+
+The `ui` command announces, on `refresh`, the unread notifications that
+arrived since the last refresh (tracked via `notify_seen_id`). The
+toggle is also in the `settings` output. If nothing pops up, check the
+backend: `matrixcli notify test` reports when `notify-send`/`qdbus6`
+is missing (some minimal KDE installs lack `libnotify`).
+
+**Another user's session.** When the matrix client runs outside the
+desktop session (SSH, a service, a different Linux user) it can still
+pop up notifications in the session that owns the desktop: run the
+forwarding service *there* (it just listens on a TCP port, loopback by
+default) and point the client at it:
+
+```bash
+# In the desktop-owning session (e.g. as the desktop user):
+matrixcli notify daemon --port 27430          # Ctrl+C stops it
+# [sudo -u <desktop-user> ... if that session belongs to another user]
+
+# From the matrix client (any machine/user that can reach the port):
+matrixcli notify host 127.0.0.1:27430         # persist; notify host off resets
+matrixcli notify test "hello, tray"           # now routed through the daemon
+```
+
+The daemon forwards each notification to *its* session's daemon
+(`notify-send`, with the qdbus6 fallback), so the popup appears in that
+user's Plasma tray. Wire format is one line per notification
+(`title<TAB>body`), so `echo -e "title\tbody" | nc 127.0.0.1 27430`
+works too. Keep the daemon bound to loopback unless you need remote
+users — there is no authentication on the port.
+
 ### REST API (`matrixcli serve`)
 
 The server exposes a format-aware REST API under `/api/` (default port

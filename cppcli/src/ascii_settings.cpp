@@ -272,6 +272,7 @@ bool asciiSettingsCommand(UiState& st, db::Database& dbi, const cli::Args& a) {
             add("  invites   " + std::string(st.showInvites ? "on" : "off") + "  (invites on / invites off)  [" + std::to_string(st.invites) + " open]" + (st.showInvitesLegend ? ", legend on" : ", legend off") + "  (invites legend on|off)");
             add("  invmark   " + std::string(st.showRoomInviteMark ? "on" : "off") + "  (invite mark on / invite mark off)  [the \"\U0001f4e8 (invited \u2026)\" hint on invited room rows]");
             add("  notif     " + std::string(st.showNotifications ? "on" : "off") + "  (notifications on / notifications off)  [bottom-right corner]");
+            add("  notify    " + std::string(dbi.getSetting("native_notify", "1") != "0" ? "on" : "off") + "  (notify on / notify off)  [native desktop notifications, e.g. KDE Plasma; refresh announces the new ones]" + (dbi.getSetting("notify_host", "").empty() ? "" : ", daemon: " + dbi.getSetting("notify_host", "")));
             {
                 std::string mon;
                 for (const auto& r : st.rooms) {

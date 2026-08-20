@@ -254,6 +254,7 @@ bool asciiSettingsCommand(UiState& st, db::Database& dbi, const cli::Args& a) {
             add("  images    " + std::string(st.showImages ? "full cards" : "compact") + "  (images on / images off)  [Element: show images & videos]");
             add("  sendpreset " + dbi.getSetting("send_preset", "original") + "  (sendpreset original|compact|full)");
             add("  emoji     " + std::string(st.showEmoji ? "on" : "off (ASCII)") + "       (emoji on / emoji off)");
+            add("  sep       " + std::string(dbi.getSetting("date_sep", "1") != "0" ? "shown (grey)" : "hidden") + "  (sep on / sep off)  [the \u2500\u2500 day separator in the chat]");
             add("  threads   " + std::string(dbi.getSetting("threads_off", "0") == "0" ? "enabled" : "disabled") + "  (threads on / threads off)");
             add("  rows      " + (st.limitRows > 0 ? std::to_string(st.limitRows) : "auto (terminal)") + "  (rows <n> / rows 0)");
             add("  panel L   " + (st.leftPanelW == 0 ? "off" : st.leftPanelW > 0 ? std::to_string(st.leftPanelW) : "default") + "  (panel left <off|on|width>)");
@@ -271,6 +272,7 @@ bool asciiSettingsCommand(UiState& st, db::Database& dbi, const cli::Args& a) {
             add("  invites   " + std::string(st.showInvites ? "on" : "off") + "  (invites on / invites off)  [" + std::to_string(st.invites) + " open]" + (st.showInvitesLegend ? ", legend on" : ", legend off") + "  (invites legend on|off)");
             add("  invmark   " + std::string(st.showRoomInviteMark ? "on" : "off") + "  (invite mark on / invite mark off)  [the \"\U0001f4e8 (invited \u2026)\" hint on invited room rows]");
             add("  notif     " + std::string(st.showNotifications ? "on" : "off") + "  (notifications on / notifications off)  [bottom-right corner]");
+            add("  notify    " + std::string(dbi.getSetting("native_notify", "1") != "0" ? "on" : "off") + "  (notify on / notify off)  [native desktop notifications, e.g. KDE Plasma; refresh announces the new ones]" + (dbi.getSetting("notify_host", "").empty() ? "" : ", daemon: " + dbi.getSetting("notify_host", "")));
             {
                 std::string mon;
                 for (const auto& r : st.rooms) {
@@ -285,6 +287,14 @@ bool asciiSettingsCommand(UiState& st, db::Database& dbi, const cli::Args& a) {
             }
             add("  space     " + (st.activeSpace.empty() ? "all rooms" : st.activeSpace) + "  (space <name> / space all)");
             for (const auto& l : lines) std::cout << l << std::endl;
+            return true;
+        }
+        // ---- sep on|off: the ── day separator in the chat ----
+        if (a.command == "sep") {
+            const bool on = !a.positional.empty() && a.positional[0] == "on";
+            dbi.setSetting("date_sep", on ? "1" : "0");
+            st.statusNote = std::string("the day separator: ") + (on ? "shown (grey)" : "hidden");
+            std::cout << drawFrame(st) << std::flush;
             return true;
         }
         // ---- threads on|off: disable the thread UI entirely ----

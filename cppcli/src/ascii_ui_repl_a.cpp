@@ -13,6 +13,7 @@
 #include "../lib/matrix/client.hpp"
 #include "../lib/util/logger.hpp"
 #include "../lib/util/string_utils.hpp"
+#include "../lib/util/notifications.hpp"
 #include "agent_tools.hpp"
 #include <cstdlib>
 #include <glob.h>
@@ -79,6 +80,10 @@ int asciiReplDispatchA(UiState& st, db::Database& dbi, const cli::Args& a) {
                          "  dump <room> [--format json|txt|html|md]  export a room\n"
                          "  account <@user> / accounts / spaces / space <name>\n"
                          "  agent ...  the coding agent / llm ... the LLM chat\n"
+                         "  notify test [text]  the native desktop notification (KDE Plasma etc)\n"
+                         "  notify last / notify on|off  announce the newest unread / the switch\n"
+                         "  notify daemon [--port N]  the service for another user's session\n"
+                         "  notify host <ip[:port]>|off  route through that daemon\n\n"
                          "  help / quit / exit\n"
                          "\n"
                          "  markdown rendering: demo markdown (bold, italic, code, links\n"
@@ -334,6 +339,50 @@ int asciiReplDispatchA(UiState& st, db::Database& dbi, const cli::Args& a) {
             return 1;
         }
         if (a.command == "refresh") {
+            // Native desktop notifications (KDE Plasma etc): announce the
+            // unread notifications that arrived since the last refresh,
+            // when the notify switch is on.
+            if (dbi.getSetting("native_notify", "1") != "0") {
+                auto notifs = dbi.getNotifications(50, true);
+                int seen = std::atoi(dbi.getSetting("notify_seen_id", "0").c_str());
+                int maxId = 0, fresh = 0;
+                for (auto& n : notifs) {
+                    int nid = n.value("id", 0);
+                    if (nid > maxId) maxId = nid;
+                    if (nid > seen) ++fresh;
+                }
+                if (fresh > 0) {
+                    auto n = notifs[0];
+                    std::string room = n.value("room_name", n.value("room_id", "?"));
+                    std::string sender = n.value("sender", "?");
+                    std::string body = n.value("body", "");
+                    if (fresh > 1) {
+                        body += " (+" + std::to_string(fresh - 1)
+                              + " more)";
+                    }
+                    // Through the configured notify daemon (another user's
+                    // session) when set, local otherwise.
+                    std::string host = dbi.getSetting("notify_host", "");
+                    bool viaDaemon = false;
+                    if (!host.empty()) {
+                        std::string ip = host;
+                        int port = 27430;
+                        auto colon = host.rfind(':');
+                        if (colon != std::string::npos) {
+                            ip = host.substr(0, colon);
+                            port = std::atoi(host.substr(colon + 1).c_str());
+                            if (port <= 0) port = 27430;
+                        }
+                        viaDaemon = util::Notifications::sendToDaemon(
+                            ip, port, sender + " \u00b7 " + room, body);
+                    }
+                    if (!viaDaemon) {
+                        util::Notifications::send(
+                            sender + " \u00b7 " + room, body);
+                    }
+                    dbi.setSetting("notify_seen_id", std::to_string(maxId));
+                }
+            }
             std::cout << drawFrameImpl(st) << std::flush;
             return 1;
         }

@@ -1,8 +1,8 @@
 {
   "generated": {
-    "version": "v0.5.2-58-gbfaf588-dirty",
-    "commit": "bfaf588f6dfb7906bb4e0f84611b5d85adb8c49e",
-    "builtAt": "2026-08-20T05:42:35.420Z",
+    "version": "v0.5.2-60-g032fd33-dirty",
+    "commit": "032fd334ff5716dc1a5a3e327af534b1437097aa",
+    "builtAt": "2026-08-20T08:31:43.097Z",
     "generator": "docs/gen.mjs"
   },
   "note": "This file is generated. Edit docs/features.json instead.",
@@ -137,7 +137,7 @@
         "file": "src/ascii_ui_repl_a.cpp",
         "pattern": "invreason",
         "missing": false,
-        "line": 73
+        "line": 74
       }
     },
     {
@@ -189,7 +189,7 @@
         "file": "src/ascii_ui_repl_a.cpp",
         "pattern": "sendtyping",
         "missing": false,
-        "line": 72
+        "line": 73
       }
     },
     {
@@ -275,7 +275,7 @@
         "file": "src/ascii_ui_repl_a.cpp",
         "pattern": "presence fetched",
         "missing": false,
-        "line": 586
+        "line": 636
       }
     },
     {
@@ -373,6 +373,20 @@
       }
     },
     {
+      "id": "native-desktop-notify",
+      "name": "Native desktop notifications (notify test|last|on|off, KDE Plasma etc)",
+      "category": "ui",
+      "status": "implemented",
+      "since": "0.5.2",
+      "note": "Sends notifications to the desktop's notification daemon (org.freedesktop.Notifications): via notify-send, falling back to a direct qdbus6/qdbus call, terminal bell always. 'notify test [text]' pops a test notification; 'notify last' re-sends the newest unread notification from the cache; 'notify on|off' toggles the persisted 'native_notify' switch (default on); the ui refresh command announces the notifications that arrived since the last refresh, tracking 'notify_seen_id'. Text is shell-quoted and cleaned (no newlines/control chars, length caps). 'notify daemon [--port N] [--bind IP]' runs the forwarding service (loopback by default) so notifications can be shown in ANOTHER user's desktop session: 'notify host <ip[:port]>' routes test/last and the refresh announcements through it; wire format is one line per notification (title TAB body). No authentication on the port, loopback by default. On Konsole/KDE the popups appear in the Plasma notification tray; the backend (notify-send or qdbus6) must be installed",
+      "anchor": {
+        "file": "src/matrix_commands.cpp",
+        "pattern": "cmdNotify",
+        "missing": false,
+        "line": 270
+      }
+    },
+    {
       "id": "demo-markdown",
       "name": "Demo markdown renderer (demo markdown)",
       "category": "ui",
@@ -409,7 +423,7 @@
         "file": "src/ascii_ui_repl_b.cpp",
         "pattern": "notifications on",
         "missing": false,
-        "line": 623
+        "line": 631
       }
     },
     {
@@ -422,7 +436,7 @@
         "file": "src/ascii_ui_repl_b.cpp",
         "pattern": "monitor <room>",
         "missing": false,
-        "line": 633
+        "line": 641
       }
     },
     {
@@ -500,7 +514,7 @@
         "file": "src/ascii_ui_repl_b.cpp",
         "pattern": "show_invites",
         "missing": false,
-        "line": 610
+        "line": 618
       }
     },
     {

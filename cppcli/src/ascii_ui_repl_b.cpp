@@ -50,6 +50,14 @@
 namespace matrixcli {
 
 int asciiReplDispatchB(UiState& st, db::Database& dbi, const cli::Args& a) {
+        if (a.command == "notify") {
+            // The shared CLI handler: notify test [text] | notify last |
+            // notify on|off (native desktop notifications, KDE Plasma ...).
+            auto cliHandler = CommandRegistry::instance().findCli("notify");
+            if (cliHandler) cliHandler(a);
+            std::cout << drawFrameImpl(st) << std::flush;
+            return 1;
+        }
         if (a.command == "media") {
             if (a.positional.size() < 2) {
                 std::cout << "Usage: media <room> <event_id> [--open] [--preview]" << std::endl;

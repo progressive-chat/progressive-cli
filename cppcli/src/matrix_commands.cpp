@@ -8,6 +8,7 @@
 #include "../lib/matrix/client.hpp"
 #include "../lib/database/db.hpp"
 #include "../lib/util/string_utils.hpp"
+#include "../lib/util/notifications.hpp"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <string>
@@ -257,6 +258,132 @@ int cmdReceipts(const cli::Args& args) {
         return 0;
 }
 
+// ── notify ── the native desktop notification (KDE Plasma, GNOME, ...).
+// notify test [text]   a test notification
+// notify last          the newest unread notification from the cache
+// notify on|off        the persisted on/off switch (refresh announces new ones)
+// notify daemon [--port N] [--bind IP]   the forwarding service: run it in
+//   the desktop-owning session (possibly as another user); it listens on a
+//   TCP port and shows every received notification in that session.
+// notify host <ip[:port]> | off   route notify test|last (and the refresh
+//   announcements) through a notify daemon instead of the local session.
+int cmdNotify(const cli::Args& args) {
+        using namespace matrixcli;
+
+        db::Database dbi;
+        if (!dbi.open("matrixcli.db")) return 1;
+        std::string sub = args.positional.empty() ? "test" : args.positional[0];
+
+        if (sub == "on" || sub == "off") {
+            dbi.setSetting("native_notify", sub == "on" ? "1" : "0");
+            std::cout << "native desktop notifications: " << sub << std::endl;
+            return 0;
+        }
+
+        if (sub == "daemon") {
+            int port = args.options.count("port")
+                           ? std::atoi(args.options.at("port").c_str())
+                           : 27430;
+            std::string bind = args.options.count("bind")
+                                   ? args.options.at("bind")
+                                   : "127.0.0.1";
+            std::cout << "starting the notify daemon (Ctrl+C to stop)..."
+                      << std::endl;
+            util::Notifications::runDaemon(bind, port);
+            return 0;
+        }
+
+        if (sub == "host") {
+            if (args.positional.size() < 2) {
+                std::cout << "Usage: notify host <ip[:port]> | notify host off"
+                          << std::endl;
+                return 0;
+            }
+            std::string addr = args.positional[1];
+            if (addr == "off") {
+                dbi.setSetting("notify_host", "");
+                std::cout << "notify daemon: off — notifications go to "
+                             "this session directly"
+                          << std::endl;
+            } else {
+                dbi.setSetting("notify_host", addr);
+                std::cout << "notify daemon: " << addr
+                          << " — test/last and refresh announcements go "
+                             "through it"
+                          << std::endl;
+            }
+            return 0;
+        }
+
+        // Where the notification goes: the configured daemon (host
+        // [port]) or this session directly.
+        std::string host = dbi.getSetting("notify_host", "");
+        auto sendIt = [&](const std::string& title,
+                          const std::string& body) -> int {
+            if (!host.empty()) {
+                std::string ip = host;
+                int port = 27430;
+                auto colon = host.rfind(':');
+                if (colon != std::string::npos) {
+                    ip = host.substr(0, colon);
+                    port = std::atoi(host.substr(colon + 1).c_str());
+                    if (port <= 0) port = 27430;
+                }
+                if (util::Notifications::sendToDaemon(ip, port, title, body)) {
+                    std::cout << "sent via notify daemon " << host << std::endl;
+                    return 0;
+                }
+                std::cout << "could not reach the notify daemon at " << host
+                          << " — is 'notify daemon' running on the other "
+                             "user's session?"
+                          << std::endl;
+                return 1;
+            }
+            if (!util::Notifications::available()) {
+                std::cout << "no desktop notification backend found "
+                             "(need notify-send or qdbus6)"
+                          << std::endl;
+                return 1;
+            }
+            util::Notifications::send(title, body);
+            std::cout << "sent" << std::endl;
+            return 0;
+        };
+
+        if (sub == "test") {
+            std::string text;
+            for (size_t i = 1; i < args.positional.size(); ++i) {
+                if (!text.empty()) text += " ";
+                text += args.positional[i];
+            }
+            if (text.empty()) {
+                text = "This is the progressive-cli test notification. "
+                       "It should appear as a popup (KDE Plasma, GNOME, ...).";
+            }
+            return sendIt("progressive-cli test", text);
+        }
+
+        if (sub == "last") {
+            auto notifs = dbi.getNotifications(1, true);
+            if (notifs.empty()) {
+                std::cout << "no unread notifications in the cache"
+                          << std::endl;
+                return 0;
+            }
+            auto n = notifs[0];
+            std::string room = n.value("room_name", n.value("room_id", "?"));
+            std::string sender = n.value("sender", "?");
+            std::string body = n.value("body", "");
+            return sendIt(sender + " \u00b7 " + room, body);
+        }
+
+        std::cout << "Usage: notify test [text] | notify last | notify on|off | "
+                     "notify daemon [--port N] [--bind IP] | notify host "
+                     "<ip[:port]>|off"
+                  << std::endl;
+        return 0;
+}
+
 int cmdNotifications(const cli::Args& args) {
         using namespace matrixcli;
 
@@ -399,4 +526,5 @@ void registerMatrixCommands() {
     reg.registerCli("read", cmdRead, "Mark room read: read <room>");
     reg.registerCli("receipts", cmdReceipts, "Per-room read receipts: receipts [<room>] [on|off]");    reg.registerCli("notifications", cmdNotifications, "Notification settings: notifications (on|off)");
     reg.registerCli("notif", cmdNotifications, "Notification settings (alias)");
+    reg.registerCli("notify", cmdNotify, "Native desktop notification (KDE Plasma etc): notify test [text] | notify last | notify on|off");
 }

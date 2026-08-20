@@ -87,6 +87,7 @@ void printUsage() {
               << "  markdown      Render markdown to HTML: markdown <text> | echo <text> | progressive-cli markdown\n"
               << "  members       The room members: members <room>\n"
               << "  notifications Notification settings: notifications (on|off)\n"
+              << "  notify        Native desktop notification (KDE Plasma etc): notify test [text] | notify last | notify on|off | notify daemon [--port N] | notify host <ip[:port]>|off\n"
               << "  profile       The user profile: profile <@user>\n"
               << "  react         Add a reaction to a message\n"
               << "  read          Mark the room as read\n"
