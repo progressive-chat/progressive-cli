@@ -38,6 +38,9 @@ C++ from the ground up — the old Go implementation is retired (the
   agent and the coding agent
 - **The VoIP signaling** — `matrixcli call` (the m.call.* state machine;
   the WebRTC media plane is the next stage)
+- **The readable `--help`** — colour + the bold section headers in a
+  terminal (plain otherwise); opt out with `--help --disable-formatting`,
+  `NO_COLOR=1`, or `TERM=dumb`
 - **The tests + the CI** — the unit tests for the LLM plumbing, the
   sessions and the db, the agent-loop integration test, the CI with the
   ASan/UBSan job

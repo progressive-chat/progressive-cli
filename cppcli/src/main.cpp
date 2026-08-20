@@ -164,7 +164,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (args.command.empty() || args.command == "help" || args.options.contains("help")) {
-        matrixcli::cli::printUsage();
+        matrixcli::cli::printUsage(args);
         return 0;
     }
 

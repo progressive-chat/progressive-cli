@@ -15,7 +15,9 @@ struct Args {
 
 Args parseArgs(int argc, char* argv[]);
 
-void printUsage();
+// The help output is coloured/formatted only when stdout is a terminal,
+// unless --disable-formatting (or NO_COLOR=1, TERM=dumb) forces plain text.
+void printUsage(const Args& args);
 std::string versionString();  // "progressive-cli vX.Y.Z"
 void printVersion();
 

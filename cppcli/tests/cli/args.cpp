@@ -2,7 +2,11 @@
 
 #include <iostream>
 #include <cstring>
+#include <cstdlib>
 #include <unordered_set>
+#include <unistd.h>
+
+#include "../lib/util/string_utils.hpp"
 
 namespace matrixcli { namespace cli {
 
@@ -13,7 +17,7 @@ static const std::unordered_set<std::string> kNoValueFlags = {
     "static", "once", "print", "json", "confirm", "debug", "ts", "ids",
     "expand", "verbose", "no-replies", "no-filter", "all", "interactive",
     "help", "version", "cli", "ui", "ascii", "populate", "mobile",
-    "no-mouse", "mouse", "agent",
+    "no-mouse", "mouse", "agent", "disable-formatting",
 };
 
 Args parseArgs(int argc, char* argv[]) {
@@ -63,11 +67,41 @@ Args parseArgs(int argc, char* argv[]) {
     return result;
 }
 
-void printUsage() {
-    std::cout << "progressive-cli - the Matrix chat client and coding agent, designed to work in the terminal\n\n"
-              << "Usage: progressive-cli [command] [options]\n\n";
+// Colour/formatting in the help output is opt-out. Plain when: the
+// --disable-formatting flag is given (anywhere on the line), stdout is
+// not a terminal (pipes, scripts), NO_COLOR is set, or TERM=dumb.
+bool wantFormatting(const Args& args) {
+    if (args.options.contains("disable-formatting")) {
+        return false;
+    }
+    if (!isatty(STDOUT_FILENO)) {
+        return false;
+    }
+    const char* noColor = getenv("NO_COLOR");
+    if (noColor && *noColor) {
+        return false;
+    }
+    const char* term = getenv("TERM");
+    if (!term || std::string(term) == "dumb") {
+        return false;
+    }
+    return true;
+}
 
-    std::cout << "The Matrix client\n"
+void printUsage(const Args& args) {
+    const bool fmt = wantFormatting(args);
+    // Plain mode renders the exact same bytes as before: the colour
+    // tokens reduce to empty strings.
+    const std::string head = fmt ? std::string(ANSI_BOLD) + ANSI_CYAN : "";
+    const std::string usage = fmt ? std::string(ANSI_BOLD) + ANSI_YELLOW : "";
+    const std::string bold = fmt ? std::string(ANSI_BOLD) : "";
+    const std::string dim = fmt ? std::string(ANSI_DIM) : "";
+    const std::string rst = fmt ? "\033[0m" : "";
+
+    std::cout << head << "progressive-cli - the Matrix chat client and coding agent, designed to work in the terminal" << rst << "\n\n"
+              << usage << "Usage: progressive-cli [command] [options]" << rst << "\n\n";
+
+    std::cout << bold << "The Matrix client" << rst << "\n"
               << "  accounts      Logged-in accounts: accounts [--all] [--json] | --hide <mxid> | --show <mxid>\n"
               << "  attach        Send a file: attach <room> <file> [--caption text]\n"
               << "  avatar        Set the room avatar\n"
@@ -113,12 +147,12 @@ void printUsage() {
               << "  view          View the room messages (offline, the cache): view <room> [limit] [--senders @u] [--hide @u]\n"
               << "  vote          Vote in a poll\n\n";
 
-    std::cout << "The LLM and the agents\n"
+    std::cout << bold << "The LLM and the agents" << rst << "\n"
               << "  llm           The LLM completion / the conversations: llm <prompt> | llm chat | llm continue | llm sessions | llm resume <N>\n"
               << "  agent         The agentic loop with the Matrix tools: agent <task> [--room X]\n"
               << "  agent-code    The local coding agent: agent-code <prompt> [--trust allow|ask|deny]\n\n";
 
-    std::cout << "The setup and the infrastructure\n"
+    std::cout << bold << "The setup and the infrastructure" << rst << "\n"
               << "  completion    Generate the shell completion (bash/zsh/fish)\n"
               << "  config        Show/edit the client config\n"
               << "  help          Show this help\n"
@@ -127,13 +161,13 @@ void printUsage() {
               << "  serve         Start the built-in HTTP API server\n"
               << "  setup         The interactive setup wizard\n\n";
 
-    std::cout << "The bridges (experimental)\n"
+    std::cout << bold << "The bridges (experimental)" << rst << "\n"
               << "  dc            The DeltaChat bridge\n"
               << "  irc           The IRC client (connect/join/msg/leave/whois/names)\n"
               << "  lemmy         The Lemmy client (login/posts/post/upvote/comments)\n"
               << "  td            Telegram via TDLib (login/chats/msg/history)\n\n";
 
-    std::cout << "The markdown rendering (demo markdown)\n"
+    std::cout << bold << "The markdown rendering (demo markdown)" << rst << "\n"
               << "  bold, italic, inline code and [links](url) as OSC 8 hyperlinks, plus\n"
               << "  headers, lists, - [x] checkboxes, quotes and fenced code. Terminals\n"
               << "  have a fixed cell grid, no font scaling exists: headers render bold.\n"
@@ -145,7 +179,7 @@ void printUsage() {
               << "  Link item for hidden links is an upstream Konsole gap (KDE bug\n"
               << "  520743); bare URLs have it.\n\n";
 
-    std::cout << "Examples:\n"
+    std::cout << bold << "Examples:" << rst << "\n"
               << "  progressive-cli login --homeserver https://matrix.org --username @me:matrix.org --password s3cret\n"
               << "  progressive-cli rooms\n"
               << "  progressive-cli view \"#general:matrix.org\" 50\n"
@@ -154,7 +188,11 @@ void printUsage() {
               << "  progressive-cli demo                        # the interactive demo session\n"
               << "  progressive-cli serve --port=29325\n"
               << "\n"
-              << "The detailed flags: progressive-cli <command> --help\n";
+              << "The detailed flags: progressive-cli <command> --help\n"
+              << dim << "The formatting is on only when attached to a terminal;"
+              << rst << "\n"
+              << dim << "--disable-formatting (or NO_COLOR=1) forces plain text."
+              << rst << "\n";
 }
 
 std::string versionString() {
