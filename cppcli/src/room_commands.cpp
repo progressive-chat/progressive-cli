@@ -228,9 +228,36 @@ int cmdPower(const cli::Args& args) {
     std::cout << "    state_default:  " << num("state_default", 50) << "\n";
     std::cout << "    events_default: " << num("events_default", 0) << "\n";
     std::cout << "    users_default:  " << num("users_default", 0) << "\n";
+    // The full set of state events the Matrix protocol governs by power
+    // levels. Any not explicitly listed in `events` falls back to
+    // state_default — show the effective required level for each, so the
+    // command reflects the whole spec, not just the four actions.
+    static const char* kStateEvents[] = {
+        "m.room.name", "m.room.topic", "m.room.avatar",
+        "m.room.canonical_alias", "m.room.history_visibility",
+        "m.room.guest_access", "m.room.encryption", "m.room.tombstone",
+        "m.room.server_acl", "m.room.third_party_invite",
+        "m.room.power_levels", "m.room.bridging", "m.room.pinned_events",
+        "im.vector.modular.widgets", nullptr
+    };
+    int sd = num("state_default", 50);
+    auto inKnown = [&](const std::string& k) {
+        for (int i = 0; kStateEvents[i]; ++i) if (k == kStateEvents[i]) return true;
+        return false;
+    };
+    std::cout << "  State events (effective required level):\n";
+    for (int i = 0; kStateEvents[i]; ++i) {
+        int v = sd;
+        if (pl.contains("events") && pl["events"].contains(kStateEvents[i]) &&
+            pl["events"][kStateEvents[i]].is_number())
+            v = pl["events"][kStateEvents[i]].get<int>();
+        std::cout << "    " << kStateEvents[i] << ": " << v << "\n";
+    }
     if (pl.contains("events") && pl["events"].is_object()) {
-        std::cout << "  Per event type:\n";
+        bool any = false;
         for (auto it = pl["events"].begin(); it != pl["events"].end(); ++it) {
+            if (inKnown(it.key())) continue;
+            if (!any) { std::cout << "  Other event types:\n"; any = true; }
             int v = it.value().is_number() ? it.value().get<int>() : 0;
             std::cout << "    " << it.key() << ": " << v << "\n";
         }

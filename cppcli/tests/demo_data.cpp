@@ -208,7 +208,16 @@ int populateDemoData(matrixcli::db::Database& dbi) {
                 {"users", nlohmann::json::object({
                     {"@alice:demo.local", 100}, {"@bob:demo.local", 50}})},
                 {"notifications", nlohmann::json::object({
-                    {"room", 50}, {"@room", 50}})}
+                    {"room", 50}, {"@room", 50}})},
+                {"events", nlohmann::json::object({
+                    {"m.room.name", 50}, {"m.room.topic", 50},
+                    {"m.room.avatar", 50}, {"m.room.canonical_alias", 50},
+                    {"m.room.history_visibility", 100},
+                    {"m.room.guest_access", 50}, {"m.room.encryption", 50},
+                    {"m.room.tombstone", 100}, {"m.room.server_acl", 100},
+                    {"m.room.third_party_invite", 50},
+                    {"m.room.power_levels", 100}, {"m.room.bridging", 50},
+                    {"m.room.pinned_events", 50}})}
             });
             dbi.insertEvent(plEv);
         }
