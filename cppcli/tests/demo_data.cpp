@@ -192,6 +192,26 @@ int populateDemoData(matrixcli::db::Database& dbi) {
         // The DMs are encrypted by default, like Element.
         if (std::string(r.id).find("!dm_") == 0) j["is_encrypted"] = 1;
         dbi.upsertRoom(j, r.id);
+        // A realistic m.room.power_levels state so `demo <room> power` shows
+        // the room permissions offline: @alice is the creator/admin, @bob a
+        // moderator; standard action thresholds.
+        if (!isDm) {
+            matrix::Event plEv;
+            plEv.event_id = "$demo_pl_" + std::string(r.id);
+            plEv.room_id = r.id;
+            plEv.sender = "@alice:demo.local";
+            plEv.type = "m.room.power_levels";
+            plEv.state_key = "";
+            plEv.content = nlohmann::json::object({
+                {"ban", 50}, {"kick", 50}, {"redact", 50}, {"invite", 50},
+                {"events_default", 0}, {"users_default", 0}, {"state_default", 50},
+                {"users", nlohmann::json::object({
+                    {"@alice:demo.local", 100}, {"@bob:demo.local", 50}})},
+                {"notifications", nlohmann::json::object({
+                    {"room", 50}, {"@room", 50}})}
+            });
+            dbi.insertEvent(plEv);
+        }
     }
 
     // Two demo spaces (Element-style): the rooms are tagged with their

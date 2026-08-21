@@ -40,6 +40,7 @@ using namespace matrixcli;
 extern int cmdRooms(const matrixcli::cli::Args& args);
 extern int cmdView(const matrixcli::cli::Args& args);
 extern int cmdSearch(const matrixcli::cli::Args& args);
+extern int cmdPower(const matrixcli::cli::Args& args);
 
 // Offline room info against the demo DB — mirrors the public `info` command,
 // so `matrixcli demo general info` reproduces the room-info output with no
@@ -355,7 +356,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
     // exits — no interactive REPL and no account needed.
     {
         static const char* kOneShot[] = {"info", "view", "rooms",
-                                         "search", nullptr};
+                                         "search", "power", nullptr};
         auto inSet = [&](const std::string& s) {
             for (int i = 0; kOneShot[i]; ++i)
                 if (s == kOneShot[i]) return true;
@@ -395,6 +396,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
             }
             if (action == "rooms")   return cmdRooms(sub);
             if (action == "search")  return cmdSearch(sub);
+            if (action == "power")   return cmdPower(sub);
         }
     }
 
@@ -564,6 +566,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
             std::cout << "  rooms                     list demo rooms\n"
                          "  view <room> [n]           show the last n messages (default 20)\n"
                          "  info <room>               show room info (id, topic, members, E2EE…)\n"
+                         "  power <room>              show room power levels / permissions\n"
                          "  search <query>            full-text search in cached messages\n"
                          "  send <room> <text>        send a message (demo, offline)\n"
                          "  markdown                  show the markdown rendering demo\n"
@@ -580,6 +583,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
         if (a.command == "rooms") { cmdRooms(a); continue; }
         if (a.command == "view") { cmdView(a); continue; }
         if (a.command == "info") { demoReplInfo(dbi, a); continue; }
+        if (a.command == "power" || a.command == "perms") { cmdPower(a); continue; }
         if (a.command == "search") { cmdSearch(a); continue; }
         if (a.command == "send") { demoReplSend(a); continue; }
         if (a.command == "markdown" || a.command == "md") {

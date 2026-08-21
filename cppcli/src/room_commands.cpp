@@ -192,6 +192,73 @@ int cmdMembers(const cli::Args& args) {
     return 0;
 }
 
+int cmdPower(const cli::Args& args) {
+    if (args.positional.empty()) {
+        std::cerr << "Usage: progressive-cli power <room>" << std::endl;
+        return 1;
+    }
+    using namespace matrixcli;
+    db::Database dbi;
+    if (!dbi.open("matrixcli.db")) { std::cerr << "Cannot open database" << std::endl; return 1; }
+    std::string q = args.positional[0];
+    std::string roomId = matchRoomInCache(dbi.listRooms(), q);
+    if (roomId.empty()) roomId = q;
+    std::string name = roomId;
+    for (auto& r : dbi.listRooms())
+        if (r.value("room_id", "") == roomId) { name = r.value("name", roomId); break; }
+    // The latest m.room.power_levels state event (cached from sync; for the
+    // demo it is inserted by populateDemoData). Offline — no network call.
+    nlohmann::json pl;
+    auto evs = dbi.getEvents(roomId, 100000);
+    for (const auto& ev : evs)
+        if (ev.type == "m.room.power_levels" && ev.content.is_object()) pl = ev.content;
+    std::cout << ANSI_BOLD << name << ANSI_RESET << " — power levels\n";
+    if (pl.is_null() || pl.empty()) {
+        std::cout << "  (no m.room.power_levels state — everyone defaults to level 0)\n";
+        return 0;
+    }
+    auto num = [&](const char* k, int def) -> int {
+        return pl.contains(k) && pl[k].is_number() ? pl[k].get<int>() : def;
+    };
+    std::cout << "  Actions (required level):\n";
+    std::cout << "    ban:           " << num("ban", 50) << "\n";
+    std::cout << "    kick:          " << num("kick", 50) << "\n";
+    std::cout << "    redact:        " << num("redact", 50) << "\n";
+    std::cout << "    invite:        " << num("invite", 50) << "\n";
+    std::cout << "    state_default:  " << num("state_default", 50) << "\n";
+    std::cout << "    events_default: " << num("events_default", 0) << "\n";
+    std::cout << "    users_default:  " << num("users_default", 0) << "\n";
+    if (pl.contains("events") && pl["events"].is_object()) {
+        std::cout << "  Per event type:\n";
+        for (auto it = pl["events"].begin(); it != pl["events"].end(); ++it) {
+            int v = it.value().is_number() ? it.value().get<int>() : 0;
+            std::cout << "    " << it.key() << ": " << v << "\n";
+        }
+    }
+    if (pl.contains("notifications") && pl["notifications"].is_object()) {
+        std::cout << "  Notifications:\n";
+        for (auto it = pl["notifications"].begin(); it != pl["notifications"].end(); ++it) {
+            int v = it.value().is_number() ? it.value().get<int>() : 0;
+            std::cout << "    " << it.key() << ": " << v << "\n";
+        }
+    }
+    if (pl.contains("users") && pl["users"].is_object()) {
+        std::cout << "  Users:\n";
+        std::vector<std::pair<int, std::string>> us;
+        for (auto it = pl["users"].begin(); it != pl["users"].end(); ++it) {
+            int v = it.value().is_number() ? it.value().get<int>() : 0;
+            us.emplace_back(v, it.key());
+        }
+        std::sort(us.begin(), us.end(),
+                  [](const std::pair<int, std::string>& a,
+                     const std::pair<int, std::string>& b) { return a.first > b.first; });
+        for (auto& [v, u] : us)
+            std::cout << "    " << u << ": " << v
+                      << (v >= 100 ? "  (admin)" : v >= 50 ? "  (mod)" : "") << "\n";
+    }
+    return 0;
+}
+
 int cmdThreads(const cli::Args& args) {
     if (!pcore::requireSession()) return 1;
     if (args.positional.empty()) {
@@ -499,6 +566,8 @@ void registerRoomCommands() {
     reg.registerCli("unban", cmdModerate, "Unban a user: unban <room> <@user>");
     reg.registerCli("profile", cmdProfile, "Show a user profile: profile <@user>");
     reg.registerCli("members", cmdMembers, "List room members: members <room>");
+    reg.registerCli("power", cmdPower, "Show room power levels / permissions: power <room>");
+    reg.registerCli("perms", cmdPower, "Alias of power: perms <room>");
     reg.registerCli("threads", cmdThreads, "List room threads: threads <room> [--limit N]");
     reg.registerCli("search-public", cmdSearchPublic, "Search public room directory: search-public <query> [--server hs]");
     reg.registerCli("accounts", cmdAccounts, "List logged-in accounts: accounts [--all] [--json] | --hide <mxid> | --show <mxid> | --temporary-hide <mxid>");

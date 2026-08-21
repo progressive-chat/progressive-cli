@@ -95,10 +95,11 @@ matrixcli demo markdown
 # The poll vote demo: 15 votings in 10 rooms, pick one and vote
 matrixcli demo vote
 
-# One-shot room inspection (no REPL, no account): info | view | rooms | search
+# One-shot room inspection (no REPL, no account): info | view | rooms | search | power
 matrixcli demo general info        # name, alias, id, topic, members, E2EE, version, creator…
 matrixcli demo "#general" view 20  # the last 20 messages
 matrixcli demo info "#general"      # the action may come first, too
+matrixcli demo general power       # room power levels: who can ban/kick/invite, admins & mods
 matrixcli demo rooms               # list the demo rooms
 ```
 
