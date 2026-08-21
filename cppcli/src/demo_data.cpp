@@ -55,20 +55,34 @@ int populateDemoData(matrixcli::db::Database& dbi) {
     }
 
     // The room NAME stays the meaningful title (e.g. "General discussion");
-    // the TOPIC is a separate, generated description so the two never match.
+    // the TOPIC is a separate, longer admin-style blurb (what the room is
+    // about, its history/vibe, and the rules) so it reads like a real room
+    // topic and never equals the name.
     auto roomTopicForTitle = [](const std::string& title, const std::string& id) -> std::string {
-        static const char* kTmpl[] = {
-            "A friendly place to talk about %s.",
-            "News, questions and chatter about %s.",
-            "Hang out and discuss %s with the community.",
-            "Everything %s: tips, help and show-and-tell.",
-            "The go-to room for %s — beginners welcome.",
+        static const char* kDiscuss[] = {
+            "news, questions and show-and-tell",
+            "tips, help and war stories",
+            "discussion, links and the occasional meme",
+            "beginner questions and deep dives",
+            "project updates and community chatter",
+        };
+        static const char* kVibe[] = {
+            "A long-running room with a friendly, chatty crew",
+            "One of the oldest rooms here, full of regulars",
+            "A growing community of enthusiastic people",
+            "A cozy corner for like-minded folks",
+            "A busy hub with something happening every day",
         };
         unsigned h = 2166136261u;
         for (char c : id) { h ^= (unsigned char)c; h *= 16777619u; }
-        const char* t = kTmpl[h % 5];
-        char buf[256];
-        std::snprintf(buf, sizeof(buf), t, title.c_str());
+        const char* d = kDiscuss[h % 5];
+        const char* v = kVibe[(h >> 4) % 5];
+        char buf[640];
+        std::snprintf(buf, sizeof(buf),
+            "%s. This is the place for %s about %s — browse the history to "
+            "see what we've been up to. Room rules: stay on topic, be kind, "
+            "no spam and no NSFW. New here? Say hi and introduce yourself!",
+            v, d, title.c_str());
         return buf;
     };
 
