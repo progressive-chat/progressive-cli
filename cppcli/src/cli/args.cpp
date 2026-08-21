@@ -108,7 +108,7 @@ void printUsage(const Args& args) {
               << "  backup        Key backup: create/upload/restore/delete (--recovery-key)\n"
               << "  call          VoIP signaling: call <@user> | answer <id> | hangup <id> | status | wait\n"
               << "  crosssign     Cross-signing: setup/reset (--password for UIA)\n"
-              << "  demo          Offline demo: the REPL | --cli one-shot | --ui [--static] the ASCII interface\n"
+              << "  demo          Offline demo: the REPL | --cli one-shot | --ui [--static] the ASCII interface | demo <room> info|view\n"
               << "  devices       Delete a device: devices delete <id> --password <pw>\n"
               << "  e2ee          E2EE status and the key management (status/upload/fallback)\n"
               << "  edit          Edit a message\n"

@@ -94,6 +94,12 @@ matrixcli demo markdown
 
 # The poll vote demo: 15 votings in 10 rooms, pick one and vote
 matrixcli demo vote
+
+# One-shot room inspection (no REPL, no account): info | view | rooms | search
+matrixcli demo general info        # room id, topic, members, E2EE, message count…
+matrixcli demo "#general" view 20  # the last 20 messages
+matrixcli demo info "#general"      # the action may come first, too
+matrixcli demo rooms               # list the demo rooms
 ```
 
 The same vote flow reads any cache: with a real account the one-shot

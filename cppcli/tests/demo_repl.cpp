@@ -41,6 +41,43 @@ extern int cmdRooms(const matrixcli::cli::Args& args);
 extern int cmdView(const matrixcli::cli::Args& args);
 extern int cmdSearch(const matrixcli::cli::Args& args);
 
+// Offline room info against the demo DB — mirrors the public `info` command,
+// so `matrixcli demo general info` reproduces the room-info output with no
+// account and no network.
+static int demoReplInfo(db::Database& dbi, const cli::Args& a) {
+    if (a.positional.empty()) {
+        std::cout << "Usage: info <room>" << std::endl;
+        return 1;
+    }
+    std::string roomQ = a.positional[0];
+    std::string roomId = matchRoomInCache(dbi.listRooms(), roomQ);
+    if (roomId.empty() && !roomQ.empty() && roomQ[0] == '#' &&
+        roomQ.find(':') == std::string::npos)
+        roomId = matchRoomInCache(dbi.listRooms(), roomQ.substr(1));
+    if (roomId.empty()) roomId = roomQ;
+    auto rooms = dbi.listRooms();
+    for (auto& r : rooms) {
+        if (r.value("room_id", "") == roomId) {
+            std::cout << ANSI_BOLD << r.value("name", roomId) << ANSI_RESET << "\n";
+            std::cout << "  ID:      " << roomId << "\n";
+            std::cout << "  Topic:   " << r.value("topic", "(none)") << "\n";
+            std::cout << "  Members: " << r.value("member_count", 0) << "\n";
+            std::cout << "  Direct:  " << (r.value("is_direct", false) ? "yes" : "no") << "\n";
+            std::cout << "  E2EE:    " << (r.value("is_encrypted", false) ? "yes" : "no") << "\n";
+            int msgs = dbi.getEventCount(roomId);
+            int notif = dbi.getNotificationCount(roomId);
+            std::cout << "  Messages: " << msgs << "\n";
+            if (notif > 0)
+                std::cout << "  Unread:  " << ANSI_BOLD << notif << ANSI_RESET << "\n";
+            std::cout << "  Last activity: " << roomLastTime(&dbi, roomId, false, false)
+                      << "\n";
+            return 0;
+        }
+    }
+    std::cout << "Room not found: " << roomQ << "\n";
+    return 1;
+}
+
 // ---- Interactive demo REPL (offline, no Matrix account needed) ----
 //
 // Replaces the old `demo` behavior (which started an HTTP API server on
@@ -322,6 +359,54 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
         }
     }
 
+    // One-shot positional form: `demo <room> <action>` (also `demo <action>
+    // <room>`), e.g. `matrixcli demo general info`. Runs the action and
+    // exits — no interactive REPL and no account needed.
+    {
+        static const char* kOneShot[] = {"info", "view", "rooms",
+                                         "search", nullptr};
+        auto inSet = [&](const std::string& s) {
+            for (int i = 0; kOneShot[i]; ++i)
+                if (s == kOneShot[i]) return true;
+            return false;
+        };
+        std::string action, roomArg;
+        if (!args.positional.empty() && inSet(args.positional[0])) {
+            action = args.positional[0];
+            if (args.positional.size() >= 2) roomArg = args.positional[1];
+        } else if (args.positional.size() >= 2 && inSet(args.positional[1])) {
+            roomArg = args.positional[0];
+            action = args.positional[1];
+        }
+        if (!action.empty()) {
+            db::Database dbi;
+            if (!dbi.open("matrixcli.db")) return 1;
+            if (dbi.listRooms().empty()) populateDemoData(dbi);
+            cli::Args sub;
+            sub.command = action;
+            if (!roomArg.empty()) sub.positional.push_back(roomArg);
+            for (size_t i = 2; i < args.positional.size(); ++i)
+                sub.positional.push_back(args.positional[i]);
+            for (auto& kv : args.options) {
+                if (kv.first != "cli" && kv.first != "populate")
+                    sub.options[kv.first] = kv.second;
+            }
+            if (action == "info")    return demoReplInfo(dbi, sub);
+            if (action == "view") {
+                if (!roomArg.empty()) {
+                    std::string rid = matchRoomInCache(dbi.listRooms(), roomArg);
+                    if (rid.empty() && !roomArg.empty() && roomArg[0] == '#' &&
+                        roomArg.find(':') == std::string::npos)
+                        rid = matchRoomInCache(dbi.listRooms(), roomArg.substr(1));
+                    if (!rid.empty()) sub.positional[0] = rid;
+                }
+                return cmdView(sub);
+            }
+            if (action == "rooms")   return cmdRooms(sub);
+            if (action == "search")  return cmdSearch(sub);
+        }
+    }
+
     if (args.options.count("cli") || args.options.count("populate")) {
         return runPureCli();
     }
@@ -463,7 +548,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
     }
 
     std::cout << "progressive-cli demo — interactive mode (offline, no account needed)" << std::endl;
-    std::cout << "Commands: help | rooms | view <room> [n] | search <query> |"
+    std::cout << "Commands: help | rooms | view <room> [n] | info <room> | search <query> |"
               << " send <room> <text> | markdown | vote | ui | clear | quit" << std::endl;
     std::cout << "Demo rooms: #general  #dev  #random  #dm_alice  #dm_bob" << std::endl;
 
@@ -487,6 +572,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
         if (a.command == "help") {
             std::cout << "  rooms                     list demo rooms\n"
                          "  view <room> [n]           show the last n messages (default 20)\n"
+                         "  info <room>               show room info (id, topic, members, E2EE…)\n"
                          "  search <query>            full-text search in cached messages\n"
                          "  send <room> <text>        send a message (demo, offline)\n"
                          "  markdown                  show the markdown rendering demo\n"
@@ -502,6 +588,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
         }
         if (a.command == "rooms") { cmdRooms(a); continue; }
         if (a.command == "view") { cmdView(a); continue; }
+        if (a.command == "info") { demoReplInfo(dbi, a); continue; }
         if (a.command == "search") { cmdSearch(a); continue; }
         if (a.command == "send") { demoReplSend(a); continue; }
         if (a.command == "markdown" || a.command == "md") {
