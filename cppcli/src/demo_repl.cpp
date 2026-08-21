@@ -58,19 +58,7 @@ static int demoReplInfo(db::Database& dbi, const cli::Args& a) {
     auto rooms = dbi.listRooms();
     for (auto& r : rooms) {
         if (r.value("room_id", "") == roomId) {
-            std::cout << ANSI_BOLD << r.value("name", roomId) << ANSI_RESET << "\n";
-            std::cout << "  ID:      " << roomId << "\n";
-            std::cout << "  Topic:   " << r.value("topic", "(none)") << "\n";
-            std::cout << "  Members: " << r.value("member_count", 0) << "\n";
-            std::cout << "  Direct:  " << (r.value("is_direct", false) ? "yes" : "no") << "\n";
-            std::cout << "  E2EE:    " << (r.value("is_encrypted", false) ? "yes" : "no") << "\n";
-            int msgs = dbi.getEventCount(roomId);
-            int notif = dbi.getNotificationCount(roomId);
-            std::cout << "  Messages: " << msgs << "\n";
-            if (notif > 0)
-                std::cout << "  Unread:  " << ANSI_BOLD << notif << ANSI_RESET << "\n";
-            std::cout << "  Last activity: " << roomLastTime(&dbi, roomId, false, false)
-                      << "\n";
+            printRoomInfo(&dbi, r);
             return 0;
         }
     }

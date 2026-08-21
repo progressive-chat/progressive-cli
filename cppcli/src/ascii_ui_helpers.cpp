@@ -216,6 +216,33 @@ std::string matchRoomInCache(const std::vector<nlohmann::json>& rooms,
     return best;
 }
 
+void printRoomInfo(db::Database* db, const nlohmann::json& r) {
+    std::string roomId = r.value("room_id", "");
+    std::string alias = r.value("canonical_alias", "");
+    std::cout << ANSI_BOLD << r.value("name", roomId) << ANSI_RESET << "\n";
+    if (!alias.empty()) std::cout << "  Alias:       " << alias << "\n";
+    std::cout << "  ID:         " << roomId << "\n";
+    std::cout << "  Topic:      " << r.value("topic", "(none)") << "\n";
+    std::cout << "  Members:    " << r.value("member_count", 0) << "\n";
+    std::cout << "  Direct:     " << (r.value("is_direct", false) ? "yes" : "no") << "\n";
+    if (r.value("is_space", 0)) std::cout << "  Space:      yes\n";
+    std::cout << "  E2EE:       " << (r.value("is_encrypted", false) ? "yes" : "no") << "\n";
+    if (r.contains("version") && r.value("version", 0) != 0)
+        std::cout << "  Version:    " << r.value("version", 0) << "\n";
+    if (r.contains("creator") && !r.value("creator", "").empty())
+        std::cout << "  Creator:    " << r.value("creator", "") << "\n";
+    if (db) {
+        std::string rule = roomJoinRule(db, roomId);
+        if (!rule.empty()) std::cout << "  Join rule:  " << rule << "\n";
+        int msgs = db->getEventCount(roomId);
+        int notif = db->getNotificationCount(roomId);
+        std::cout << "  Messages:   " << msgs << "\n";
+        if (notif > 0)
+            std::cout << "  Unread:     " << ANSI_BOLD << notif << ANSI_RESET << "\n";
+        std::cout << "  Last activity: " << roomLastTime(db, roomId, false, false) << "\n";
+    }
+}
+
 void loadRoomIntoStateImpl(UiState& st, const std::string& query) {
     st.currentRoomId.clear();
     st.currentRoomId = matchRoomInCache(st.rooms, query);

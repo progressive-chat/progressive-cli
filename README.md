@@ -96,7 +96,7 @@ matrixcli demo markdown
 matrixcli demo vote
 
 # One-shot room inspection (no REPL, no account): info | view | rooms | search
-matrixcli demo general info        # room id, topic, members, E2EE, message count…
+matrixcli demo general info        # name, alias, id, topic, members, E2EE, version, creator…
 matrixcli demo "#general" view 20  # the last 20 messages
 matrixcli demo info "#general"      # the action may come first, too
 matrixcli demo rooms               # list the demo rooms

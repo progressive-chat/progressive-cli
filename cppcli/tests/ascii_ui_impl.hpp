@@ -68,6 +68,10 @@ std::string resolveThreadRoot(db::Database* db, const std::string& roomId,
 // The room's join rule ("public" / "invite" / ...) — the openness sign
 // on the invite rows.
 std::string roomJoinRule(db::Database* db, const std::string& roomId);
+// The shared room-info printer used by `info` and `demo <room> info`
+// (name, alias, id, topic, members, direct, space, E2EE, version, creator,
+// join rule, message/unread counts, last activity).
+void printRoomInfo(db::Database* db, const nlohmann::json& room);
 std::vector<std::string> roomThreadList(db::Database* db,
                                         const std::string& roomId, int clipW,
                                         bool showIds);

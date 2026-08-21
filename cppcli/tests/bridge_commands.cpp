@@ -192,16 +192,7 @@ void registerBuiltinCommands() {
         auto rooms = dbi.listRooms();
         for (auto& r : rooms) {
             if (r.value("room_id", "") == room_id) {
-                std::cout << ANSI_BOLD << r.value("name", room_id) << ANSI_RESET << std::endl;
-                std::cout << "  ID:      " << room_id << std::endl;
-                std::cout << "  Topic:   " << r.value("topic", "(none)") << std::endl;
-                std::cout << "  Members: " << r.value("member_count", 0) << std::endl;
-                std::cout << "  Direct:  " << (r.value("is_direct", false) ? "yes" : "no") << std::endl;
-                std::cout << "  E2EE:    " << (r.value("is_encrypted", false) ? "yes" : "no") << std::endl;
-                int msgs = dbi.getEventCount(room_id);
-                int notif = dbi.getNotificationCount(room_id);
-                std::cout << "  Messages:" << msgs << std::endl;
-                if (notif > 0) std::cout << "  Unread:  " ANSI_BOLD << notif << ANSI_RESET << std::endl;
+                printRoomInfo(&dbi, r);
                 return 0;
             }
         }
