@@ -304,7 +304,10 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
     auto runPureCli = []() {
         db::Database dbi;
         if (!dbi.open("matrixcli.db")) return 1;
-        if (dbi.listRooms().empty()) populateDemoData(dbi);
+        // Always refresh the demo data (it clears demo-local rooms first), so
+        // re-running `demo populate` picks up any demo changes without having
+        // to delete matrixcli.db by hand.
+        populateDemoData(dbi);
         std::cout << "Demo data ready. Use the one-shot commands:\n"
                      "  progressive-cli rooms\n"
                      "  progressive-cli view \"#general\" 10\n"

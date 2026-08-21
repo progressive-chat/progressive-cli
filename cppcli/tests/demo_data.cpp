@@ -54,6 +54,24 @@ int populateDemoData(matrixcli::db::Database& dbi) {
         }
     }
 
+    // The room NAME stays the meaningful title (e.g. "General discussion");
+    // the TOPIC is a separate, generated description so the two never match.
+    auto roomTopicForTitle = [](const std::string& title, const std::string& id) -> std::string {
+        static const char* kTmpl[] = {
+            "A friendly place to talk about %s.",
+            "News, questions and chatter about %s.",
+            "Hang out and discuss %s with the community.",
+            "Everything %s: tips, help and show-and-tell.",
+            "The go-to room for %s — beginners welcome.",
+        };
+        unsigned h = 2166136261u;
+        for (char c : id) { h ^= (unsigned char)c; h *= 16777619u; }
+        const char* t = kTmpl[h % 5];
+        char buf[256];
+        std::snprintf(buf, sizeof(buf), t, title.c_str());
+        return buf;
+    };
+
     struct { const char* id; const char* name; const char* topic; int members; } rooms[] = {
         {"!general:demo.local","#general","General discussion",42},
         {"!dev:demo.local","#dev","Development chat",15},
@@ -140,15 +158,19 @@ int populateDemoData(matrixcli::db::Database& dbi) {
     };
     for (auto& r : rooms) {
         nlohmann::json j;
-        // The room NAME is the display title ("Privacy tools"), the ALIAS
-        // is its #handle — the ui can show either (names/aliases).
-        // The demo topics double as the titles; DMs carry no topic and no
-        // alias, just their label ("Alice").
+        // The room NAME is the display title (the meaningful text, e.g.
+        // "General discussion"), the ALIAS is its #handle — the ui can show
+        // either (names/aliases). The TOPIC is a generated description kept
+        // separate from the name, so `info` never shows name == topic. DMs
+        // carry no topic and no alias, just their label ("Alice").
         bool isDm = std::string(r.id).find("!dm_") == 0;
-        j["name"] = isDm || std::string(r.topic).empty() ? std::string(r.name)
-                                                         : std::string(r.topic);
+        std::string title = isDm || std::string(r.topic).empty()
+                                ? std::string(r.name)
+                                : std::string(r.topic);
+        j["name"] = title;
         j["canonical_alias"] = isDm ? "" : r.name;
-        j["topic"] = r.topic; j["member_count"] = r.members;
+        j["topic"] = isDm ? "" : roomTopicForTitle(title, r.id);
+        j["member_count"] = r.members;
         // Room v12 (the m.room.create "creator"): @alice created every
         // demo room, so she is the owner (150) per Matrix 1.12 rules.
         j["creator"] = "@alice:demo.local";
