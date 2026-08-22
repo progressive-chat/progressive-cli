@@ -10,6 +10,7 @@
 #include "cli/args.hpp"
 #include "config.hpp"
 #include "ascii_ui_impl.hpp"
+#include "proxy_commands.hpp"
 #include "../lib/http/http.hpp"
 #include "../lib/util/string_utils.hpp"
 #include <nlohmann/json.hpp>
@@ -40,6 +41,22 @@ static int localTerminalHeight() {
         return static_cast<int>(ws.ws_row);
 #endif
     return 24 + 5;
+}
+
+// The proxy configured via `progressive-cli proxy on` (config.json) for the
+// connection to the ttys server (useful when it is an onion/I2P host). The
+// env proxy (all_proxy/https_proxy) is picked up by lib/http on its own.
+static void applyConfiguredProxy(http::Client& http) {
+    progressive::desktop::ProxyConfig active;
+    if (!activeProxyConfig(&active)) return;
+    http::ProxyConfig p;
+    p.host = active.host;
+    p.port = active.port;
+    p.type = (active.type == progressive::desktop::ProxyConfig::Type::Http)
+                 ? http::ProxyType::HTTP : http::ProxyType::SOCKS5;
+    p.username = active.username;
+    p.password = active.password;
+    http.setProxy(p);
 }
 
 int cmdTtys(const cli::Args& args) {
@@ -80,6 +97,7 @@ int cmdTtys(const cli::Args& args) {
     std::string sessId;
     {
         http::Client http;
+        applyConfiguredProxy(http);
         auto resp = http.post(base + "/api/ttys/session", sessReq.dump(), headers);
         if (!resp.ok()) {
             std::cerr << "ttys: session failed (HTTP " << resp.status_code << "): "
@@ -108,6 +126,7 @@ int cmdTtys(const cli::Args& args) {
         if (!input.empty()) r["input"] = input;
         else path = "/api/ttys/render";
         http::Client http;
+        applyConfiguredProxy(http);
         auto resp = http.post(base + path, r.dump(), headers);
         if (!resp.ok()) return "ttys: render failed (HTTP " + std::to_string(resp.status_code)
                                       + "): " + resp.body;

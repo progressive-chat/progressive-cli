@@ -1,6 +1,8 @@
 #include "ttys.hpp"
 #include "../../lib/util/logger.hpp"
 #include "../../lib/util/string_utils.hpp"
+#include "../proxy_commands.hpp"
+#include "../config.hpp"
 
 #include <nlohmann/json.hpp>
 #include <algorithm>
@@ -12,6 +14,24 @@ using json = nlohmann::json;
 using namespace std::chrono_literals;
 
 namespace matrixcli { namespace server {
+
+// Apply the proxy configured via `progressive-cli proxy on` (config.json) to
+// a session's matrix client. lib/http (what matrix::Client uses) only reads
+// the env proxy (all_proxy/https_proxy) on its own, NOT the core's global
+// proxy, so the configured one is set explicitly here.
+static void applyConfiguredProxy(matrix::Client& client) {
+    try { Config::instance().load("config.json"); } catch (...) {}
+    progressive::desktop::ProxyConfig active;
+    if (!activeProxyConfig(&active)) return;
+    http::ProxyConfig p;
+    p.host = active.host;
+    p.port = active.port;
+    p.type = (active.type == progressive::desktop::ProxyConfig::Type::Http)
+                 ? http::ProxyType::HTTP : http::ProxyType::SOCKS5;
+    p.username = active.username;
+    p.password = active.password;
+    client.setProxy(p);
+}
 
 TtysApi::~TtysApi() {
     std::lock_guard<std::mutex> lock(_mu);
@@ -72,6 +92,7 @@ TtysSession* TtysApi::createOrGetSession(const std::string& id,
     sess->client->setAccessToken(tok);
     sess->client->setUserId(sess->userId);
     sess->client->setDatabase(sess->dbi.get());
+    applyConfiguredProxy(*sess->client);
     sess->st.db = sess->dbi.get();
 
     _sessions[id] = std::move(sess);
@@ -161,6 +182,7 @@ api::Response TtysApi::handleRegister(const api::Request& req) {
     try {
         matrix::Client client;
         client.setHomeserverURL(hs);
+        applyConfiguredProxy(client);
         creds = client.registerAccount(username, password,
                                        "progressive-ttys", regToken);
     } catch (const std::exception& e) {
