@@ -29,6 +29,9 @@ C++ from the ground up — the old Go implementation is retired (the
   presets (`attach` + `sendpreset original|compact|full`)
 - **Multi-format REST API** — JSON, plain text, Markdown, Gemtext
   (Gemini protocol), or HTML (`matrixcli serve`)
+- **Remote ASCII UI (`serve --ttys`)** — the server draws the ASCII
+  frames in RAM, the thin `ttys` client from any user/machine just
+  renders them; the account never lands on disk
 - **Onion/I2P/Yggdrasil transport** — SOCKS5 for Tor, HTTP for I2P, the
   native Yggdrasil IPv6 — the connection is chosen at the login
 - **The LLM conversations + the agents** — the streaming chat with the
@@ -233,6 +236,58 @@ curl -H "Accept: text/markdown" http://localhost:8080/api/status
 ```
 
 The full endpoint list is returned by `/api/status` itself.
+
+### Remote ASCII UI (`serve --ttys`)
+
+The ASCII UI can be split in two: the **server** holds the session and
+draws the frames, the **thin client** anywhere on the network only
+displays them. Useful when the account lives on one machine/box but you
+want to chat from another.
+
+```bash
+# On the machine with the account (binds to 127.0.0.1 by default)
+matrixcli serve --ttys --port=29325 [--sync auto|once|off] \
+                 [--cache FILE] [--bind IP] [--token X]
+
+# From anywhere that can reach the port (any user, no matrix session)
+matrixcli ttys --host 127.0.0.1 --port 29325 [--token X] \
+               [--homeserver ... --access-token ...]
+```
+
+`serve --ttys` is **RAM-only by design**:
+
+- the account (`homeserver`, `access_token`, `user_id`) is held in the
+  server's memory per session — it is never written to `config.json` or
+  anywhere on the server; it arrives with every request from the client
+- the session cache DB is `:memory:` by default; `--cache FILE` keeps the
+  cache on disk, but the account itself stays in RAM regardless
+- sync: `--sync auto` polls `/sync` every 2 s in a background thread,
+  `once` does a single pass when the session is opened, `off` (default)
+  is manual — the client can override with the `sync` field of a request
+- security: listens on `127.0.0.1` (change with `--bind IP`); `--token X`
+  requires `Authorization: Bearer X` on every request
+
+The terminal size is taken from the request, so the frame is rendered at
+the client's real terminal size. The thin client sends its `cols`/`rows`
+and the account, prints the frame, and forwards keystrokes to
+`/api/ttys/input` in the interactive loop (the same REPL environment as
+the local ASCII UI: `open`, `find`, `msg`, …).
+
+Endpoints (JSON in/out):
+
+```bash
+# Open a session (the account is the only thing the server needs)
+curl -X POST http://127.0.0.1:29325/api/ttys/session \
+     -d '{"account":{"homeserver":"https://matrix.org","access_token":"...","user_id":"@me:matrix.org"}}'
+
+# Draw the frame for a terminal size
+curl -X POST http://127.0.0.1:29325/api/ttys/render \
+     -d '{"session":"...","cols":110,"rows":28}'
+
+# Send a line / key to the session REPL
+curl -X POST http://127.0.0.1:29325/api/ttys/input \
+     -d '{"session":"...","input":"open #general","cols":110,"rows":28}'
+```
 
 ## C++ build (cppcli/)
 
