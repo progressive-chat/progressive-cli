@@ -67,6 +67,7 @@ public:
     void registerRoutes(api::Router& router);
 
     // Request bodies (JSON):
+    //   POST /api/ttys/register {homeserver,username,password,reg_token?} -> {session,user_id,access_token,device_id}
     //   POST /api/ttys/session {account:{...}} -> {session, key}
     //   POST /api/ttys/render   {session, term:{cols,rows}, sync:"auto"|"once"|"off", view?...} -> {frame,width,height}
     //   POST /api/ttys/input    {session, input:"..."} -> {frame,...}
@@ -74,6 +75,7 @@ public:
     int activeSessionCount();
 
 private:
+    api::Response handleRegister(const api::Request& req);
     api::Response handleSession(const api::Request& req);
     api::Response handleRender(const api::Request& req);
     api::Response handleInput(const api::Request& req);

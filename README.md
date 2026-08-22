@@ -276,6 +276,12 @@ the local ASCII UI: `open`, `find`, `msg`, …).
 Endpoints (JSON in/out):
 
 ```bash
+# Register a brand-new account on a homeserver and open its session in one
+# step — a curl-only user needs no client binary at all. The fresh
+# credentials come back in the reply (and stay in the server's RAM).
+curl -X POST http://127.0.0.1:29325/api/ttys/register \
+     -d '{"homeserver":"https://example.org","username":"newuser","password":"...","reg_token":"optional"}'
+
 # Open a session (the account is the only thing the server needs)
 curl -X POST http://127.0.0.1:29325/api/ttys/session \
      -d '{"account":{"homeserver":"https://matrix.org","access_token":"...","user_id":"@me:matrix.org"}}'

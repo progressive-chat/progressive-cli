@@ -546,7 +546,8 @@ Credentials Client::loginSSO(const std::string& token,
 
 Credentials Client::registerAccount(const std::string& username,
                                      const std::string& password,
-                                     const std::string& device_name) {
+                                     const std::string& device_name,
+                                     const std::string& reg_token) {
     json req = {
         {"username", username},
         {"password", password},
@@ -562,8 +563,13 @@ Credentials Client::registerAccount(const std::string& username,
     );
 
     if (resp.status_code == 401) {
-        // Interactive auth: try with dummy auth
-        req["auth"] = {{"type", "m.login.dummy"}};
+        // Interactive auth: m.login.registration_token when the caller has
+        // one, otherwise the dummy fallback (open-registration servers).
+        if (!reg_token.empty())
+            req["auth"] = {{"type", "m.login.registration_token"},
+                           {"token", reg_token}};
+        else
+            req["auth"] = {{"type", "m.login.dummy"}};
         resp = impl->http.post(
             buildUrl("/_matrix/client/r0/register"),
             req.dump(),

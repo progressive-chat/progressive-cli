@@ -66,9 +66,12 @@ public:
                            const std::string& device_name = "");
     Credentials loginSSO(const std::string& token,
                           const std::string& device_name = "");
+    // reg_token: for homeservers behind m.login.registration_token
+    // (shared-secret / invite-token registration); empty = m.login.dummy.
     Credentials registerAccount(const std::string& username,
                                  const std::string& password,
-                                 const std::string& device_name = "");
+                                 const std::string& device_name = "",
+                                 const std::string& reg_token = "");
     SessionInfo whoAmI();
     bool logout();
     bool logoutAll();

@@ -23,6 +23,7 @@ TtysApi::~TtysApi() {
 }
 
 void TtysApi::registerRoutes(api::Router& router) {
+    router.post("/api/ttys/register", [this](const api::Request& req) { return handleRegister(req); });
     router.post("/api/ttys/session", [this](const api::Request& req) { return handleSession(req); });
     router.post("/api/ttys/render",  [this](const api::Request& req) { return handleRender(req); });
     router.post("/api/ttys/input",   [this](const api::Request& req) { return handleInput(req); });
@@ -125,6 +126,72 @@ bool TtysApi::authorized(const api::Request& req) {
     if (it == req.headers.end()) return false;
     return it->second.rfind("Bearer ", 0) == 0 &&
            it->second.substr(7) == _token;
+}
+
+// Register a NEW Matrix account on the request's homeserver and open the
+// ttys session for it in one step — so a curl-only user needs no binary:
+//   curl -X POST .../api/ttys/register -d '{"homeserver":"https://hs",
+//        "username":"new","password":"pw"[,"reg_token":"T"]}'
+// The fresh credentials are returned to the caller (the thin-client
+// protocol carries the account in every request) and kept in RAM only.
+api::Response TtysApi::handleRegister(const api::Request& req) {
+    if (!authorized(req)) {
+        return {401, "application/json", R"({"error":"unauthorized"})"};
+    }
+    json body = json::parse(req.body, nullptr, false);
+    if (body.is_discarded()) {
+        return {400, "application/json", R"({"error":"bad JSON"})"};
+    }
+    std::string hs = body.value("homeserver", "");
+    std::string username = body.value("username", "");
+    std::string password = body.value("password", "");
+    std::string regToken = body.value("reg_token", "");
+    if (hs.empty() || username.empty() || password.empty()) {
+        return {400, "application/json",
+                R"({"error":"homeserver, username and password required"})"};
+    }
+    // Registration takes the LOCALPART: strip @ and :server when the
+    // caller passed a full Matrix ID.
+    if (!username.empty() && username[0] == '@') {
+        auto colon = username.find(':');
+        username = colon != std::string::npos
+                       ? username.substr(1, colon - 1) : username.substr(1);
+    }
+    matrix::Credentials creds;
+    try {
+        matrix::Client client;
+        client.setHomeserverURL(hs);
+        creds = client.registerAccount(username, password,
+                                       "progressive-ttys", regToken);
+    } catch (const std::exception& e) {
+        json err;
+        err["error"] = std::string("registration failed: ") + e.what();
+        return {400, "application/json", err.dump()};
+    }
+    json account = {
+        {"homeserver", hs},
+        {"access_token", creds.access_token},
+        {"user_id", creds.user_id},
+        {"device_id", creds.device_id},
+    };
+    std::string id = creds.user_id.empty()
+                         ? hs + "|" + creds.access_token.substr(0, 8)
+                         : creds.user_id;
+    TtysSession* s;
+    {
+        std::lock_guard<std::mutex> lock(_mu);
+        s = createOrGetSession(id, account);
+    }
+    if (!s) {
+        return {500, "application/json", R"({"error":"cannot create session"})"};
+    }
+    json out;
+    out["session"] = s->id;
+    out["user_id"] = creds.user_id;
+    out["access_token"] = creds.access_token;
+    out["device_id"] = creds.device_id;
+    out["homeserver"] = hs;
+    return {200, "application/json", out.dump()};
 }
 
 api::Response TtysApi::handleSession(const api::Request& req) {
