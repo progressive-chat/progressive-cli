@@ -48,17 +48,58 @@
 #include "ascii_ui_impl.hpp"
 
 namespace matrixcli {
-std::string drawFrameImpl(const UiState& st) {
-    int W = st.termW > 0 ? st.termW : terminalWidthImpl();
+PanelRule parsePanelRule(const std::string& spec) {
+    PanelRule r;
+    if (spec.empty() || spec == "off") return r;
+    auto colon = spec.find(':');
+    std::string k = colon == std::string::npos ? spec : spec.substr(0, colon);
+    std::string v = colon == std::string::npos ? "" : spec.substr(colon + 1);
+    int val = 0;
+    try { val = std::stoi(v); } catch (...) { return r; }
+    if (val <= 0) return r;
+    if (k == "min") { r.kind = 1; r.val = val; }
+    else if (k == "max") { r.kind = 2; r.val = val; }
+    else if (k == "pct") { r.kind = 3; r.val = std::min(100, val); }
+    return r;
+}
+
+std::string panelRuleText(const PanelRule& r) {
+    if (r.kind == 1) return "min " + std::to_string(r.val);
+    if (r.kind == 2) return "max " + std::to_string(r.val);
+    if (r.kind == 3) return std::to_string(r.val) + "%";
+    return "off";
+}
+
+PanelLayout computePanelLayout(const UiState& st, int W, bool trace) {
+    PanelLayout L;
+    auto note = [&](const std::string& s) {
+        if (trace) L.notes.push_back(s);
+    };
     // Few members: the user list goes horizontal (one row across the top
     // of the chat) and the right panel is freed - auto mode, or forced.
     bool horizMembers = !st.mobile && st.rightPanel == 0 &&
         (st.membersMode == 1 ||
          (st.membersMode == 0 && st.members.size() <= 4));
+    note("terminal width W = " + std::to_string(W) +
+         (st.termW > 0 ? " (from the render request)" : " (ioctl / COLUMNS)"));
     int leftW = st.leftPanelW >= 0 ? st.leftPanelW : std::max(22, W / 5);
     int rightW = st.rightPanelW >= 0 ? st.rightPanelW : std::max(16, W / 6);
     if (st.leftPanelW == 0) leftW = 0;
     if (st.rightPanelW == 0) rightW = 0;
+    if (st.leftPanelW < 0)
+        note("left: default max(22, W/5) = " + std::to_string(leftW));
+    else if (st.leftPanelW == 0)
+        note("left: hidden (panel left off)");
+    else
+        note("left: fixed width " + std::to_string(leftW) + " (panel left "
+             + std::to_string(st.leftPanelW) + ")");
+    if (st.rightPanelW < 0)
+        note("right: default max(16, W/6) = " + std::to_string(rightW));
+    else if (st.rightPanelW == 0)
+        note("right: hidden (panel right off)");
+    else
+        note("right: fixed width " + std::to_string(rightW) + " (panel right "
+             + std::to_string(st.rightPanelW) + ")");
     if (st.autoPanels) {
         // Size the panels to the content so the screen is filled: the
         // room panel fits the longest room row plus a preview budget, the
@@ -143,8 +184,13 @@ std::string drawFrameImpl(const UiState& st) {
             }
         }
         leftW = std::max(24, std::min(72, longestRoom + 2));
+        note("left: auto — the longest room row is " + std::to_string(longestRoom)
+             + " cells, width = clamp(longest + 2, 24..72) = "
+             + std::to_string(leftW));
         if (horizMembers) {
             rightW = 0;
+            note("right: the members row is horizontal (few members / members "
+                 "auto) — the panel is freed");
         } else {
             int longestMember = 0;
             int fullMember = 0;
@@ -162,22 +208,93 @@ std::string drawFrameImpl(const UiState& st) {
             // short localparts.
             if (fullMember <= rightMax) longestMember = std::max(longestMember, fullMember);
             rightW = std::max(10, std::min(rightMax, longestMember + 3));
+            note("right: auto — the longest member row is "
+                 + std::to_string(longestMember) + " cells, cap = min(40, "
+                 "max(24, W/3)) = " + std::to_string(rightMax) + ", width = "
+                 + std::to_string(rightW));
         }
     }
+    // The user's width rules ("panel rule …") override the base widths.
+    PanelRule rl = parsePanelRule(st.ruleLeft);
+    if (rl.kind == 3) leftW = W * rl.val / 100;
+    else if (rl.kind == 1) leftW = std::max(leftW, rl.val);
+    else if (rl.kind == 2) leftW = std::min(leftW, rl.val);
+    if (rl.kind) note("left: rule " + panelRuleText(rl) + " -> "
+                      + std::to_string(leftW));
+    PanelRule rr = parsePanelRule(st.ruleRight);
+    if (rr.kind == 3) rightW = W * rr.val / 100;
+    else if (rr.kind == 1) rightW = std::max(rightW, rr.val);
+    else if (rr.kind == 2) rightW = std::min(rightW, rr.val);
+    if (rr.kind) note("right: rule " + panelRuleText(rr) + " -> "
+                      + std::to_string(rightW));
+    PanelRule rc = parsePanelRule(st.ruleCenter);
     // Keep the chat usable: the panels never squeeze the center below
     // ~30 columns — the rooms list gives way first, then the members.
+    // A "center min N" rule raises that floor.
     int minCenter = 30;
+    if (rc.kind == 1) minCenter = std::max(minCenter, rc.val);
     if (W - leftW - rightW - 2 < minCenter) {
         leftW = std::max(24, W - rightW - 2 - minCenter);
+        note("left squeezed to " + std::to_string(leftW)
+             + " to keep the center >= " + std::to_string(minCenter));
     }
     if (W - leftW - rightW - 2 < minCenter) {
         rightW = std::max(10, W - leftW - 2 - minCenter);
+        note("right squeezed to " + std::to_string(rightW)
+             + " to keep the center >= " + std::to_string(minCenter));
+    }
+    int centerW = std::max(20, W - leftW - rightW - 2);
+    // "center N%" / "center min N": grow the center to the target by
+    // squeezing the left panel (down to 24), then the right (down to 10).
+    if (rc.kind == 3 || rc.kind == 1) {
+        int target = rc.kind == 3 ? W * rc.val / 100 : rc.val;
+        if (centerW < target) {
+            int need = target - centerW;
+            int give = std::min(need, std::max(0, leftW - 24));
+            leftW -= give; centerW += give; need -= give;
+            int give2 = std::min(need, std::max(0, rightW - 10));
+            rightW -= give2; centerW += give2; need -= give2;
+            if (need > 0)
+                note("center rule " + panelRuleText(rc) + " cannot be fully "
+                     "satisfied at W = " + std::to_string(W) + " (short by "
+                     + std::to_string(need) + ")");
+            else
+                note("left/right squeezed to give the center "
+                     + std::to_string(target));
+        }
+        if (rc.kind == 3 && centerW > target) centerW = target;
+        note("center: rule " + panelRuleText(rc) + " -> "
+             + std::to_string(centerW));
+    } else if (rc.kind == 2 && centerW > rc.val) {
+        centerW = rc.val;
+        note("center: rule max " + std::to_string(rc.val) + " -> "
+             + std::to_string(centerW));
     }
     // The chat caps its width: on very wide terminals the leftover stays
     // as a right margin instead of an empty strip inside the message area.
-    int centerW = std::max(20, W - leftW - rightW - 2);
+    // An explicit "center N%" rule replaces the default cap.
     int centerCap = st.mobile ? W - 2 : 120;
-    if (centerW > centerCap) centerW = centerCap;
+    if (rc.kind != 3 && centerW > centerCap) {
+        centerW = centerCap;
+        note("center: capped at " + std::to_string(centerCap)
+             + (st.mobile ? " (mobile: W - 2)" : " (the default 120 cap)")
+             + " — the rest stays as a right margin");
+    }
+    note("result: left " + std::to_string(leftW) + " | center "
+         + std::to_string(centerW) + " | right " + std::to_string(rightW)
+         + "  (+2 pipe columns = "
+         + std::to_string(leftW + centerW + rightW + 2) + " of "
+         + std::to_string(W) + ")");
+    L.leftW = leftW; L.rightW = rightW; L.centerW = centerW;
+    L.centerCap = centerCap; L.horizMembers = horizMembers;
+    return L;
+}
+
+std::string drawFrameImpl(const UiState& st) {
+    int W = st.termW > 0 ? st.termW : terminalWidthImpl();
+    PanelLayout L = computePanelLayout(st, W, false);
+    bool horizMembers = L.horizMembers;
+    int leftW = L.leftW, rightW = L.rightW, centerW = L.centerW;
 
     std::string roomName = "No room selected";
     std::string e2eeMark;  // the lock for the open room

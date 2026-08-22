@@ -103,6 +103,19 @@ void applyColourSpec(const std::string& spec, std::string (&dst)[3]);
 std::string colourOpen(const std::string& code, bool bold);
 std::string memberRowStr(const UiState& st, const std::string& mem,
                          bool fullIds = false, int panel = 2);
+// A panel width rule ("panel rule …"). kind: 0 = none, 1 = min, 2 = max,
+// 3 = percent of the terminal width.
+struct PanelRule { int kind = 0; int val = 0; };
+PanelRule parsePanelRule(const std::string& spec);
+std::string panelRuleText(const PanelRule& r);   // "min 80" / "40%" / "off"
+// The three panel widths + the trace of how they were computed (filled
+// only when trace = true — the "panel show" command prints it).
+struct PanelLayout {
+    int leftW = 0, rightW = 0, centerW = 0, centerCap = 120;
+    bool horizMembers = false;
+    std::vector<std::string> notes;
+};
+PanelLayout computePanelLayout(const UiState& st, int W, bool trace);
 std::string drawFrameImpl(const UiState& st);
 // The chat panel's rows (ascii_ui_draw_center.cpp) — split out of the
 // frame builder so every translation unit stays under ~1000 lines.

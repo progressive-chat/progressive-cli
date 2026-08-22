@@ -563,10 +563,86 @@ int asciiReplDispatchB(UiState& st, db::Database& dbi, const cli::Args& a) {
                                         << std::endl;
             return 1;
         }
+        // ---- panel show: how the three panel widths were computed ----
+        if (a.command == "panel" && !a.positional.empty() &&
+            a.positional[0] == "show") {
+            int W = st.termW > 0 ? st.termW : terminalWidthImpl();
+            PanelLayout L = computePanelLayout(st, W, true);
+            std::cout << "Panel layout at W = " << W << " columns:"
+                      << std::endl;
+            for (const auto& n : L.notes) std::cout << "  " << n << std::endl;
+            std::cout << "rules: left "
+                      << panelRuleText(parsePanelRule(st.ruleLeft))
+                      << ", center "
+                      << panelRuleText(parsePanelRule(st.ruleCenter))
+                      << ", right "
+                      << panelRuleText(parsePanelRule(st.ruleRight))
+                      << "  (panel rule <left|center|right> "
+                         "<min N|max N|N%|off>)" << std::endl;
+            return 1;
+        }
+        // ---- panel rule <left|center|right> <min N|max N|N%|off> ----
+        if (a.command == "panel" && a.positional.size() >= 2 &&
+            a.positional[0] == "rule") {
+            const char* usage = "Usage: panel rule <left|center|right> "
+                                "<min N|max N|N%|off>";
+            if (a.positional.size() < 3) {
+                std::cout << usage << std::endl;
+                return 1;
+            }
+            std::string which = a.positional[1];
+            if (which == "middle") which = "center";
+            if (which != "left" && which != "center" && which != "right") {
+                std::cout << usage << std::endl;
+                return 1;
+            }
+            std::string spec;  // the stored form: min:N / max:N / pct:N / ""
+            std::string v = a.positional[2];
+            if (v == "off" || v == "none" || v == "default") {
+                spec = "";
+            } else if (v == "min" || v == "max") {
+                if (a.positional.size() < 4) {
+                    std::cout << usage << std::endl;
+                    return 1;
+                }
+                int n = 0;
+                try { n = std::stoi(a.positional[3]); } catch (...) { n = 0; }
+                if (n <= 0) {
+                    std::cout << "panel rule: N must be a positive number of "
+                                 "columns" << std::endl;
+                    return 1;
+                }
+                spec = v + ":" + std::to_string(n);
+            } else if (v.size() >= 2 && v.back() == '%') {
+                int n = 0;
+                try { n = std::stoi(v.substr(0, v.size() - 1)); }
+                catch (...) { n = 0; }
+                if (n <= 0 || n > 100) {
+                    std::cout << "panel rule: the percent must be 1..100"
+                              << std::endl;
+                    return 1;
+                }
+                spec = "pct:" + std::to_string(n);
+            } else {
+                std::cout << usage << std::endl;
+                return 1;
+            }
+            if (which == "left") st.ruleLeft = spec;
+            else if (which == "center") st.ruleCenter = spec;
+            else st.ruleRight = spec;
+            dbi.setSetting("panel_rule_" + which, spec);
+            st.statusNote = "panel rule " + which + " = "
+                          + panelRuleText(parsePanelRule(spec));
+            std::cout << drawFrameImpl(st) << std::flush;
+            return 1;
+        }
         // ---- panel <left|center|right> <off|on|W> ----
         if (a.command == "panel") {
             if (a.positional.size() < 2) {
-                std::cout << "Usage: panel <left|right> <off|on|width>" << std::endl;
+                std::cout << "Usage: panel <left|right> <off|on|width> | "
+                             "panel auto <on|off> | panel show | "
+                             "panel rule <left|center|right> "
+                             "<min N|max N|N%|off>" << std::endl;
                 return 1;
             }
             std::string which = a.positional[0];

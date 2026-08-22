@@ -104,6 +104,9 @@ int cmdAsciiUi(const cli::Args& args) {
     st.limitRows = std::max(0, std::atoi(dbi.getSetting("rows", "0").c_str()));
     try { st.leftPanelW = std::stoi(dbi.getSetting("panel_left", "-1")); } catch (...) {}
     try { st.rightPanelW = std::stoi(dbi.getSetting("panel_right", "-1")); } catch (...) {}
+    st.ruleLeft = dbi.getSetting("panel_rule_left", "");
+    st.ruleCenter = dbi.getSetting("panel_rule_center", "");
+    st.ruleRight = dbi.getSetting("panel_rule_right", "");
     st.mobile = dbi.getSetting("mobile") == "1";
     // Auto: a narrow terminal (< 60 columns) cannot fit the three
     // columns, so the smartphone layout kicks in by itself.

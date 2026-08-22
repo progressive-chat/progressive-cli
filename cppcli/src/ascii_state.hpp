@@ -94,6 +94,9 @@ struct UiState {
     std::unordered_set<std::string> nameColliders;  // same localpart → full mxid
     int leftPanelW = -1;        // -1 = default width, 0 = hidden
     int rightPanelW = -1;       // -1 = default width, 0 = hidden
+    // The user's width rules ("panel rule …"): "" = none, otherwise
+    // "min:N", "max:N" or "pct:N" (N% of the terminal width).
+    std::string ruleLeft, ruleCenter, ruleRight;
     std::map<std::string, int> powerLevels;  // member -> power level
     nlohmann::json powerLevelsEvent;         // the full m.room.power_levels
     int eventsDefault = 0;               // the room's send permission level

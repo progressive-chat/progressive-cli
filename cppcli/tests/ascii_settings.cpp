@@ -1,6 +1,7 @@
 // src/ascii_settings.cpp — the settings + the display commands (split out
 // of ascii_ui.cpp so the compilation stays incremental-friendly).
 #include "ascii_state.hpp"
+#include "ascii_ui_impl.hpp"
 
 #include "../lib/database/db.hpp"
 #include "pcore.hpp"
@@ -260,6 +261,16 @@ bool asciiSettingsCommand(UiState& st, db::Database& dbi, const cli::Args& a) {
             add("  panel L   " + (st.leftPanelW == 0 ? "off" : st.leftPanelW > 0 ? std::to_string(st.leftPanelW) : "default") + "  (panel left <off|on|width>)");
             add("  panel R   " + (st.rightPanelW == 0 ? "off" : st.rightPanelW > 0 ? std::to_string(st.rightPanelW) : "default") + "  (panel right <off|on|width>)");
             add("  panels    " + std::string(st.autoPanels ? "auto (sized to content)" : "fixed") + "  (panel auto on / panel auto off)");
+            {
+                std::string rules;
+                PanelRule rl = parsePanelRule(st.ruleLeft);
+                PanelRule rc = parsePanelRule(st.ruleCenter);
+                PanelRule rr = parsePanelRule(st.ruleRight);
+                if (rl.kind) rules += "left " + panelRuleText(rl) + "  ";
+                if (rc.kind) rules += "center " + panelRuleText(rc) + "  ";
+                if (rr.kind) rules += "right " + panelRuleText(rr);
+                add("  rules     " + (rules.empty() ? std::string("none") : rules) + "  (panel rule <left|center|right> <min N|max N|N%|off>; panel show)");
+            }
             add("  members   " + std::string(st.membersMode == 1 ? "horizontal" : st.membersMode == 2 ? "vertical list" : "auto") + "  (members <horizontal|list|auto>)");
             add("  via       " + (st.viaLimit == 0 ? "unlimited (all servers)" : std::to_string(st.viaLimit)) + "  (via <n> / via 0) [Element: 3]");
             add("  timezone  " + std::string(st.tzOffset >= 0 ? "+" : "") + std::to_string(st.tzOffset) + "h  (timezone <N>)");
