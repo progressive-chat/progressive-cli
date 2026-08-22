@@ -161,6 +161,7 @@ void printUsage(const Args& args) {
               << "  " << demoCol << "config" << rst << "        Show/edit the client config\n"
               << "  help          Show this help\n"
               << "  login         Login to a Matrix homeserver\n"
+              << "  register      Register a new account: register --homeserver H --username U --password P [--reg-token T] [--interactive] [--json]\n"
               << "  proxy         The Tor/I2P proxy: on|off|status (--host --port [--type socks5h|socks5|http])\n"
                << "  serve         Start the built-in HTTP API server\n"
                << "  ttys          Thin client for 'serve --ttys': remote ASCII UI\n"
@@ -186,6 +187,7 @@ void printUsage(const Args& args) {
 
     std::cout << bold << "Examples:" << rst << "\n"
               << "  progressive-cli login --homeserver https://matrix.org --username @me:matrix.org --password s3cret\n"
+              << "  progressive-cli register --homeserver https://example.org --username newuser --password s3cret [--reg-token T]\n"
               << "  progressive-cli rooms\n"
               << "  progressive-cli view \"#general:matrix.org\" 50\n"
               << "  progressive-cli send \"#general:matrix.org\" \"Hello from CLI!\"\n"

@@ -148,7 +148,7 @@ int main(int argc, char* argv[]) {
         std::string fl = matrixcli::Config::instance().get("fuzzy_layout", "on");
         if (fl != "off" && fl != "false" && fl != "0" && !args.command.empty()) {
             static const char* kTop[] = {
-                "help", "version", "serve", "ttys", "login", "rooms", "spaces", "view",
+                "help", "version", "serve", "ttys", "login", "register", "rooms", "spaces", "view",
                 "status", "send", "attach", "send-file", "search", "config",
                 "demo", "ui", "ascii", "tui", "td", "irc", "lemmy", "dc",
                 "deltachat", nullptr};
@@ -208,6 +208,14 @@ int main(int argc, char* argv[]) {
 
     if (args.command == "login") {
         return cmdLogin(args);
+    }
+
+    if (args.command == "register") {
+        // The registration flow lives in cmdLogin (--register); expose it
+        // as its own top-level command for discoverability.
+        matrixcli::cli::Args regArgs = args;
+        regArgs.options["register"] = "true";
+        return cmdLogin(regArgs);
     }
 
     if (args.command == "rooms") {

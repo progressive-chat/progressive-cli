@@ -456,8 +456,47 @@ int cmdServe(const matrixcli::cli::Args& args) {
             username = user_it->second;
         } else if (args.positional.size() >= 1) {
             username = args.positional[0];
-        } else {
-            std::cerr << "Error: --username required for registration" << std::endl;
+        }
+
+        std::string password;
+        auto pass_it = args.options.find("password");
+        if (pass_it != args.options.end()) {
+            password = pass_it->second;
+        } else if (args.positional.size() >= 2) {
+            password = args.positional[1];
+        }
+
+        std::string regToken;
+        auto rt_it = args.options.find("reg-token");
+        if (rt_it != args.options.end()) regToken = rt_it->second;
+        if (regToken == "true") regToken = "";  // bare --reg-token
+
+        // --interactive: prompt for whatever is missing (password hidden).
+        if (args.options.count("interactive")) {
+            if (username.empty()) {
+                std::cout << "Username (localpart, e.g. me): " << std::flush;
+                std::getline(std::cin, username);
+            }
+            if (password.empty()) {
+                std::cout << "Password: " << std::flush;
+                struct termios oldt, newt;
+                tcgetattr(STDIN_FILENO, &oldt);
+                newt = oldt; newt.c_lflag &= ~ECHO;
+                tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+                std::getline(std::cin, password);
+                tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+                std::cout << std::endl;
+            }
+            if (regToken.empty() && args.options.count("reg-token")) {
+                std::cout << "Registration token: " << std::flush;
+                std::getline(std::cin, regToken);
+            }
+        }
+
+        if (username.empty()) {
+            std::cerr << "Error: --username required for registration"
+                      << " — or add --interactive to enter it interactively"
+                      << std::endl;
             return 1;
         }
         // Registration takes the LOCALPART: strip @ and :server if the user
@@ -468,20 +507,12 @@ int cmdServe(const matrixcli::cli::Args& args) {
             else username = username.substr(1);
         }
 
-        std::string password;
-        auto pass_it = args.options.find("password");
-        if (pass_it != args.options.end()) {
-            password = pass_it->second;
-        } else if (args.positional.size() >= 2) {
-            password = args.positional[1];
-        } else {
-            std::cerr << "Error: --password required for registration" << std::endl;
+        if (password.empty()) {
+            std::cerr << "Error: --password required for registration"
+                      << " — or add --interactive to enter it interactively"
+                      << std::endl;
             return 1;
         }
-
-        std::string regToken;
-        auto rt_it = args.options.find("reg-token");
-        if (rt_it != args.options.end()) regToken = rt_it->second;
 
         if (!pcore::init()) return 1;
         auto& core = pcore::core();
