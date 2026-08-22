@@ -27,15 +27,18 @@
 #include <algorithm>
 #include <chrono>
 #include <csignal>
+#include <cctype>
 #include <fstream>
 #include <map>
 #include <set>
 #include <sstream>
 #include <thread>
+#include <tuple>
 
 using namespace matrixcli;
 
 #include "demo_tui.hpp"
+#include "demo_showcases.hpp"
 
 extern int cmdRooms(const matrixcli::cli::Args& args);
 extern int cmdView(const matrixcli::cli::Args& args);
@@ -67,13 +70,10 @@ static int demoReplInfo(db::Database& dbi, const cli::Args& a) {
     return 1;
 }
 
-// ---- Interactive demo REPL (offline, no Matrix account needed) ----
-//
-// Replaces the old `demo` behavior (which started an HTTP API server on
-// port 8080). Now `progressive-cli demo` drops the user into an interactive
-// terminal session against the offline demo database: type commands, see
-// output, same handlers as the real CLI (rooms/view/search). The web demo
-// stays available as `progressive-cli serve --demo`.
+// === Offline demo showcases: members / typing / edit / report / topic / threads ===
+// Shared pattern: pick a room (and usually a message), then show a stylized
+// dialog that mirrors the real command's behaviour — all against the offline
+// demo DB, no account or network needed.
 
 static void demoReplParseLine(const std::string& line, matrixcli::cli::Args& out) {
     std::istringstream iss(line);
@@ -130,173 +130,50 @@ static void demoReplSend(const matrixcli::cli::Args& args) {
 // The markdown rendering demo: the same sample that also lives in the
 // #general demo room, rendered by the same ANSI renderer the chat view uses
 // (renderMarkdownBody in ascii_ui_helpers.cpp).
-void demoMarkdownShowcase() {
-    static const char* kSample =
-        "Markdown demo: **bold text**, *italic*, `inline code`, "
-        "[a link](https://matrix.org) and a raw https://matrix.org\n"
-        "\n"
-        "# A header\n"
-        "\n"
-        "- a bullet\n"
-        "- another bullet\n"
-        "- [x] done task\n"
-        "- [ ] open task\n"
-        "\n"
-        "1. first step\n"
-        "2. second step\n"
-        "\n"
-        "> a quoted line\n"
-        "\n"
-        "```cpp\n"
-        "#include <iostream>\n"
-        "\n"
-        "int main() {\n"
-        "    // a highlighted comment\n"
-        "    const char* s = \"hello markdown\";\n"
-        "    std::cout << s << std::endl;\n"
-        "    return 0;\n"
-        "}\n"
-        "```";
-    std::cout << "Markdown rendering demo — the ANSI renderer the chat view uses.\n"
-                 "The same message lives in #general (demo): run view \"#general\""
-              << std::endl;
-    if (isatty(STDOUT_FILENO)) {
-        std::cout << renderMarkdownBody(kSample) << std::endl;
-    } else {
-        std::cout << "(stdout is not a terminal — the styled output only shows "
-                     "interactively; here is the plain source:)" << std::endl;
-        std::cout << kSample << std::endl;
-    }
-}
-
-// The poll vote demo: scans the cache (demo OR real data — same database
-// code path) for m.poll.start events, lets the user pick a voting, shows
-// the question and the current tallies, and records their vote as an
-// m.poll.response event (the wire format the UI renders).
-void demoVoteShowcase(db::Database& dbi) {
-    struct PollInfo {
-        std::string roomId, roomName, id, question;
-        std::vector<std::pair<std::string, std::string>> answers;
-    };
-    std::vector<PollInfo> polls;
-    std::set<std::string> roomsWith;
-    for (const auto& r : dbi.listRooms()) {
-        std::string roomId = r.value("room_id", "");
-        if (roomId.empty()) continue;
-        std::string roomName = r.value("name", "");
-        if (roomName.empty()) roomName = roomId;
-        auto evs = dbi.getEvents(roomId, 5000);
-        for (const auto& ev : evs) {
-            if (!ev.content.is_object()) continue;
-            if (ev.content.value("msgtype", "") != "m.poll.start") continue;
-            PollInfo pi;
-            pi.roomId = roomId;
-            pi.roomName = roomName;
-            pi.id = ev.event_id;
-            auto q = ev.content.find("question");
-            if (q != ev.content.end() && q->is_object()) {
-                pi.question = q->value("text", "");
-            }
-            auto an = ev.content.find("answers");
-            if (an != ev.content.end() && an->is_array()) {
-                for (const auto& a : *an) {
-                    if (a.is_object()) {
-                        pi.answers.emplace_back(a.value("id", ""),
-                                                a.value("text", ""));
-                    }
-                }
-            }
-            if (pi.question.empty()) pi.question = pi.id;
-            polls.push_back(std::move(pi));
-            roomsWith.insert(roomId);
-        }
-    }
-    if (polls.empty()) {
-        std::cout << "No votings in the cache yet (run 'demo populate' first)."
-                  << std::endl;
-        return;
-    }
-    std::cout << "The client knows about " << polls.size() << " votings in "
-              << roomsWith.size() << " rooms:" << std::endl;
-    for (size_t i = 0; i < polls.size(); ++i) {
-        std::cout << "  " << (i + 1) << ": [" << polls[i].roomName << "] "
-                  << polls[i].question << "  (" << polls[i].answers.size()
-                  << " answers)" << std::endl;
-    }
-    if (!isatty(STDIN_FILENO)) {
-        std::cout << "(run it on a terminal to vote — or 'view <room>' shows "
-                     "the tallies in the chat)" << std::endl;
-        return;
-    }
-    std::cout << "Which voting are you in? [1-" << polls.size() << "]: "
-              << std::flush;
-    std::string pick;
-    std::getline(std::cin, pick);
-    long idx = -1;
-    try {
-        long v = std::stol(pick);
-        if (v >= 1 && v <= static_cast<long>(polls.size())) idx = v - 1;
-    } catch (...) {}
-    if (idx < 0) {
-        std::cout << "No such voting." << std::endl;
-        return;
-    }
-    const PollInfo& p = polls[idx];
-    std::cout << "Voting #" << (idx + 1) << ": " << p.question << "  ("
-              << p.roomName << ")" << std::endl;
-    // The current tallies (the m.poll.response events for this poll).
-    std::map<std::string, int> tally;
-    for (const auto& ev : dbi.getEvents(p.roomId, 5000)) {
-        if (!ev.content.is_object()) continue;
-        if (ev.content.value("msgtype", "") != "m.poll.response") continue;
-        auto rel = ev.content.find("m.relates_to");
-        if (rel == ev.content.end() || !rel->is_object()) continue;
-        if (rel->value("event_id", "") != p.id) continue;
-        auto sel = ev.content.find("selections");
-        if (sel != ev.content.end() && sel->is_array() && !sel->empty() &&
-            (*sel)[0].is_string()) {
-            tally[(*sel)[0].get<std::string>()]++;
-        }
-    }
-    for (size_t i = 0; i < p.answers.size(); ++i) {
-        std::cout << "  " << (i + 1) << ": " << p.answers[i].second
-                  << "  (" << tally[p.answers[i].first] << " votes)"
-                  << std::endl;
-    }
-    std::cout << "Vote for? [1-" << p.answers.size() << "]: " << std::flush;
-    std::string ans;
-    std::getline(std::cin, ans);
-    long aidx = -1;
-    try {
-        long v = std::stol(ans);
-        if (v >= 1 && v <= static_cast<long>(p.answers.size())) aidx = v - 1;
-    } catch (...) {}
-    if (aidx < 0) {
-        std::cout << "No such answer." << std::endl;
-        return;
-    }
-    int64_t ts = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
-    matrix::Event r;
-    r.event_id = "$demo_vote_you_" + std::to_string(ts);
-    r.room_id = p.roomId;
-    r.sender = "@you";
-    r.type = "m.room.message";
-    r.content = {{"msgtype", "m.poll.response"},
-                 {"m.relates_to",
-                  {{"event_id", p.id}, {"rel_type", "m.reference"}}},
-                 {"selections", {p.answers[aidx].first}}};
-    r.origin_server_ts = ts;
-    dbi.insertEvent(r);
-    std::cout << "Voted for \"" << p.answers[aidx].second << "\" in "
-              << p.roomName << " (recorded locally)." << std::endl;
-    std::cout << "See it in the chat: view \"" << p.roomName
-              << "\" 30 — or run 'ui' and open the room." << std::endl;
-}
-
 #ifdef BUILD_TUI
 int cmdTUI(const matrixcli::cli::Args& args);
 #endif
+
+// Demo for the `accounts` command: a guided, non-destructive walkthrough of
+// multi-account management (the vendored session store + config.json). It shows
+// sample output and every flag without ever touching the real session.db or
+// config.json, so it is safe to run anywhere.
+void demoAccountsShowcase() {
+    const char* a = ANSI_BOLD "\033[37m";
+    const char* d = ANSI_DIM;
+    const char* r = ANSI_RESET;
+    std::cout << "Multi-account demo — " << a << "progressive-cli accounts" << r << "\n\n"
+              << "Lists every logged-in Matrix account the client knows about "
+                 "(the vendored session store),\nmarks the one you are using now "
+                 "as " << a << "[active]" << r << ", and lets you hide accounts "
+                 "you no longer want to see.\n\n"
+              << "Example output:\n\n"
+              << "  @alice:matrix.org (ALICEDEV) @ https://matrix.org" << a
+              << " [active]" << r << "\n"
+              << "  @bob:example.com (BOBPHONE) @ https://example.com\n"
+              << "  @carol:matrix.org (CAROLXS) @ https://matrix.org" << d
+              << " (hidden)" << r << "\n\n"
+              << "Flags:\n"
+              << "  accounts                               list visible accounts (with [active])\n"
+              << "  accounts --all                         include the (hidden) ones too\n"
+              << "  accounts --json                        machine-readable list\n"
+              << "  accounts --hide @carol:matrix.org      hide permanently (config.json)\n"
+              << "  accounts --show @carol:matrix.org      un-hide\n"
+              << "  accounts --temporary-hide @bob:example.com   hide for this run only\n\n"
+              << "Machine-readable form (" << a << "accounts --json" << r << "):\n\n"
+              << "  [\n"
+              << "    {\"user_id\":\"@alice:matrix.org\",\"device_id\":\"ALICEDEV\",\n"
+              << "     \"homeserver_url\":\"https://matrix.org\",\"active\":true,\"hidden\":false},\n"
+              << "    {\"user_id\":\"@bob:example.com\",\"device_id\":\"BOBPHONE\",\n"
+              << "     \"homeserver_url\":\"https://example.com\",\"active\":false,\"hidden\":false},\n"
+              << "    {\"user_id\":\"@carol:matrix.org\",\"device_id\":\"CAROLXS\",\n"
+              << "     \"homeserver_url\":\"https://matrix.org\",\"active\":false,\"hidden\":true}\n"
+              << "  ]\n\n"
+              << "Run " << a << "progressive-cli accounts" << r
+              << " to see your real accounts, or " << a << "login" << r
+              << " to add one.\n";
+}
+
 int cmdDemoRepl(const matrixcli::cli::Args& args) {
     using namespace matrixcli;
 
@@ -317,38 +194,118 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
     };
     // The positional shortcuts: demo tui | ui | mobile | cli | markdown | vote
     // — no menu.
+    // Run one or more demo targets in order, e.g. `demo edit members typing`
+    // executes each showcase sequentially. The takeover modes (tui/ui/mobile/
+    // cli) still run only the first one and return, since they grab the
+    // terminal. A trailing token after `members` is taken as a room unless it
+    // is itself a demo mode.
     if (!args.positional.empty()) {
-        const std::string mode = args.positional[0];
-        cli::Args sub = args;
-        sub.positional.erase(sub.positional.begin());
-        if (mode == "markdown" || mode == "md") {
-            demoMarkdownShowcase();
-            return 0;
+        auto isDemoMode = [](const std::string& s) -> bool {
+            static const char* m[] = {
+                "markdown", "md", "vote", "voting", "accounts",
+                "tui", "ui", "ascii", "mobile", "phone", "cli", "populate",
+                "edit", "report", "members", "typing", "topic", "threads",
+                "config", "backup", nullptr};
+            for (int i = 0; m[i]; ++i)
+                if (s == m[i]) return true;
+            return false;
+        };
+        size_t i = 0;
+        bool handled = false;
+        while (i < args.positional.size()) {
+            const std::string mode = args.positional[i];
+            if (!isDemoMode(mode)) break;
+            handled = true;
+
+            if (mode == "markdown" || mode == "md") {
+                demoMarkdownShowcase();
+                ++i; continue;
+            }
+            if (mode == "accounts") {
+                demoAccountsShowcase();
+                ++i; continue;
+            }
+            if (mode == "vote" || mode == "voting") {
+                db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+                if (dbi.listRooms().empty()) populateDemoData(dbi);
+                demoVoteShowcase(dbi);
+                ++i; continue;
+            }
+            if (mode == "tui") {
+                cli::Args sub = args; sub.options["tui"] = "true";
+                return cmdDemoRepl(sub);
+            }
+            if (mode == "ui" || mode == "ascii") {
+                cli::Args sub = args; sub.options["ui"] = "true";
+                return cmdDemoRepl(sub);
+            }
+            if (mode == "mobile" || mode == "phone") {
+                cli::Args sub = args; sub.options["ui"] = "true";
+                sub.options["mobile"] = "true";
+                return cmdDemoRepl(sub);
+            }
+            if (mode == "cli" || mode == "populate") {
+                cli::Args sub = args; sub.options["cli"] = "true";
+                return cmdDemoRepl(sub);
+            }
+            if (mode == "edit") {
+                db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+                if (dbi.listRooms().empty()) populateDemoData(dbi);
+                demoEditShowcase(dbi);
+                ++i; continue;
+            }
+            if (mode == "report") {
+                db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+                if (dbi.listRooms().empty()) populateDemoData(dbi);
+                demoReportShowcase(dbi);
+                ++i; continue;
+            }
+            if (mode == "members") {
+                db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+                if (dbi.listRooms().empty()) populateDemoData(dbi);
+                std::string rid;
+                if (i + 1 < args.positional.size() &&
+                    !isDemoMode(args.positional[i + 1])) {
+                    rid = matchRoomInCache(dbi.listRooms(),
+                                           args.positional[i + 1]);
+                    ++i;
+                }
+                demoMembersShowcase(dbi, rid);
+                ++i; continue;
+            }
+            if (mode == "typing") {
+                db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+                if (dbi.listRooms().empty()) populateDemoData(dbi);
+                demoTypingShowcase(dbi);
+                ++i; continue;
+            }
+            if (mode == "topic") {
+                db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+                if (dbi.listRooms().empty()) populateDemoData(dbi);
+                demoTopicShowcase(dbi);
+                ++i; continue;
+            }
+            if (mode == "threads") {
+                db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+                if (dbi.listRooms().empty()) populateDemoData(dbi);
+                demoThreadsShowcase(dbi);
+                ++i; continue;
+            }
+            if (mode == "config") {
+                db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+                if (dbi.listRooms().empty()) populateDemoData(dbi);
+                demoConfigShowcase(dbi);
+                ++i; continue;
+            }
+            if (mode == "backup") {
+                db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+                if (dbi.listRooms().empty()) populateDemoData(dbi);
+                demoBackupShowcase(dbi);
+                ++i; continue;
+            }
+            ++i;
         }
-        if (mode == "vote" || mode == "voting") {
-            db::Database dbi;
-            if (!dbi.open("matrixcli.db")) return 1;
-            if (dbi.listRooms().empty()) populateDemoData(dbi);
-            demoVoteShowcase(dbi);
-            return 0;
-        }
-        if (mode == "tui") {
-            sub.options["tui"] = "true";
-            return cmdDemoRepl(sub);
-        }
-        if (mode == "ui" || mode == "ascii") {
-            sub.options["ui"] = "true";
-            return cmdDemoRepl(sub);
-        }
-        if (mode == "mobile" || mode == "phone") {
-            sub.options["ui"] = "true";
-            sub.options["mobile"] = "true";
-            return cmdDemoRepl(sub);
-        }
-        if (mode == "cli" || mode == "populate") {
-            sub.options["cli"] = "true";
-            return cmdDemoRepl(sub);
-        }
+        if (handled) return 0;
     }
 
     // One-shot positional form: `demo <room> <action>` (also `demo <action>
@@ -397,6 +354,34 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
             if (action == "rooms")   return cmdRooms(sub);
             if (action == "search")  return cmdSearch(sub);
             if (action == "power")   return cmdPower(sub);
+        }
+    }
+
+    // A bare `demo <room>` (a single room alias/name/id, no action) showcases
+    // that room directly — info + recent messages + power levels — instead of
+    // dropping into the interactive REPL. Works for every demo room.
+    if (args.positional.size() == 1) {
+        db::Database dbi;
+        if (!dbi.open("matrixcli.db")) return 1;
+        if (dbi.listRooms().empty()) populateDemoData(dbi);
+        const std::string roomArg = args.positional[0];
+        std::string roomId = matchRoomInCache(dbi.listRooms(), roomArg);
+        if (roomId.empty() && !roomArg.empty() && roomArg[0] == '#' &&
+            roomArg.find(':') == std::string::npos)
+            roomId = matchRoomInCache(dbi.listRooms(), roomArg.substr(1));
+        if (!roomId.empty()) {
+            cli::Args sub;
+            sub.positional.push_back(roomId);
+            sub.options["limit"] = "12";
+            std::cout << ANSI_BOLD << "Room showcase: " << ANSI_RESET
+                      << roomArg << "\n\n";
+            demoReplInfo(dbi, sub);
+            std::cout << "\n";
+            cmdView(sub);
+            std::cout << "\n";
+            sub.command = "power";
+            cmdPower(sub);
+            return 0;
         }
     }
 
@@ -487,6 +472,8 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
     // On a terminal, let the user CHOOSE: interactive REPL, pure CLI, or
     // the ASCII-drawn client interface (rooms | chat | members).
     if (isatty(STDIN_FILENO)) {
+        const char* g = ANSI_BOLD "\033[37m";
+        const char* r = ANSI_RESET;
         std::cout << "Choose demo mode:\n"
                      "  1) interactive session (type commands at a prompt)\n"
                      "  2) populate demo data and exit (one-shot commands)\n"
@@ -494,9 +481,19 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
                      "     (non-interactive: progressive-cli demo --ui --static)\n"
                      "  4) terminal UI (ncurses TUI)\n"
                      "  5) ASCII client for smartphones (stacked, portrait)\n"
-                     "  6) markdown rendering demo (demo markdown)\n"
-                     "  7) the poll vote demo (demo vote)\n"
-                     "Choice [1/2/3/4/5/6/7]: " << std::flush;
+                     "  6) " << g << "markdown" << r << " rendering demo (demo markdown)\n"
+                     "  7) the poll " << g << "vote" << r << " demo (demo vote)\n"
+                     "  8) the multi-account demo (demo " << g << "accounts" << r << ")\n"
+                     "  9) " << g << "members" << r << " demo (demo members)\n"
+                     " 10) " << g << "typing" << r << " demo (demo typing)\n"
+                     " 11) " << g << "edit" << r << " demo (demo edit)\n"
+                     " 12) " << g << "report" << r << " demo (demo report)\n"
+                     " 13) " << g << "topic" << r << " demo (demo topic)\n"
+                     " 14) " << g << "threads" << r << " demo (demo threads)\n"
+                     " 15) " << g << "config" << r << " demo (demo config)\n"
+                     " 16) " << g << "backup" << r << " demo (demo backup)\n"
+                     "You can run several in a row, e.g. " << g << "demo edit members typing" << r << "\n"
+                     "Choice [1-16]: " << std::flush;
         std::string ans;
         std::getline(std::cin, ans);
         if (!matrixcli::g_interrupted.load()) {
@@ -504,29 +501,75 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
             std::cout << "Bye!" << std::endl;
             return 0;
         }
-        if (!ans.empty() && (ans[0] == '2' || ans[0] == 'n')) {
+        int ch = -1;
+        if (!ans.empty()) { try { ch = std::stoi(ans); } catch (...) { ch = -1; } }
+        if (ch == 2 || ans == "n") {
             return runPureCli();
         }
-        if (!ans.empty() && ans[0] == '3') {
+        if (ch == 3) {
             cli::Args uiArgs;
             return matrixcli::cmdAsciiUi(uiArgs);
         }
-        if (!ans.empty() && ans[0] == '5') {
+        if (ch == 5) {
             cli::Args uiArgs;
             uiArgs.options["mobile"] = "true";
             return matrixcli::cmdAsciiUi(uiArgs);
         }
-        if (!ans.empty() && ans[0] == '6') {
+        if (ch == 6) {
             demoMarkdownShowcase();
             return 0;
         }
-        if (!ans.empty() && ans[0] == '7') {
+        if (ch == 7) {
             db::Database dbi;
             if (!dbi.open("matrixcli.db")) return 1;
             demoVoteShowcase(dbi);
             return 0;
         }
-        if (!ans.empty() && ans[0] == '4') {
+        if (ch == 8) {
+            demoAccountsShowcase();
+            return 0;
+        }
+        if (ch == 9) {
+            db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+            if (dbi.listRooms().empty()) populateDemoData(dbi);
+            return demoMembersShowcase(dbi, "");
+        }
+        if (ch == 10) {
+            db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+            if (dbi.listRooms().empty()) populateDemoData(dbi);
+            return demoTypingShowcase(dbi);
+        }
+        if (ch == 11) {
+            db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+            if (dbi.listRooms().empty()) populateDemoData(dbi);
+            return demoEditShowcase(dbi);
+        }
+        if (ch == 12) {
+            db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+            if (dbi.listRooms().empty()) populateDemoData(dbi);
+            return demoReportShowcase(dbi);
+        }
+        if (ch == 13) {
+            db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+            if (dbi.listRooms().empty()) populateDemoData(dbi);
+            return demoTopicShowcase(dbi);
+        }
+        if (ch == 14) {
+            db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+            if (dbi.listRooms().empty()) populateDemoData(dbi);
+            return demoThreadsShowcase(dbi);
+        }
+        if (ch == 15) {
+            db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+            if (dbi.listRooms().empty()) populateDemoData(dbi);
+            return demoConfigShowcase(dbi);
+        }
+        if (ch == 16) {
+            db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+            if (dbi.listRooms().empty()) populateDemoData(dbi);
+            return demoBackupShowcase(dbi);
+        }
+        if (ch == 4) {
             cli::Args tuiArgs;
             tuiArgs.options["tui"] = "true";
             return cmdDemoRepl(tuiArgs);
@@ -540,10 +583,20 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
         populateDemoData(dbi);
     }
 
+    const char* g = ANSI_BOLD "\033[37m";
+    const char* r = ANSI_RESET;
     std::cout << "progressive-cli demo — interactive mode (offline, no account needed)" << std::endl;
-    std::cout << "Commands: help | rooms | view <room> [n] | info <room> | search <query> |"
-              << " send <room> <text> | markdown | vote | ui | clear | quit" << std::endl;
-    std::cout << "Demo rooms: #general  #dev  #random  #dm_alice  #dm_bob" << std::endl;
+    std::cout << "Commands: help | rooms | view <room> [n] | info <room> | power <room> |"
+              << " search <query> | send <room> <text> | attach <room> <file> |\n"
+              << "          ui | clear | quit | " << g << "markdown" << r << " | " << g << "vote" << r << " | " << g << "accounts" << r
+              << " | " << g << "edit" << r << " | " << g << "report" << r << " | " << g << "members" << r
+              << " | " << g << "typing" << r << " | " << g << "topic" << r << " | " << g << "threads" << r
+              << " | " << g << "config" << r << " | " << g << "backup" << r << "\n"
+              << std::endl;
+    std::cout << "  (white = demo-dedicated).  Demo rooms: " << g << "#general" << r
+              << "  " << g << "#dev" << r << "  " << g << "#random" << r
+              << "  " << g << "#dm_alice" << r << "  " << g << "#dm_bob" << r
+              << std::endl;
 
     std::string line;
     std::vector<std::string> history;
@@ -563,17 +616,33 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
 
         if (a.command == "quit" || a.command == "exit") break;
         if (a.command == "help") {
-            std::cout << "  rooms                     list demo rooms\n"
+            const char* g = ANSI_BOLD "\033[37m";
+            const char* r = ANSI_RESET;
+            std::cout << "Regular commands (run against the offline demo data):\n"
+                         "  rooms                     list demo rooms\n"
                          "  view <room> [n]           show the last n messages (default 20)\n"
                          "  info <room>               show room info (id, topic, members, E2EE…)\n"
                          "  power <room>              show room power levels / permissions\n"
                          "  search <query>            full-text search in cached messages\n"
                          "  send <room> <text>        send a message (demo, offline)\n"
-                         "  markdown                  show the markdown rendering demo\n"
-                         "  vote                      pick a voting (of the N the cache knows) and vote\n"
+                         "  attach <room> <file>      attach a file (demo, offline)\n"
                          "  ui                        ASCII client interface (rooms | chat | members)\n"
-                         "  clear                     clear the screen\n"
-                         "  quit / exit               leave the demo\n";
+                         "  clear | quit / exit       leave the demo\n"
+                         "\n"
+                           "Dedicated feature demos " << g << "(white = demo-dedicated)" << r
+                          << " — showcase one feature in isolation:\n"
+                           "  " << g << "markdown" << r << "                   the markdown rendering demo\n"
+                           "  " << g << "vote" << r << "                       pick a voting and vote\n"
+                           "  " << g << "accounts" << r << "                   the multi-account demo\n"
+                           "  " << g << "demo <room>" << r << "              showcase any demo room (info + messages + power)\n"
+                           "  " << g << "members" << r << "                   list room members (scroll + pick another room)\n"
+                           "  " << g << "typing" << r << "                    show typing indicators\n"
+                           "  " << g << "edit" << r << "                      edit a message (pick room + message)\n"
+                           "  " << g << "report" << r << "                    report a message to the admin\n"
+                           "  " << g << "topic" << r << "                     set a room topic\n"
+                           "  " << g << "threads" << r << "                  view a message's thread\n"
+                           "  " << g << "config" << r << "                   show/edit the client config\n"
+                           "  " << g << "backup" << r << "                   key backup create/upload/restore/delete\n";
             continue;
         }
         if (a.command == "clear") {
@@ -624,6 +693,20 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
             if (rc != 0) continue;
             continue;
         }
+        if (a.command == "members") {
+            std::string rid;
+            if (a.positional.size() >= 1)
+                rid = matchRoomInCache(dbi.listRooms(), a.positional[0]);
+            demoMembersShowcase(dbi, rid);
+            continue;
+        }
+        if (a.command == "typing") { demoTypingShowcase(dbi); continue; }
+        if (a.command == "edit") { demoEditShowcase(dbi); continue; }
+        if (a.command == "report") { demoReportShowcase(dbi); continue; }
+        if (a.command == "topic") { demoTopicShowcase(dbi); continue; }
+        if (a.command == "threads") { demoThreadsShowcase(dbi); continue; }
+        if (a.command == "config") { demoConfigShowcase(dbi); continue; }
+        if (a.command == "backup") { demoBackupShowcase(dbi); continue; }
         std::cout << "Unknown command '" << a.command << "' — type 'help'." << std::endl;
     }
     std::cout << "Bye!" << std::endl;

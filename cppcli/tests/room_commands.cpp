@@ -7,6 +7,7 @@
 #include "globals.hpp"
 #include "ascii_ui_impl.hpp"
 #include "../lib/database/db.hpp"
+#include "../lib/matrix/client.hpp"
 #include "../lib/util/string_utils.hpp"
 #include <progressive/markdown.hpp>
 #include <nlohmann/json.hpp>
@@ -192,11 +193,107 @@ int cmdMembers(const cli::Args& args) {
     return 0;
 }
 
+// Convenient power-level editor (ACL). All variants require a live session and
+// PUT a (merged) m.room.power_levels state event. Reads the current content via
+// the state endpoint, applies the change, and sends it back so the room stays
+// consistent (same shape Element's "Roles & Permissions" UI produces).
+int cmdPowerEdit(const cli::Args& args) {
+    if (!pcore::requireSession()) return 1;
+    if (args.positional.size() < 2) {
+        std::cerr << "Usage: progressive-cli power <set|user|event|reset> <room> ...\n";
+        return 1;
+    }
+    const std::string& sub = args.positional[0];
+    const std::string& roomArg = args.positional[1];
+    matrixcli::db::Database dbi;
+    if (!dbi.open("matrixcli.db")) { std::cerr << "Cannot open database" << std::endl; return 1; }
+    std::string roomId = matrixcli::matchRoomInCache(dbi.listRooms(), roomArg);
+    if (roomId.empty()) roomId = roomArg;
+    auto& client = pcore::core().client;
+
+    // Fetch current m.room.power_levels content (or start from empty).
+    nlohmann::json pl = nlohmann::json::object();
+    auto cur = client->getRoomStateEvent(roomId, "m.room.power_levels", "");
+    if (cur.ok && !cur.data.empty()) {
+        try { pl = nlohmann::json::parse(cur.data); } catch (...) { pl = nlohmann::json::object(); }
+    }
+    if (!pl.is_object()) pl = nlohmann::json::object();
+    if (!pl.contains("users") || !pl["users"].is_object()) pl["users"] = nlohmann::json::object();
+    if (!pl.contains("events") || !pl["events"].is_object()) pl["events"] = nlohmann::json::object();
+    if (!pl.contains("notifications") || !pl["notifications"].is_object())
+        pl["notifications"] = nlohmann::json::object();
+
+    auto parseLevel = [](const std::string& s, int& out) -> bool {
+        try { out = std::stoi(s); return true; } catch (...) { return false; }
+    };
+
+    if (sub == "reset") {
+        pl = nlohmann::json::object({
+            {"users_default", 0}, {"events_default", 0}, {"state_default", 50},
+            {"ban", 50}, {"kick", 50}, {"invite", 0}, {"redact", 50},
+            {"events", nlohmann::json::object({
+                {"m.room.name", 50}, {"m.room.topic", 50}, {"m.room.avatar", 50},
+                {"m.room.canonical_alias", 50}, {"m.room.history_visibility", 100},
+                {"m.room.guest_access", 50}, {"m.room.encryption", 100},
+                {"m.room.tombstone", 100}, {"m.room.server_acl", 100},
+                {"m.room.third_party_invite", 50}, {"m.room.power_levels", 100},
+                {"m.room.bridging", 50}, {"m.room.pinned_events", 50},
+                {"m.room.message", 0}, {"m.room.encrypted", 0},
+                {"m.reaction", 0}, {"m.sticker", 0}})},
+            {"notifications", nlohmann::json::object({{"room", 50}})}
+        });
+        std::cout << "Resetting power levels to recommended defaults…" << std::endl;
+    } else if (sub == "set") {
+        if (args.positional.size() < 4) {
+            std::cerr << "Usage: progressive-cli power set <room> <key> <level>\n"
+                         "  keys: invite kick ban redact state_default events_default users_default notify\n";
+            return 1;
+        }
+        int lvl;
+        if (!parseLevel(args.positional[3], lvl)) { std::cerr << "level must be an integer\n"; return 1; }
+        const std::string& key = args.positional[2];
+        if (key == "notify") pl["notifications"]["room"] = lvl;
+        else pl[key] = lvl;
+        std::cout << "Setting " << key << " = " << lvl << "\n";
+    } else if (sub == "user") {
+        if (args.positional.size() < 4) {
+            std::cerr << "Usage: progressive-cli power user <room> <@user> <level>\n";
+            return 1;
+        }
+        int lvl;
+        if (!parseLevel(args.positional[3], lvl)) { std::cerr << "level must be an integer\n"; return 1; }
+        pl["users"][args.positional[2]] = lvl;
+        std::cout << "Setting power level of " << args.positional[2] << " = " << lvl << "\n";
+    } else if (sub == "event") {
+        if (args.positional.size() < 4) {
+            std::cerr << "Usage: progressive-cli power event <room> <type> <level>\n";
+            return 1;
+        }
+        int lvl;
+        if (!parseLevel(args.positional[3], lvl)) { std::cerr << "level must be an integer\n"; return 1; }
+        pl["events"][args.positional[2]] = lvl;
+        std::cout << "Setting required level for " << args.positional[2] << " = " << lvl << "\n";
+    }
+
+    auto res = client->sendStateEvent(roomId, "m.room.power_levels", "", pl.dump());
+    if (!res.ok) {
+        std::string err = res.error.message.empty() ? "failed" : res.error.message;
+        std::cerr << "Power levels update failed: " << err << std::endl;
+        return 1;
+    }
+    std::cout << "✓ power levels updated (event " << res.data << ")\n";
+    return 0;
+}
+
 int cmdPower(const cli::Args& args) {
     if (args.positional.empty()) {
         std::cerr << "Usage: progressive-cli power <room>" << std::endl;
         return 1;
     }
+    // Editing subcommands (power set/user/event/reset) PUT m.room.power_levels.
+    const std::string& first = args.positional[0];
+    if (first == "set" || first == "user" || first == "event" || first == "reset")
+        return cmdPowerEdit(args);
     using namespace matrixcli;
     db::Database dbi;
     if (!dbi.open("matrixcli.db")) { std::cerr << "Cannot open database" << std::endl; return 1; }
@@ -220,18 +317,45 @@ int cmdPower(const cli::Args& args) {
     auto num = [&](const char* k, int def) -> int {
         return pl.contains(k) && pl[k].is_number() ? pl[k].get<int>() : def;
     };
-    std::cout << "  Actions (required level):\n";
-    std::cout << "    ban:           " << num("ban", 50) << "\n";
-    std::cout << "    kick:          " << num("kick", 50) << "\n";
-    std::cout << "    redact:        " << num("redact", 50) << "\n";
-    std::cout << "    invite:        " << num("invite", 50) << "\n";
-    std::cout << "    state_default:  " << num("state_default", 50) << "\n";
-    std::cout << "    events_default: " << num("events_default", 0) << "\n";
+    auto evLevel = [&](const std::string& type, int dflt) -> int {
+        if (pl.contains("events") && pl["events"].is_object() &&
+            pl["events"].contains(type) && pl["events"][type].is_number())
+            return pl["events"][type].get<int>();
+        return dflt;
+    };
+    int sd = num("state_default", 50);
+    int ed = num("events_default", 0);
+    std::cout << "  Defaults:\n";
     std::cout << "    users_default:  " << num("users_default", 0) << "\n";
-    // The full set of state events the Matrix protocol governs by power
-    // levels. Any not explicitly listed in `events` falls back to
-    // state_default — show the effective required level for each, so the
-    // command reflects the whole spec, not just the four actions.
+    std::cout << "    events_default: " << ed << "  (send messages & most events)\n";
+    std::cout << "    state_default:  " << sd << "  (change room settings)\n";
+    // The four key-governed actions from the Matrix protocol. `redact` is
+    // the right to delete (redact) any message — others' included.
+    std::cout << "  Actions (required level):\n";
+    std::cout << "    invite:                " << num("invite", 50) << "\n";
+    std::cout << "    kick:                  " << num("kick", 50) << "\n";
+    std::cout << "    ban:                   " << num("ban", 50) << "\n";
+    std::cout << "    redact (delete msgs):  " << num("redact", 50) << "\n";
+    // Sending content is governed by events_default (any event type not
+    // listed under `events`). List the common client-facing ones with
+    // their effective required level, like Element's "Send messages".
+    static const char* kSendEvents[] = {
+        "m.room.message", "m.room.encrypted", "m.reaction", "m.sticker", nullptr
+    };
+    std::cout << "  Sending messages & events (effective level):\n";
+    for (int i = 0; kSendEvents[i]; ++i) {
+        std::string lbl = kSendEvents[i];
+        std::string pretty = lbl;
+        if (lbl == "m.room.message")    pretty = "send message";
+        if (lbl == "m.room.encrypted")  pretty = "send encrypted msg";
+        if (lbl == "m.reaction")        pretty = "react";
+        if (lbl == "m.sticker")         pretty = "sticker";
+        std::cout << "    " << pretty << " (" << lbl << "): "
+                  << evLevel(lbl, ed) << "\n";
+    }
+    // The full set of state events the protocol governs by power levels.
+    // Anything not explicitly listed in `events` falls back to
+    // state_default — show the effective required level for each.
     static const char* kStateEvents[] = {
         "m.room.name", "m.room.topic", "m.room.avatar",
         "m.room.canonical_alias", "m.room.history_visibility",
@@ -240,23 +364,21 @@ int cmdPower(const cli::Args& args) {
         "m.room.power_levels", "m.room.bridging", "m.room.pinned_events",
         "im.vector.modular.widgets", nullptr
     };
-    int sd = num("state_default", 50);
     auto inKnown = [&](const std::string& k) {
         for (int i = 0; kStateEvents[i]; ++i) if (k == kStateEvents[i]) return true;
         return false;
     };
     std::cout << "  State events (effective required level):\n";
     for (int i = 0; kStateEvents[i]; ++i) {
-        int v = sd;
-        if (pl.contains("events") && pl["events"].contains(kStateEvents[i]) &&
-            pl["events"][kStateEvents[i]].is_number())
-            v = pl["events"][kStateEvents[i]].get<int>();
-        std::cout << "    " << kStateEvents[i] << ": " << v << "\n";
+        std::cout << "    " << kStateEvents[i] << ": " << evLevel(kStateEvents[i], sd) << "\n";
     }
     if (pl.contains("events") && pl["events"].is_object()) {
         bool any = false;
         for (auto it = pl["events"].begin(); it != pl["events"].end(); ++it) {
             if (inKnown(it.key())) continue;
+            bool isSend = false;
+            for (int i = 0; kSendEvents[i]; ++i) if (it.key() == kSendEvents[i]) isSend = true;
+            if (isSend) continue;
             if (!any) { std::cout << "  Other event types:\n"; any = true; }
             int v = it.value().is_number() ? it.value().get<int>() : 0;
             std::cout << "    " << it.key() << ": " << v << "\n";
@@ -584,6 +706,88 @@ int cmdInvite(const cli::Args& args) {
     return ok ? 0 : 1;
 }
 
+// ---- Discovery / token / account-data inspection commands ----
+
+// Build a wrapper client from the persisted session (same pattern as
+// bridge_commands.cpp) so the matrixcli::matrix::Client-only helpers
+// (getTurnServer, getOpenIdToken, …) are usable here.
+namespace { void configureSessionClient(matrixcli::matrix::Client& client) {
+    matrixcli::db::Database dbi;
+    if (dbi.open("matrixcli.db")) {
+        auto acc = dbi.loadAccount();
+        if (acc.is_logged_in()) {
+            client.setHomeserverURL(acc.homeserver_url);
+            client.setAccessToken(acc.access_token);
+            client.setUserId(acc.user_id);
+        }
+    }
+} }
+
+// TURN credentials for VoIP (GET /voip/turnServer). Clients use these as ICE
+// servers so 1:1 and group calls connect through NAT / symmetric firewalls.
+int cmdTurn(const cli::Args& args) {
+    if (!pcore::requireSession()) return 1;
+    matrixcli::matrix::Client client;
+    configureSessionClient(client);
+    auto j = client.getTurnServer();
+    if (j.is_null() || j.empty()) { std::cerr << "No TURN server advertised.\n"; return 1; }
+    if (args.options.count("json")) { std::cout << j.dump() << "\n"; return 0; }
+    std::cout << "TURN credentials (ttl " << j.value("ttl", 0) << "s):\n";
+    if (j.contains("username")) std::cout << "  username: " << j["username"].get<std::string>() << "\n";
+    if (j.contains("password")) std::cout << "  password: " << j["password"].get<std::string>() << "\n";
+    if (j.contains("uris") && j["uris"].is_array()) {
+        for (auto& u : j["uris"]) std::cout << "  uri: " << u.get<std::string>() << "\n";
+    }
+    return 0;
+}
+
+// OpenID token (POST /user/{userId}/openid/request_token) — identifies the
+// Matrix user to third-party services (widgets, integrations, OIDC bridges).
+int cmdOpenId(const cli::Args& args) {
+    if (!pcore::requireSession()) return 1;
+    matrixcli::matrix::Client client;
+    configureSessionClient(client);
+    auto j = client.getOpenIdToken();
+    if (j.is_null() || j.empty()) { std::cerr << "OpenID token request failed.\n"; return 1; }
+    std::cout << (args.options.count("json") ? j.dump() : j.dump(2)) << "\n";
+    return 0;
+}
+
+// Server capabilities (GET /capabilities) — which room versions it can create,
+// whether e2ee is enforced, etc.
+int cmdCapabilities(const cli::Args& args) {
+    if (!pcore::requireSession()) return 1;
+    matrixcli::matrix::Client client;
+    configureSessionClient(client);
+    auto j = client.getCapabilities();
+    if (j.is_null() || j.empty()) { std::cerr << "Capabilities request failed.\n"; return 1; }
+    std::cout << (args.options.count("json") ? j.dump() : j.dump(2)) << "\n";
+    return 0;
+}
+
+// Third-party network directory and lookups (GET /thirdparty/*).
+int cmdThirdparty(const cli::Args& args) {
+    if (!pcore::requireSession()) return 1;
+    matrixcli::matrix::Client client;
+    configureSessionClient(client);
+    if (args.positional.empty() || args.positional[0] == "protocols") {
+        auto j = client.getThirdpartyProtocols();
+        std::cout << (args.options.count("json") ? j.dump() : j.dump(2)) << "\n";
+        return 0;
+    }
+    const std::string& proto = args.positional[0];
+    std::string net = args.options.count("network") ? args.options.at("network") : "";
+    nlohmann::json j;
+    if (args.positional.size() > 1 && args.positional[1] == "users")
+        j = client.getThirdpartyUsers(proto, net);
+    else if (args.positional.size() > 1 && args.positional[1] == "locations")
+        j = client.getThirdpartyLocations(proto, net);
+    else
+        j = client.getThirdpartyUsers(proto, net);
+    std::cout << (args.options.count("json") ? j.dump() : j.dump(2)) << "\n";
+    return 0;
+}
+
 void registerRoomCommands() {
     auto& reg = CommandRegistry::instance();
     reg.registerCli("sync", cmdSync, "One-shot sync into the offline cache");
@@ -601,4 +805,8 @@ void registerRoomCommands() {
     reg.registerCli("markdown", cmdMarkdown, "Render markdown to HTML: markdown <text> | echo <text> | progressive-cli markdown");
     reg.registerCli("dump", cmdDump, "Export a room from the cache: dump <room> [--format json|txt|html|md] [--out dir] [--limit N]");
     reg.registerCli("invite", cmdInvite, "Invite a user: invite <room> <@user> [--reason r]");
+    reg.registerCli("turn", cmdTurn, "Show VoIP TURN credentials: turn");
+    reg.registerCli("openid", cmdOpenId, "Request an OpenID token for the current user: openid");
+    reg.registerCli("capabilities", cmdCapabilities, "Show server capabilities: capabilities");
+    reg.registerCli("thirdparty", cmdThirdparty, "Third-party networks: thirdparty [protocol [users|locations]] [--network id]");
 }

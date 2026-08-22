@@ -10,6 +10,8 @@ set(SOURCES
     demo_data.cpp
     demo_data_extras.cpp
     demo_repl.cpp
+    demo_showcases.cpp
+    demo_showcases.hpp
     cmd_tui_commands.cpp
     cmd_tui_events.cpp
     config.cpp

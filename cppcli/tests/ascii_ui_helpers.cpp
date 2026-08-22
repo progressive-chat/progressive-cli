@@ -900,7 +900,9 @@ std::string memberRowStr(const UiState& st, const std::string& mem,
             if (r.value("room_id", "") != st.currentRoomId) continue;
             if (r.value("version", 0) >= 12) {
                 std::string cr = r.value("creator", "");
-                std::string crLocal = cr.substr(0, cr.find(':'));
+                std::string crLocal = (cr.find(':') != std::string::npos)
+                                          ? cr.substr(0, cr.find(':'))
+                                          : cr;
                 if (crLocal == mem) lvl = 150;
             }
             break;

@@ -216,8 +216,10 @@ int populateDemoData(matrixcli::db::Database& dbi) {
                     {"m.room.guest_access", 50}, {"m.room.encryption", 50},
                     {"m.room.tombstone", 100}, {"m.room.server_acl", 100},
                     {"m.room.third_party_invite", 50},
-                    {"m.room.power_levels", 100}, {"m.room.bridging", 50},
-                    {"m.room.pinned_events", 50}})}
+                     {"m.room.power_levels", 100}, {"m.room.bridging", 50},
+                     {"m.room.pinned_events", 50},
+                     {"m.room.message", 0}, {"m.room.encrypted", 0},
+                     {"m.reaction", 0}, {"m.sticker", 0}})}
             });
             dbi.insertEvent(plEv);
         }

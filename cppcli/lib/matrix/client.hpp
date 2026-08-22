@@ -34,6 +34,8 @@ public:
 
     // Access token
     void setAccessToken(const std::string& token);
+    // User ID (needed for user-scoped endpoints like OpenID / account data).
+    void setUserId(const std::string& userId);
 
     // Database (optional persistent storage)
     void setDatabase(db::Database* db);
@@ -277,6 +279,32 @@ public:
     json getNotifications(const std::string& from = "",
                           int limit = 20,
                           const std::string& only = "");
+
+    // TURN credentials for VoIP (CS API: GET /voip/turnServer). Returns an
+    // object with `uris`, `username`, `password` and `ttl`. Clients use these
+    // as ICE servers so calls work behind NAT / symmetric firewalls.
+    json getTurnServer();
+
+    // OpenID token (CS API: POST /user/{userId}/openid/request_token). Used to
+    // identify the Matrix user to third-party services (widgets, integrations,
+    // bridges that use OIDC bearer tokens).
+    json getOpenIdToken();
+
+    // Server capabilities (CS API: GET /capabilities). Advertises e.g. which
+    // room versions the server can create and whether e2ee is enforced.
+    json getCapabilities();
+
+    // Third-party network directory (CS API: GET /thirdparty/protocols and the
+    // /thirdparty/user|location lookup endpoints).
+    json getThirdpartyProtocols();
+    json getThirdpartyUsers(const std::string& protocol, const std::string& network_id = "");
+    json getThirdpartyLocations(const std::string& protocol, const std::string& network_id = "");
+
+    // Account data (global, type-scoped). Mirrors the CS endpoints
+    // GET/PUT /user_account_data/{type} so callers can read/write arbitrary
+    // account data (e.g. m.ignored_user_list, m.direct, im.vector.*).
+    json getAccountData(const std::string& type);
+    bool setAccountData(const std::string& type, const json& content);
 
     // Media
     std::string uploadMedia(const std::string& file_path,

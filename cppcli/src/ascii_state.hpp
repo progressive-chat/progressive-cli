@@ -73,7 +73,7 @@ struct UiState {
     std::string focusEvent;              // event the viewport jumped to (goto)
     int mobileTab = 0;                   // 0=Rooms 1=Chat 2=People (bottom nav)
     int limitRows = 0;                   // settings "rows <n>": 0 = fit terminal
-    std::map<std::string, std::string> presence; // member -> О/А/Ф letters
+    std::map<std::string, std::string> presence; // member -> online/away/offline letters
     std::map<std::string, std::string> memberNames; // member -> displayname
     // Right panel mode: 0 = members, 1 = room thread list, 2 = one thread,
     // 3 = threads across all rooms (Element-style thread panel).

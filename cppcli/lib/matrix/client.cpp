@@ -30,6 +30,10 @@ void Client::setHomeserverURL(const std::string& url) {
 
 std::string Client::homeserverURL() const { return impl->homeserver_url; }
 
+void Client::setUserId(const std::string& userId) {
+    impl->creds.user_id = userId;
+}
+
 void Client::setProxy(const http::ProxyConfig& config) {
     impl->http.setProxy(config);
 }
@@ -945,33 +949,6 @@ bool Client::setAvatarUrl(const std::string& avatar_url) {
                         http::urlEncode(user_id) + "/avatar_url",
                         body.dump());
     return resp.ok();
-}
-
-json Client::getDevices() {
-    auto resp = authGet("/_matrix/client/r0/devices");
-    checkResponse(resp);
-    return json::parse(resp.body);
-}
-
-bool Client::deleteDevices(const std::vector<std::string>& device_ids) {
-    json body = {{"devices", device_ids}};
-    auto resp = authPost("/_matrix/client/r0/delete_devices", body.dump());
-    return resp.ok();
-}
-
-json Client::getPushRules() {
-    auto resp = authGet("/_matrix/client/r0/pushrules");
-    checkResponse(resp);
-    return json::parse(resp.body);
-}
-
-std::string Client::createFilter(const std::string& filter_json) {
-    auto resp = authPost("/_matrix/client/r0/user/" +
-                         http::urlEncode(impl->creds.user_id) + "/filter",
-                         filter_json);
-    checkResponse(resp);
-    auto j = json::parse(resp.body);
-    return j["filter_id"].get<std::string>();
 }
 
 }} // namespace matrixcli::matrix

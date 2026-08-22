@@ -203,6 +203,78 @@ int cmdServe(const matrixcli::cli::Args& args) {
         return 0;
     }
 
+    // SSO / OIDC-style login (MSC3861 family). The homeserver redirects the
+    // browser back with ?loginToken=…; the user pastes that token (or the full
+    // redirect URL) and we exchange it for a session via m.login.token.
+    if (args.options.count("sso")) {
+        if (homeserver.empty()) {
+            std::cerr << "Error: --homeserver required" << std::endl;
+            return 1;
+        }
+        if (!pcore::init()) return 1;
+        auto& core = pcore::core();
+        std::string resolvedHs;
+        if (homeserver.rfind("http://", 0) == 0 || homeserver.rfind("https://", 0) == 0) {
+            resolvedHs = homeserver;
+            while (!resolvedHs.empty() && resolvedHs.back() == '/') resolvedHs.pop_back();
+        } else {
+            auto disc = core.client->discoverHomeserver(homeserver);
+            if (!disc.ok || disc.data.empty()) {
+                std::cerr << "Login failed: cannot resolve homeserver " << homeserver << std::endl;
+                return 1;
+            }
+            resolvedHs = disc.data;
+        }
+        matrix::Client ssoClient;
+        ssoClient.setHomeserverURL(resolvedHs);
+        std::string ssoUrl = ssoClient.getSSOLoginURL(resolvedHs + "/_matrix/client/");
+        if (ssoUrl.empty()) {
+            std::cerr << "This homeserver does not advertise SSO login." << std::endl;
+            return 1;
+        }
+        std::cout << "Open this URL in your browser and authenticate:\n\n  " << ssoUrl
+                  << "\n\nThen paste the ?loginToken= value (or the whole redirect URL): " << std::flush;
+        std::string pasted;
+        std::getline(std::cin, pasted);
+        std::string token;
+        auto pos = pasted.find("loginToken=");
+        if (pos != std::string::npos) token = pasted.substr(pos + 11);
+        else token = pasted;
+        // Trim trailing whitespace / newline artifacts.
+        while (!token.empty() && (token.back() == ' ' || token.back() == '\r' || token.back() == '\n'))
+            token.pop_back();
+        if (token.empty()) { std::cerr << "No login token supplied.\n"; return 1; }
+        auto r = ssoClient.loginSSO(token, "matrixcli");
+        if (!r.valid()) {
+            std::cerr << "SSO login failed." << std::endl;
+            return 1;
+        }
+        progressive::desktop::AccountInfo staged;
+        staged.homeserverUrl = resolvedHs;
+        staged.accessToken = r.access_token;
+        staged.userId = r.user_id;
+        staged.deviceId = r.device_id;
+        core.client->setAccount(staged);
+        core.client->persistSession();
+        auto acct = core.client->account();
+        Config::instance().set("homeserver_url", acct.homeserverUrl);
+        Config::instance().set("access_token", acct.accessToken);
+        Config::instance().set("user_id", acct.userId);
+        Config::instance().set("device_id", acct.deviceId);
+        Config::instance().save();
+        std::string e2ee_note = pcore::bootstrap();
+        if (json_out) {
+            nlohmann::json j; j["user_id"] = acct.userId; j["device_id"] = acct.deviceId;
+            j["homeserver"] = acct.homeserverUrl; j["e2ee"] = e2ee_note.empty();
+            std::cout << j.dump() << std::endl;
+        } else {
+            std::cout << "Logged in as " << acct.userId << " (device " << acct.deviceId << ")" << std::endl;
+            if (!e2ee_note.empty()) std::cout << "Warning: " << e2ee_note << std::endl;
+            else std::cout << "E2EE ready — device keys uploaded." << std::endl;
+        }
+        return 0;
+    }
+
     // Password login via the vendored desktop core (lib/ecore).
     auto token_it = args.options.find("token");
     auto reg_it = args.options.find("register");
@@ -431,15 +503,16 @@ int cmdServe(const matrixcli::cli::Args& args) {
     matrix::Client client;
     client.setHomeserverURL(homeserver);
     // Route the legacy client through the same proxy as the core (if set).
-    if (Config::instance().get("proxy_enabled") == "true") {
+    extern bool activeProxyConfig(progressive::desktop::ProxyConfig* out);
+    progressive::desktop::ProxyConfig activeProxy;
+    if (activeProxyConfig(&activeProxy)) {
         http::ProxyConfig legacyProxy;
-        legacyProxy.host = Config::instance().get("proxy_host");
-        legacyProxy.port = std::stoi(Config::instance().get("proxy_port").empty()
-                                         ? "0" : Config::instance().get("proxy_port"));
-        std::string ptype = Config::instance().get("proxy_type");
-        legacyProxy.type = (ptype == "http") ? http::ProxyType::HTTP : http::ProxyType::SOCKS5;
-        legacyProxy.username = Config::instance().get("proxy_user");
-        legacyProxy.password = Config::instance().get("proxy_pass");
+        legacyProxy.host = activeProxy.host;
+        legacyProxy.port = activeProxy.port;
+        legacyProxy.type = (activeProxy.type == progressive::desktop::ProxyConfig::Type::Http)
+                               ? http::ProxyType::HTTP : http::ProxyType::SOCKS5;
+        legacyProxy.username = activeProxy.username;
+        legacyProxy.password = activeProxy.password;
         client.setProxy(legacyProxy);
     }
 

@@ -120,8 +120,8 @@ static void test_jsonUnescape_ascii() {
 }
 
 static void test_jsonUnescape_unicode() {
-    auto r = jsonUnescape("\\u0440\\u0443\\u0441");
-    CHECK(r == "рус", "jsonUnescape Cyrillic (рус)");
+    auto r = jsonUnescape("\\u0063\\u0061\\u0066\\u00e9");
+    CHECK(r == "café", "jsonUnescape Unicode (café)");
 }
 
 static void test_extractJsonString_basic() {

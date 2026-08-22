@@ -96,30 +96,31 @@ void printUsage(const Args& args) {
     const std::string usage = fmt ? std::string(ANSI_BOLD) + ANSI_YELLOW : "";
     const std::string bold = fmt ? std::string(ANSI_BOLD) : "";
     const std::string dim = fmt ? std::string(ANSI_DIM) : "";
+    const std::string demoCol = fmt ? std::string(ANSI_BOLD) + "\033[37m" : "";
     const std::string rst = fmt ? "\033[0m" : "";
 
     std::cout << head << "progressive-cli - the Matrix chat client and coding agent, designed to work in the terminal" << rst << "\n\n"
               << usage << "Usage: progressive-cli [command] [options]" << rst << "\n\n";
 
     std::cout << bold << "The Matrix client" << rst << "\n"
-              << "  accounts      Logged-in accounts: accounts [--all] [--json] | --hide <mxid> | --show <mxid>\n"
+              << "  " << demoCol << "accounts" << rst << "      Logged-in accounts: accounts [--all] [--json] | --hide <mxid> | --show <mxid>\n"
               << "  attach        Send a file: attach <room> <file> [--caption text]\n"
               << "  avatar        Set the room avatar\n"
-              << "  backup        Key backup: create/upload/restore/delete (--recovery-key)\n"
+              << "  " << demoCol << "backup" << rst << "        Key backup: create/upload/restore/delete (--recovery-key)\n"
               << "  call          VoIP signaling: call <@user> | answer <id> | hangup <id> | status | wait\n"
               << "  crosssign     Cross-signing: setup/reset (--password for UIA)\n"
-              << "  demo          Offline demo: the REPL | --cli one-shot | --ui [--static] the ASCII interface | demo <room> info|view\n"
+              << "  demo          Offline demo: the REPL | --cli one-shot | --ui [--static] the ASCII interface | demo <room> [info|view|power] — showcase a room | demo " << demoCol << "markdown" << rst << "|" << demoCol << "vote" << rst << "|" << demoCol << "accounts" << rst << "|" << demoCol << "edit" << rst << "|" << demoCol << "report" << rst << "|" << demoCol << "members" << rst << "|" << demoCol << "typing" << rst << "|" << demoCol << "topic" << rst << "|" << demoCol << "threads" << rst << "|" << demoCol << "config" << rst << "|" << demoCol << "backup" << rst << "\n"
               << "  devices       Delete a device: devices delete <id> --password <pw>\n"
               << "  e2ee          E2EE status and the key management (status/upload/fallback)\n"
-              << "  edit          Edit a message\n"
+              << "  " << demoCol << "edit" << rst << "          Edit a message\n"
               << "  filter        Permanent view filters: --senders @u [--room X] | --hide @u [--room X] | status | clear\n"
               << "  info          Show the room info\n"
               << "  invite        Invite a user: invite <room> <@user> [--reason r]\n"
               << "  kick/ban/unban  The moderator actions: kick|ban|unban <room> <@user> [--reason r]\n"
-              << "  report        Report a message to the homeserver admin: report <room> <event_id> [--reason r] [--score N]\n"
+              << "  " << demoCol << "report" << rst << "        Report a message to the homeserver admin: report <room> <event_id> [--reason r] [--score N]\n"
               << "  knock         Knock on a room\n"
-              << "  markdown      Render markdown to HTML: markdown <text> | echo <text> | progressive-cli markdown\n"
-              << "  members       The room members: members <room>\n"
+              << "  " << demoCol << "markdown" << rst << "      Render markdown to HTML: markdown <text> | echo <text> | progressive-cli markdown\n"
+              << "  " << demoCol << "members" << rst << "       The room members: members <room>\n"
               << "  power         Room power levels / permissions: power <room>\n"
               << "  notifications Notification settings: notifications (on|off)\n"
               << "  notify        Native desktop notification (KDE Plasma etc): notify test [text] | notify last | notify on|off | notify daemon [--port N] | notify host <ip[:port]>|off\n"
@@ -137,16 +138,16 @@ void printUsage(const Args& args) {
               << "  ssss          The secret storage: upload/retrieve (--recovery-key)\n"
               << "  status        Show the login status and the sync token\n"
               << "  sync          One-shot sync into the offline cache\n"
-              << "  threads       The room threads: threads <room> [--limit N]\n"
-              << "  topic         Set the room topic\n"
+              << "  " << demoCol << "threads" << rst << "       The room threads: threads <room> [--limit N]\n"
+              << "  " << demoCol << "topic" << rst << "         Set the room topic\n"
               << "  tui           Launch the terminal UI (the optional add-on)\n"
-              << "  typing        Who is typing: typing <room>\n"
+              << "  " << demoCol << "typing" << rst << "        Who is typing: typing <room>\n"
               << "  ui            The ASCII-drawn client (rooms | chat | members)\n"
               << "  spaces        The spaces in the cache: spaces [--json] (the ui also has 'space <name>' to filter the room list)\n"
               << "  verify        SAS-verify a device: verify <user> --device <id> [--confirm]\n"
               << "  verify-wait   Accept an incoming SAS request: verify-wait [--confirm] [--timeout s]\n"
               << "  view          View the room messages (offline, the cache): view <room> [limit] [--senders @u] [--hide @u]\n"
-              << "  vote          Vote in a poll\n\n";
+              << "  " << demoCol << "vote" << rst << "          Vote in a poll\n\n";
 
     std::cout << bold << "The LLM and the agents" << rst << "\n"
               << "  llm           The LLM completion / the conversations: llm <prompt> | llm chat | llm continue | llm sessions | llm resume <N>\n"
@@ -155,7 +156,7 @@ void printUsage(const Args& args) {
 
     std::cout << bold << "The setup and the infrastructure" << rst << "\n"
               << "  completion    Generate the shell completion (bash/zsh/fish)\n"
-              << "  config        Show/edit the client config\n"
+              << "  " << demoCol << "config" << rst << "        Show/edit the client config\n"
               << "  help          Show this help\n"
               << "  login         Login to a Matrix homeserver\n"
               << "  proxy         The Tor/I2P proxy: on|off|status (--host --port [--type socks5h|socks5|http])\n"
