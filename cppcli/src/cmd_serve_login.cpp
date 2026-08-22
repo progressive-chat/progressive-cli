@@ -26,6 +26,7 @@
 #include "ascii_ui.hpp"
 #include "core/crash_handler.hpp"
 #include "server/server.hpp"
+#include "server/ttys.hpp"
 #include "../lib/matrix/client.hpp"
 #include "../lib/tdlib/tdlib_bridge.hpp"
 #include "../lib/irc/irc_client.hpp"
@@ -55,6 +56,45 @@ int cmdServe(const matrixcli::cli::Args& args) {
     if (port_it == args.options.end()) port_it = args.options.find("p");
     if (port_it != args.options.end()) {
         port = std::stoi(port_it->second);
+    }
+
+    // serve --ttys: remote ASCII-UI mode. The server holds RAM-only sessions
+    // (account arrives in every request; nothing is persisted on the serve
+    // side) and replies with the same ASCII frames the local CLI draws.
+    // --bind ADDR restricts the listeners (default 127.0.0.1); --token X
+    // requires X in the Authorization header on every request.
+    if (args.options.contains("ttys")) {
+        std::string bindAddr = "127.0.0.1";
+        if (args.options.count("bind")) bindAddr = args.options.at("bind");
+        server::TtysApi ttys;
+        ttys.setToken(args.options.count("token") ? args.options.at("token") : "");
+        // --sync auto|once|off: the default sync behaviour for sessions (the
+        // client can override per request). Default: manual (off).
+        if (args.options.count("sync"))
+            ttys.setDefaultSync(args.options.at("sync"));
+        // --cache FILE: persist the session cache on disk; default ":memory:".
+        if (args.options.count("cache"))
+            ttys.setPersistCachePath(args.options.at("cache"));
+        api::Server api_server(port, bindAddr);
+        api::Router router;
+        ttys.registerRoutes(router);
+        router.apply(api_server);
+        try {
+            api_server.start();
+        } catch (const std::exception& e) {
+            std::cerr << "Error: " << e.what() << std::endl;
+            std::cerr << "  Is the port already in use? Try a different one:"
+                      << " progressive-cli serve --ttys --port <other>" << std::endl;
+            return 1;
+        }
+        std::cout << "ttys server running on http://" << bindAddr << ":" << port
+                  << " (sessions: " << ttys.activeSessionCount() << ")" << std::endl;
+        std::cout << "Press Ctrl+C to stop" << std::endl;
+        while (g_running.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+        api_server.stop();
+        return 0;
     }
 
     Config::instance().load("config.json");

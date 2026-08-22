@@ -5,6 +5,7 @@
 #include "../util/string_utils.hpp"
 
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <unistd.h>
 #include <cstring>
 #include <sstream>
@@ -12,7 +13,8 @@
 
 namespace matrixcli { namespace api {
 
-Server::Server(int port) : _port(port) {}
+Server::Server(int port, const std::string& bindAddr)
+    : _port(port), _bindAddr(bindAddr) {}
 
 Server::~Server() { stop(); }
 
@@ -34,7 +36,8 @@ void Server::start() {
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_addr.s_addr = _bindAddr.empty() || _bindAddr == "0.0.0.0"
+                              ? INADDR_ANY : inet_addr(_bindAddr.c_str());
     addr.sin_port = htons(_port);
 
     if (bind(_server_sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {

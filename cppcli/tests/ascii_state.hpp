@@ -107,6 +107,10 @@ struct UiState {
     std::vector<Notification> notifications;   // corner list (newest first)
     bool showNotifications = true;             // the corner list on/off
     bool showRoomInviteMark = true;            // the "📨 (invited …)" room-list hint
+    // Remote render (serve --ttys): the client's terminal size, set from the
+    // request. 0 = use the process's own terminal (the local CLI path).
+    int termW = 0;                             // request-supplied columns
+    int termH = 0;                             // request-supplied rows
 };
 
 // The rendering + the state helpers (defined in ascii_ui.cpp).

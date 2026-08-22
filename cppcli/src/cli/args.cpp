@@ -147,8 +147,8 @@ void printUsage(const Args& args) {
               << "  verify        SAS-verify a device: verify <user> --device <id> [--confirm]\n"
               << "  verify-wait   Accept an incoming SAS request: verify-wait [--confirm] [--timeout s]\n"
               << "  view          View the room messages (offline, the cache): view <room> [limit] [--senders @u] [--hide @u]\n"
-              << "  link          Room event permalink: link <room> [last|first|N|-N] [--via N] [--copy] [--clip] [--domain D] (no args: last active room; config 'link_domain' sets the domain)\n"
-              << "  permalink      Alias of link (room event permalink): permalink <room> [last|first|N|-N] [--via N] [--copy] [--clip] [--domain D] (no args: last active room; config 'link_domain' sets the domain)\n"
+              << "  link          Room event permalink: link <room> [last|first|N|-N] [--via N] [--copy] [--clip] [--domain D] (no args: last active room; config 'link_domain'; 'link_via'=0 all; 'fit_link_to_terminal'=on)\n"
+              << "  permalink      Alias of link (room event permalink): permalink <room> [last|first|N|-N] [--via N] [--copy] [--clip] [--domain D] (no args: last active room; config 'link_domain'; 'link_via'=0 all; 'fit_link_to_terminal'=on)\n"
               << "  " << demoCol << "vote" << rst << "          Vote in a poll\n\n";
 
     std::cout << bold << "The LLM and the agents" << rst << "\n"
@@ -162,8 +162,9 @@ void printUsage(const Args& args) {
               << "  help          Show this help\n"
               << "  login         Login to a Matrix homeserver\n"
               << "  proxy         The Tor/I2P proxy: on|off|status (--host --port [--type socks5h|socks5|http])\n"
-              << "  serve         Start the built-in HTTP API server\n"
-              << "  setup         The interactive setup wizard\n\n";
+               << "  serve         Start the built-in HTTP API server\n"
+               << "  ttys          Thin client for 'serve --ttys': remote ASCII UI\n"
+               << "  setup         The interactive setup wizard\n\n";
 
     std::cout << bold << "The bridges (experimental)" << rst << "\n"
               << "  dc            The DeltaChat bridge\n"
@@ -190,7 +191,10 @@ void printUsage(const Args& args) {
               << "  progressive-cli send \"#general:matrix.org\" \"Hello from CLI!\"\n"
               << "  progressive-cli llm \"explain this code\" --rich\n"
               << "  progressive-cli demo                        # the interactive demo session\n"
-              << "  progressive-cli serve --port=29325\n"
+               << "  progressive-cli serve --port=29325\n"
+               << "  progressive-cli serve --ttys --port=29325 [--sync auto] [--cache f] [--bind ip] [--token t]\n"
+               << "                                        # remote ASCII UI server; sessions in RAM by default\n"
+               << "  progressive-cli ttys --host H --port 29325 [--token t]  # thin client (any user)\n"
               << "\n"
               << "The detailed flags: progressive-cli <command> --help\n"
               << dim << "The formatting is on only when attached to a terminal;"

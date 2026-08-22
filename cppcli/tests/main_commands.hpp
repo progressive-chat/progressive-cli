@@ -21,4 +21,5 @@ int cmdDcBridge(const matrixcli::cli::Args& args);
 
 namespace matrixcli {
 int cmdAttachFile(const cli::Args& args);
+int cmdTtys(const cli::Args& args);
 }

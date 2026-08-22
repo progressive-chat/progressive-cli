@@ -5,6 +5,9 @@
 #include "../lib/database/db.hpp"
 #include "../lib/matrix/client.hpp"
 #include "../lib/util/string_utils.hpp"
+#include <cstdlib>
+#include <sys/ioctl.h>
+#include <unistd.h>
 
 namespace matrixcli {
 std::string roomLastMsg(db::Database* db, const std::string& roomId,
@@ -168,10 +171,12 @@ std::string resolveSpace(const std::vector<nlohmann::json>& rooms,
     }
     return "";
 }
-std::string viaSuffix(db::Database* db, const std::string& roomId, int limit) {
-    if (!db || roomId.empty()) return "";
-    auto evs = db->getEvents(roomId, 500);
+// All distinct federated server domains (sender domains) seen in a room's
+// cache. Ordered by first appearance. Used by via* helpers below.
+std::vector<std::string> viaServers(db::Database* db, const std::string& roomId) {
     std::vector<std::string> servers;
+    if (!db || roomId.empty()) return servers;
+    auto evs = db->getEvents(roomId, 500);
     for (const auto& ev : evs) {
         std::string s = ev.sender;
         auto colon = s.find(':');
@@ -184,6 +189,11 @@ std::string viaSuffix(db::Database* db, const std::string& roomId, int limit) {
         }
         if (!seen) servers.push_back(domain);
     }
+    return servers;
+}
+
+std::string viaSuffix(db::Database* db, const std::string& roomId, int limit) {
+    auto servers = viaServers(db, roomId);
     if (servers.empty()) return "";
     std::string out;
     int n = (limit <= 0) ? static_cast<int>(servers.size())
@@ -196,21 +206,21 @@ std::string viaSuffix(db::Database* db, const std::string& roomId, int limit) {
 }
 
 int viaServerCount(db::Database* db, const std::string& roomId) {
-    if (!db || roomId.empty()) return 0;
-    auto evs = db->getEvents(roomId, 500);
-    std::vector<std::string> servers;
-    for (const auto& ev : evs) {
-        std::string s = ev.sender;
-        auto colon = s.find(':');
-        if (colon == std::string::npos) continue;
-        std::string domain = s.substr(colon + 1);
-        if (domain.empty()) continue;
-        bool seen = false;
-        for (const auto& sv : servers) {
-            if (sv == domain) { seen = true; break; }
-        }
-        if (!seen) servers.push_back(domain);
+    return static_cast<int>(viaServers(db, roomId).size());
+}
+
+// Terminal width in columns (used to keep a permalink on one line).
+int terminalColumns() {
+#if defined(TIOCGWINSZ)
+    struct winsize ws;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0)
+        return static_cast<int>(ws.ws_col);
+#endif
+    const char* env = std::getenv("COLUMNS");
+    if (env) {
+        int col = std::atoi(env);
+        if (col > 0) return col;
     }
-    return static_cast<int>(servers.size());
+    return 100; // safe fallback
 }
 } // namespace matrixcli

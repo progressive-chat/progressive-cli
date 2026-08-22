@@ -2,6 +2,7 @@ set(SOURCES
     main.cpp
     main_commands.hpp
     cmd_serve_login.cpp
+    cmd_ttys_client.cpp
     cmd_status.cpp
     cmd_view_attach.cpp
     cmd_bridges.cpp
@@ -51,6 +52,8 @@ set(SOURCES
     media_send.cpp
     cli/args.cpp
     server/server.cpp
+    server/ttys.cpp
+    server/ttys.hpp
     server/web_proxy.cpp
 )
 

@@ -78,9 +78,15 @@ std::vector<std::string> roomThreadList(db::Database* db,
 std::string resolveSpace(const std::vector<nlohmann::json>& rooms,
                          const std::string& query);
 std::string viaSuffix(db::Database* db, const std::string& roomId, int limit);
-// Total number of distinct federated servers (sender domains) seen in a room's
-// cache — i.e. the maximum value --via can usefully be set to.
+// Distinct federated server domains (sender domains) seen in a room's cache,
+// ordered by first appearance.
+std::vector<std::string> viaServers(db::Database* db, const std::string& roomId);
+// Total number of those servers — i.e. the maximum value --via can usefully
+// be set to.
 int viaServerCount(db::Database* db, const std::string& roomId);
+// Terminal width in columns (for permalink fitting); falls back to COLUMNS
+// env, then 100.
+int terminalColumns();
 std::string displayName(const UiState& st, const std::string& roomId,
                         const std::string& sender);
 std::string chatName(const UiState& st, const std::string& roomId,

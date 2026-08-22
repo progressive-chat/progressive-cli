@@ -37,7 +37,7 @@ using Handler = std::function<Response(const Request&)>;
 
 class Server {
 public:
-    explicit Server(int port = 8080);
+    explicit Server(int port = 8080, const std::string& bindAddr = "0.0.0.0");
     ~Server();
 
     Server(const Server&) = delete;
@@ -57,6 +57,7 @@ private:
                         std::map<std::string, std::string>& pathParams);
 
     int _port;
+    std::string _bindAddr;
     int _server_sock = -1;
     std::atomic<bool> _running{false};
     std::unique_ptr<std::thread> _thread;

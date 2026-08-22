@@ -49,7 +49,7 @@
 
 namespace matrixcli {
 std::string drawFrameImpl(const UiState& st) {
-    int W = terminalWidthImpl();
+    int W = st.termW > 0 ? st.termW : terminalWidthImpl();
     // Few members: the user list goes horizontal (one row across the top
     // of the chat) and the right panel is freed - auto mode, or forced.
     bool horizMembers = !st.mobile && st.rightPanel == 0 &&
@@ -322,6 +322,7 @@ std::string drawFrameImpl(const UiState& st) {
         rows = static_cast<int>(ws.ws_row) - 5;
     }
 #endif
+    if (st.termH > 0) rows = std::max(1, st.termH - 5);
     if (st.limitRows > 0) rows = st.limitRows;
 
     // Room filter (find <q> / space <q>): the left panel shows only the
