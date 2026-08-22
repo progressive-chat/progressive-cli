@@ -579,6 +579,39 @@ int asciiReplDispatchB(UiState& st, db::Database& dbi, const cli::Args& a) {
                       << panelRuleText(parsePanelRule(st.ruleRight))
                       << "  (panel rule <left|center|right> "
                          "<min N|max N|N%|off>)" << std::endl;
+            // The ASCII schematic of the computed split (true to scale:
+            // one '-' per column).
+            if (st.mobile) {
+                std::cout << "schematic: smartphone layout — the panels are "
+                             "stacked, each " << W << " columns wide"
+                          << std::endl;
+            } else {
+                auto centered = [](const std::string& t, int w) {
+                    if (w <= 0) return std::string();
+                    if (static_cast<int>(t.size()) > w)
+                        return t.substr(0, static_cast<size_t>(w));
+                    int pad = (w - static_cast<int>(t.size())) / 2;
+                    return std::string(static_cast<size_t>(pad), ' ') + t
+                         + std::string(static_cast<size_t>(w) - t.size()
+                                       - static_cast<size_t>(pad), ' ');
+                };
+                std::vector<std::pair<std::string, int>> segs;
+                if (L.leftW > 0)
+                    segs.push_back({"left " + std::to_string(L.leftW),
+                                    L.leftW});
+                segs.push_back({"center " + std::to_string(L.centerW),
+                                L.centerW});
+                if (L.rightW > 0)
+                    segs.push_back({"right " + std::to_string(L.rightW),
+                                    L.rightW});
+                std::string border = "+", mid = "|";
+                for (const auto& s : segs) {
+                    border += repeat('-', static_cast<size_t>(s.second)) + "+";
+                    mid += centered(s.first, s.second) + "|";
+                }
+                std::cout << "schematic:\n" << border << "\n" << mid << "\n"
+                          << border << std::endl;
+            }
             return 1;
         }
         // ---- panel rule <left|center|right> <min N|max N|N%|off> ----
