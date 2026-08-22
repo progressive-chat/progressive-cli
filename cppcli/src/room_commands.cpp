@@ -750,6 +750,8 @@ void registerRoomCommands() {
     auto& reg = CommandRegistry::instance();
     reg.registerCli("link", cmdLink,
                     "Room event permalink: link <room> [last|first|N|-N] [--via N]");
+    reg.registerCli("permalink", cmdLink,
+                    "Room event permalink (alias of link): permalink <room> [last|first|N|-N] [--via N]");
     reg.registerCli("sync", cmdSync, "One-shot sync into the offline cache");
     reg.registerCli("devices", cmdDevices, "Device management: devices delete <id> --password <pw>");
     reg.registerCli("kick", cmdModerate, "Kick a user: kick <room> <@user> [--reason r]");

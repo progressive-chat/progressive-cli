@@ -148,6 +148,7 @@ void printUsage(const Args& args) {
               << "  verify-wait   Accept an incoming SAS request: verify-wait [--confirm] [--timeout s]\n"
               << "  view          View the room messages (offline, the cache): view <room> [limit] [--senders @u] [--hide @u]\n"
               << "  link          Room event permalink: link <room> [last|first|N|-N] [--via N]\n"
+              << "  permalink      Alias of link (room event permalink): permalink <room> [last|first|N|-N] [--via N]\n"
               << "  " << demoCol << "vote" << rst << "          Vote in a poll\n\n";
 
     std::cout << bold << "The LLM and the agents" << rst << "\n"
