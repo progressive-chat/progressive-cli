@@ -118,13 +118,23 @@ int asciiReplDispatchE(UiState& st, db::Database& dbi, const cli::Args& a) {
             std::cout << drawFrameImpl(st) << std::flush;
             return 1;
         }
-        // ---- permalink <room> <event_id>: the matrix.to link with via ----
-replyRef:        if (a.command == "permalink") {
-            if (a.positional.size() < 2) {
-                std::cout << "Usage: permalink <room> <event_id>" << std::endl;
+        // ---- permalink [room] <ref>: the matrix.to link with via. <ref> is
+        // an event_id, or "last"/"first", or a 1-based index from the start
+        // ("1" = first known, "5"), or "-N" = Nth from the end ("-1" = last).
+        // When only <ref> is given, the current room is used. ----
+ replyRef:        if (a.command == "permalink") {
+            std::string roomQ, ref;
+            if (a.positional.size() >= 2) {
+                roomQ = a.positional[0];
+                ref = a.positional[1];
+            } else if (a.positional.size() == 1 && !st.currentRoomId.empty()) {
+                roomQ = st.currentRoomId;
+                ref = a.positional[0];
+            } else {
+                std::cout << "Usage: permalink [room] <event_id|last|first|N|-N>"
+                          << std::endl;
                 return 1;
             }
-            std::string roomQ = a.positional[0];
             std::string roomId = roomQ;
             for (const auto& r : st.rooms) {
                 std::string id = r.value("room_id", "");
@@ -135,8 +145,35 @@ replyRef:        if (a.command == "permalink") {
                 }
             }
             matrix::Event ev;
-            if (!dbi.getEventById(a.positional[1], ev)) {
-                std::cout << "Event not found in the cache." << std::endl;
+            bool found = false;
+            if (ref == "last") {
+                auto evs = dbi.getEvents(roomId, 500);
+                if (!evs.empty()) { ev = evs.front(); found = true; }
+            } else if (ref == "first") {
+                auto evs = dbi.getEvents(roomId, 100000);
+                if (!evs.empty()) { ev = evs.back(); found = true; }
+            } else if (!ref.empty() && ref[0] == '-') {
+                int n = 0;
+                try { n = -std::stoi(ref); } catch (...) { n = 0; }
+                if (n >= 1) {
+                    auto evs = dbi.getEvents(roomId, std::max(n, 500));
+                    if ((int)evs.size() >= n) { ev = evs[n - 1]; found = true; }
+                }
+            } else if (!ref.empty() && (ref[0] == '+' ||
+                                        (ref[0] >= '0' && ref[0] <= '9'))) {
+                long n = 0;
+                try { n = (ref[0] == '+') ? std::stol(ref.substr(1)) : std::stol(ref); }
+                catch (...) { n = 0; }
+                if (n >= 1) {
+                    auto evs = dbi.getEvents(roomId, 100000);
+                    if ((int)evs.size() >= n) { ev = evs[evs.size() - n]; found = true; }
+                }
+            } else {
+                found = dbi.getEventById(ref, ev);
+            }
+            if (!found) {
+                std::cout << "Event not found in the cache for ref '" << ref << "'."
+                          << std::endl;
                 return 1;
             }
             std::cout << "https://matrix.to/#/" << roomId << "/" << ev.event_id
