@@ -22,6 +22,7 @@ set(SOURCES
     room_commands.cpp
     matrix_commands.cpp
     agent_commands.cpp
+    agent_commands_llm.cpp
     agent_tools_file.cpp
     agent_tools_proc.cpp
     agent_tools_llm.cpp
