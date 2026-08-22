@@ -20,6 +20,7 @@ set(SOURCES
     pcore.cpp
     e2ee_commands.cpp
     room_commands.cpp
+    room_commands_discovery.cpp
     matrix_commands.cpp
     agent_commands.cpp
     agent_commands_llm.cpp
