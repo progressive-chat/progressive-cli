@@ -109,9 +109,42 @@ int cmdThirdparty(const cli::Args& args) {
 
 int cmdLink(const cli::Args& args) {
     if (args.positional.empty()) {
-        std::cerr << "Usage: progressive-cli link <room> [ref|last|first|N|-N] "
-                     "[--last] [--first] [--n N] [--from-end N] [--event $id] [--via N]\n";
-        return 1;
+        // No room given: default to the most recently active room (the one
+        // whose last message is newest) and link its latest event, then
+        // remind the user of the other forms.
+        db::Database dbi;
+        if (!dbi.open("matrixcli.db")) {
+            std::cerr << "Cannot open database (matrixcli.db)\n";
+            return 1;
+        }
+        auto rooms = dbi.listRooms();
+        std::string bestRoom, bestEvent;
+        long long bestTs = -1;
+        for (const auto& r : rooms) {
+            std::string rid = r.value("room_id", "");
+            if (rid.empty()) continue;
+            auto evs = dbi.getEvents(rid, 1);
+            if (!evs.empty() && evs.front().origin_server_ts > bestTs) {
+                bestTs = evs.front().origin_server_ts;
+                bestRoom = rid;
+                bestEvent = evs.front().event_id;
+            }
+        }
+        if (bestRoom.empty()) {
+            std::cerr << "No rooms with messages in the cache.\n";
+            std::cerr << "Usage: progressive-cli link <room> [last|first|N|-N] "
+                         "[--last] [--first] [--n N] [--from-end N] [--event $id] [--via N]\n";
+            return 1;
+        }
+        std::string name = bestRoom;
+        for (const auto& r : rooms)
+            if (r.value("room_id", "") == bestRoom) { name = r.value("name", bestRoom); break; }
+        std::cout << "Last active room: " << name << "\n";
+        std::cout << "https://matrix.to/#/" << bestRoom << "/" << bestEvent
+                  << viaSuffix(&dbi, bestRoom, 3) << "\n";
+        std::cout << "Other forms: link <room> [last|first|N|-N] [--via N] "
+                     "(permalink is an alias; --event $id for a specific event)\n";
+        return 0;
     }
     std::string roomQ = args.positional[0];
     std::string ref;
