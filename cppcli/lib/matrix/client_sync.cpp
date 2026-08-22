@@ -152,6 +152,70 @@ std::string Client::uploadMedia(const std::string& file_path,
     return j["content_uri"].get<std::string>();
 }
 
+std::string Client::uploadMediaChunked(const std::vector<uint8_t>& data,
+                                       const std::string& filename,
+                                       const std::string& content_type,
+                                       int chunkCount) {
+    const int64_t total = static_cast<int64_t>(data.size());
+    if (total <= 0) throw std::runtime_error("uploadMedia: empty data");
+    std::string ct = content_type.empty() ? "application/octet-stream" : content_type;
+
+    struct ChunkResult { std::string uploadId; std::string mxc; };
+    auto postChunk = [&](int64_t start, int64_t endExcl,
+                         const std::string& uploadId) -> ChunkResult {
+        std::ostringstream url;
+        url << impl->homeserver_url << "/_matrix/media/v3/upload";
+        if (!filename.empty() && uploadId.empty())
+            url << "?filename=" << http::urlEncode(filename);
+        if (!uploadId.empty()) {
+            if (filename.empty()) url << "?";
+            else url << "&";
+            url << "uploadId=" << http::urlEncode(uploadId);
+        }
+        std::map<std::string, std::string> headers;
+        headers["Content-Type"] = ct;
+        if (!impl->creds.access_token.empty())
+            headers["Authorization"] = "Bearer " + impl->creds.access_token;
+        headers["Content-Range"] = "bytes " + std::to_string(start) + "-" +
+                                    std::to_string(endExcl - 1) + "/" +
+                                    std::to_string(total);
+        std::string body(reinterpret_cast<const char*>(data.data() + start),
+                         static_cast<size_t>(endExcl - start));
+        auto resp = impl->http.post(url.str(), body, headers);
+        if (!resp.ok())
+            throw std::runtime_error("upload chunk failed: HTTP " +
+                                     std::to_string(resp.status_code));
+        auto j = json::parse(resp.body);
+        ChunkResult r;
+        if (j.contains("upload_id")) r.uploadId = j["upload_id"].get<std::string>();
+        else if (j.contains("uploadId")) r.uploadId = j["uploadId"].get<std::string>();
+        if (j.contains("content_uri")) r.mxc = j["content_uri"].get<std::string>();
+        return r;
+    };
+
+    if (chunkCount <= 1) {
+        ChunkResult r = postChunk(0, total, "");
+        if (r.mxc.empty())
+            throw std::runtime_error("upload: no content_uri in response");
+        return r.mxc;
+    }
+    int64_t per = (total + static_cast<int64_t>(chunkCount) - 1) /
+                  static_cast<int64_t>(chunkCount);  // ceil
+    std::string uploadId;
+    for (int i = 0; i < chunkCount; ++i) {
+        int64_t start = i * per;
+        int64_t endExcl = std::min(start + per, total);
+        if (start >= endExcl) break;
+        ChunkResult r = postChunk(start, endExcl, uploadId);
+        if (!r.uploadId.empty()) uploadId = r.uploadId;
+        if (!r.mxc.empty()) return r.mxc;
+    }
+    if (!uploadId.empty())
+        throw std::runtime_error(
+            "upload: server returned no content_uri after all chunks");
+    throw std::runtime_error("upload: no content_uri in response");
+}
+
 SyncResponse Client::syncOnce(const std::string& filter,
                                const std::string& since,
                                int timeout_ms) {

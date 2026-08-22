@@ -309,6 +309,13 @@ public:
     // Media
     std::string uploadMedia(const std::string& file_path,
                             const std::string& content_type = "");
+    // Resumable chunked upload (MSC2877): splits data into chunkCount pieces,
+    // each POSTed to /_matrix/media/v3/upload with a Content-Range header.
+    // chunkCount <= 1 performs a single-shot upload. Throws on error.
+    std::string uploadMediaChunked(const std::vector<uint8_t>& data,
+                                   const std::string& filename,
+                                   const std::string& content_type,
+                                   int chunkCount);
 
     // Utility
     bool isLoggedIn() const;

@@ -104,7 +104,7 @@ void printUsage(const Args& args) {
 
     std::cout << bold << "The Matrix client" << rst << "\n"
               << "  " << demoCol << "accounts" << rst << "      Logged-in accounts: accounts [--all] [--json] | --hide <mxid> | --show <mxid>\n"
-              << "  attach        Send a file: attach <room> <file> [--caption text]\n"
+              << "  attach        Send a file: attach <room> <file> [--caption text] [--chunks N]\n"
               << "  avatar        Set the room avatar\n"
               << "  " << demoCol << "backup" << rst << "        Key backup: create/upload/restore/delete (--recovery-key)\n"
               << "  call          VoIP signaling: call <@user> | answer <id> | hangup <id> | status | wait\n"

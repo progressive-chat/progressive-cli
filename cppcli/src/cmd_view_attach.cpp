@@ -419,13 +419,17 @@ int cmdView(const matrixcli::cli::Args& args) {
 int cmdAttachFile(const cli::Args& args) {
     using namespace matrixcli;
     if (args.positional.size() < 2) {
-        std::cerr << "Usage: progressive-cli attach <room> <file> [--caption text] [--thread event_id]" << std::endl;
+        std::cerr << "Usage: progressive-cli attach <room> <file> [--caption text] [--thread event_id] [--chunks N]" << std::endl;
         return 1;
     }
     std::string query = args.positional[0];
     std::string path = args.positional[1];
     std::string caption = args.options.count("caption") ? args.options.at("caption") : "";
     std::string thread_root = args.options.count("thread") ? args.options.at("thread") : "";
+    int chunks = 0;
+    if (args.options.count("chunks")) {
+        try { chunks = std::stoi(args.options.at("chunks")); } catch (...) {}
+    }
 
     // Read the file.
     std::ifstream fin(path, std::ios::binary);
@@ -524,13 +528,37 @@ int cmdAttachFile(const cli::Args& args) {
         progressDone = true;
     };
 
-    auto up = client->uploadMedia(bytes, fn, ct);
+    auto doUpload = [&](const std::vector<uint8_t>& d) -> std::string {
+        if (chunks > 1) {
+            matrix::Client mclient;
+            {
+                db::Database dbi;
+                if (dbi.open("matrixcli.db")) {
+                    auto acc = dbi.loadAccount();
+                    if (acc.is_logged_in()) {
+                        mclient.setHomeserverURL(acc.homeserver_url);
+                        mclient.setAccessToken(acc.access_token);
+                        mclient.setUserId(acc.user_id);
+                    }
+                }
+            }
+            try {
+                return mclient.uploadMediaChunked(d, fn, ct, chunks);
+            } catch (const std::exception& e) {
+                std::cerr << "Chunked upload failed: " << e.what() << std::endl;
+                return "";
+            }
+        }
+        auto r = client->uploadMedia(d, fn, ct);
+        if (!r.ok) {
+            std::cerr << "Upload failed: " << r.error.message << std::endl;
+            return "";
+        }
+        return r.data;
+    };
+    std::string mxc = doUpload(bytes);
     finishProgress();
-    if (!up.ok) {
-        std::cerr << "Upload failed: " << up.error.message << std::endl;
-        return 1;
-    }
-    std::string mxc = up.data;
+    if (mxc.empty()) return 1;
 
     if (!encrypted) {
         std::string content = matrixcli::media::plainContent(
@@ -571,15 +599,15 @@ int cmdAttachFile(const cli::Args& args) {
                 if (pct >= 100) encDone = true;
             }
         });
-    auto upEnc = client->uploadMedia(encBytes, fn, ct);
+    mxc = doUpload(encBytes);
     if (!encDone) std::fprintf(stderr, "\n");
     progressive::desktop::setHttpProgressCallback({});
-    if (!upEnc.ok) {
-        std::cerr << "Upload failed: " << upEnc.error.message << std::endl;
+    if (mxc.empty()) {
+        std::cerr << "Upload failed." << std::endl;
         return 1;
     }
     std::string fbodyStr = matrixcli::media::encryptedContent(
-        mt, bodyName, fn, upEnc.data, encKey, encIv, encSha, ct, bytes.size(),
+        mt, bodyName, fn, mxc, encKey, encIv, encSha, ct, bytes.size(),
         imgW, imgH, hasImgDim, preset, thread_root);
     std::string inner = "{\"type\":\"m.room.message\",\"content\":" + fbodyStr +
                         ",\"room_id\":\"" + room_id + "\"}";
