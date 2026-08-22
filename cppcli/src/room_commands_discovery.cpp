@@ -212,9 +212,11 @@ int cmdLink(const cli::Args& args) {
         std::string name = bestRoom;
         for (const auto& r : rooms)
             if (r.value("room_id", "") == bestRoom) { name = r.value("name", bestRoom); break; }
+        int viaMax = viaServerCount(&dbi, bestRoom);
         std::cout << "Last active room: " << name << "\n";
         outputLink(linkBase + bestRoom + "/" + bestEvent +
                    viaSuffix(&dbi, bestRoom, 3));
+        std::cout << "Via servers available: " << viaMax << " (use --via N, max " << viaMax << ")\n";
         std::cout << "Other forms: link <room> [last|first|N|-N] [--via N] "
                      "(permalink is an alias; --event $id for a specific event; --copy/--clip)\n";
         return 0;
@@ -271,7 +273,9 @@ int cmdLink(const cli::Args& args) {
         std::cerr << "Event not found in the cache for ref '" << ref << "'.\n";
         return 1;
     }
+    int viaMax = viaServerCount(&dbi, roomId);
     outputLink(linkBase + roomId + "/" + ev.event_id +
                viaSuffix(&dbi, roomId, viaLimit));
+    std::cout << "Via servers available: " << viaMax << " (use --via N, max " << viaMax << ")\n";
     return 0;
 }

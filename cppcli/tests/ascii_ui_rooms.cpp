@@ -194,4 +194,23 @@ std::string viaSuffix(db::Database* db, const std::string& roomId, int limit) {
     }
     return out;
 }
+
+int viaServerCount(db::Database* db, const std::string& roomId) {
+    if (!db || roomId.empty()) return 0;
+    auto evs = db->getEvents(roomId, 500);
+    std::vector<std::string> servers;
+    for (const auto& ev : evs) {
+        std::string s = ev.sender;
+        auto colon = s.find(':');
+        if (colon == std::string::npos) continue;
+        std::string domain = s.substr(colon + 1);
+        if (domain.empty()) continue;
+        bool seen = false;
+        for (const auto& sv : servers) {
+            if (sv == domain) { seen = true; break; }
+        }
+        if (!seen) servers.push_back(domain);
+    }
+    return static_cast<int>(servers.size());
+}
 } // namespace matrixcli
