@@ -23,6 +23,7 @@
 #include <string>
 #include <thread>
 #include <unistd.h>
+#include <cstdio>
 
 using namespace matrixcli;
 // ---- Discovery / token / account-data inspection commands ----
@@ -107,8 +108,79 @@ int cmdThirdparty(const cli::Args& args) {
     return 0;
 }
 
+// Clipboard helpers: copy to / read from the system clipboard via the common
+// X11/Wayland/macOS utilities. Best-effort — returns false / "" if none is
+// installed (e.g. a headless box).
+static bool copyToClipboard(const std::string& text) {
+    const char* tools[] = {"wl-copy", "xclip -selection clipboard",
+                           "xsel --clipboard --input", "pbcopy", nullptr};
+    for (int i = 0; tools[i]; ++i) {
+        std::string cmd = std::string(tools[i]) + " 2>/dev/null";
+        FILE* p = popen(cmd.c_str(), "w");
+        if (!p) continue;
+        fwrite(text.data(), 1, text.size(), p);
+        if (pclose(p) == 0) return true;
+    }
+    return false;
+}
+
+static std::string readClipboard() {
+    const char* tools[] = {"wl-paste", "xclip -selection clipboard -o",
+                           "xsel --clipboard --output", "pbpaste", nullptr};
+    for (int i = 0; tools[i]; ++i) {
+        std::string cmd = std::string(tools[i]) + " 2>/dev/null";
+        FILE* p = popen(cmd.c_str(), "r");
+        if (!p) continue;
+        std::string out; char buf[1024]; size_t n;
+        while ((n = fread(buf, 1, sizeof(buf), p)) > 0) out.append(buf, n);
+        pclose(p);
+        while (!out.empty() && (out.back() == '\n' || out.back() == '\r' ||
+                                out.back() == ' ')) out.pop_back();
+        if (!out.empty()) return out;
+    }
+    return "";
+}
+
 int cmdLink(const cli::Args& args) {
-    if (args.positional.empty()) {
+    // Optional: take the room from the system clipboard (--clip).
+    std::string clipRoom;
+    if (args.options.count("clip")) {
+        clipRoom = readClipboard();
+        if (clipRoom.empty()) {
+            std::cerr << "Clipboard is empty or no clipboard tool available.\n";
+            return 1;
+        }
+    }
+
+    // Per-link domain (config link_domain, overridable with --domain). Defaults
+    // to matrix.to. Used to build the permalink base.
+    std::string linkDomain = "matrix.to";
+    {
+        Config::instance().load("config.json");
+        linkDomain = Config::instance().get("link_domain", "matrix.to");
+    }
+    if (args.options.count("domain")) linkDomain = args.options.at("domain");
+    std::string linkBase;
+    if (linkDomain.find("://") != std::string::npos) linkBase = linkDomain;
+    else linkBase = "https://" + linkDomain;
+    if (!linkBase.empty() && linkBase.back() != '/') linkBase += '/';
+    linkBase += "#/";
+
+    // Print the link, or copy it to the clipboard with --copy.
+    auto outputLink = [&](const std::string& link) {
+        if (args.options.count("copy")) {
+            if (copyToClipboard(link))
+                std::cout << "Copied to clipboard: " << link << "\n";
+            else {
+                std::cerr << "Clipboard tool not found; printing the link:\n";
+                std::cout << link << "\n";
+            }
+        } else {
+            std::cout << link << "\n";
+        }
+    };
+
+    if (args.positional.empty() && clipRoom.empty()) {
         // No room given: default to the most recently active room (the one
         // whose last message is newest) and link its latest event, then
         // remind the user of the other forms.
@@ -133,20 +205,22 @@ int cmdLink(const cli::Args& args) {
         if (bestRoom.empty()) {
             std::cerr << "No rooms with messages in the cache.\n";
             std::cerr << "Usage: progressive-cli link <room> [last|first|N|-N] "
-                         "[--last] [--first] [--n N] [--from-end N] [--event $id] [--via N]\n";
+                         "[--last] [--first] [--n N] [--from-end N] [--event $id] "
+                         "[--via N] [--copy] [--clip]\n";
             return 1;
         }
         std::string name = bestRoom;
         for (const auto& r : rooms)
             if (r.value("room_id", "") == bestRoom) { name = r.value("name", bestRoom); break; }
         std::cout << "Last active room: " << name << "\n";
-        std::cout << "https://matrix.to/#/" << bestRoom << "/" << bestEvent
-                  << viaSuffix(&dbi, bestRoom, 3) << "\n";
+        outputLink(linkBase + bestRoom + "/" + bestEvent +
+                   viaSuffix(&dbi, bestRoom, 3));
         std::cout << "Other forms: link <room> [last|first|N|-N] [--via N] "
-                     "(permalink is an alias; --event $id for a specific event)\n";
+                     "(permalink is an alias; --event $id for a specific event; --copy/--clip)\n";
         return 0;
     }
-    std::string roomQ = args.positional[0];
+
+    std::string roomQ = args.positional.empty() ? clipRoom : args.positional[0];
     std::string ref;
     bool hasFlag = false;
     if (args.options.count("last")) { ref = "last"; hasFlag = true; }
@@ -197,7 +271,7 @@ int cmdLink(const cli::Args& args) {
         std::cerr << "Event not found in the cache for ref '" << ref << "'.\n";
         return 1;
     }
-    std::cout << "https://matrix.to/#/" << roomId << "/" << ev.event_id
-              << viaSuffix(&dbi, roomId, viaLimit) << std::endl;
+    outputLink(linkBase + roomId + "/" + ev.event_id +
+               viaSuffix(&dbi, roomId, viaLimit));
     return 0;
 }

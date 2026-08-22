@@ -147,8 +147,8 @@ void printUsage(const Args& args) {
               << "  verify        SAS-verify a device: verify <user> --device <id> [--confirm]\n"
               << "  verify-wait   Accept an incoming SAS request: verify-wait [--confirm] [--timeout s]\n"
               << "  view          View the room messages (offline, the cache): view <room> [limit] [--senders @u] [--hide @u]\n"
-              << "  link          Room event permalink: link <room> [last|first|N|-N] [--via N] (no args: last active room)\n"
-              << "  permalink      Alias of link (room event permalink): permalink <room> [last|first|N|-N] [--via N] (no args: last active room)\n"
+              << "  link          Room event permalink: link <room> [last|first|N|-N] [--via N] [--copy] [--clip] [--domain D] (no args: last active room; config 'link_domain' sets the domain)\n"
+              << "  permalink      Alias of link (room event permalink): permalink <room> [last|first|N|-N] [--via N] [--copy] [--clip] [--domain D] (no args: last active room; config 'link_domain' sets the domain)\n"
               << "  " << demoCol << "vote" << rst << "          Vote in a poll\n\n";
 
     std::cout << bold << "The LLM and the agents" << rst << "\n"
