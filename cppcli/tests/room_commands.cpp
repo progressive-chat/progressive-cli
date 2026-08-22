@@ -610,7 +610,7 @@ int cmdDump(const cli::Args& args) {
     }
     if (args.positional.empty()) {
         std::cerr << "Usage: progressive-cli dump <room> [--format json|txt|html|md]"
-                     " [--out dir] [--limit N]\n"
+                     " [--out dir] [--limit N] [--parts N]\n"
                      "  The export reads the offline cache; the full server-side"
                      " pagination is the ASCII UI's 'dump --server'.\n";
         return 1;
@@ -621,6 +621,10 @@ int cmdDump(const cli::Args& args) {
     int limit = 0;
     if (args.options.count("limit")) {
         try { limit = std::stoi(args.options.at("limit")); } catch (...) {}
+    }
+    int parts = 0;
+    if (args.options.count("parts")) {
+        try { parts = std::stoi(args.options.at("parts")); } catch (...) {}
     }
     auto evs = dbi.getEvents(room, limit > 0 ? limit : 100000);
 
@@ -637,57 +641,85 @@ int cmdDump(const cli::Args& args) {
             ch = '_';
     }
     std::filesystem::create_directories(outDir);
-    const std::string path = outDir + "/" + fileBase + "." + fmt;
-
-    std::ofstream out(path, std::ios::trunc);
-    if (!out) {
-        std::cerr << "Cannot write " << path << std::endl;
-        return 1;
-    }
-    // The chronological order (the cache returns the newest first).
+    // The cache returns the newest first; reverse to chronological order.
     std::reverse(evs.begin(), evs.end());
 
-    if (fmt == "json") {
-        nlohmann::json arr = nlohmann::json::array();
-        for (const auto& ev : evs) {
-            arr.push_back({{"event_id", ev.event_id},
-                           {"sender", ev.sender},
-                           {"type", ev.type},
-                           {"origin_server_ts", ev.origin_server_ts},
-                           {"content", ev.content}});
+    // Render a contiguous slice of events in the requested format.
+    auto writeChunk = [&](std::ostream& out, const std::vector<matrix::Event>& chunk) {
+        if (fmt == "json") {
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& ev : chunk) {
+                arr.push_back({{"event_id", ev.event_id},
+                               {"sender", ev.sender},
+                               {"type", ev.type},
+                               {"origin_server_ts", ev.origin_server_ts},
+                               {"content", ev.content}});
+            }
+            out << arr.dump(2) << "\n";
+        } else if (fmt == "txt") {
+            for (const auto& ev : chunk) {
+                std::time_t t = ev.origin_server_ts / 1000;
+                char tbuf[24];
+                std::strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M",
+                              std::localtime(&t));
+                std::string sender = ev.sender;
+                const auto at = sender.find(':');
+                if (at != std::string::npos) sender = sender.substr(1, at - 1);
+                out << tbuf << "  " << sender << ": "
+                    << ev.content.value("body", "") << "\n";
+            }
+        } else if (fmt == "html") {
+            out << "<!DOCTYPE html>\n<html><body>\n<h1>" << name << "</h1>\n<ul>\n";
+            for (const auto& ev : chunk) {
+                out << "  <li><b>" << ev.sender << "</b>: "
+                    << ev.content.value("body", "") << "</li>\n";
+            }
+            out << "</ul>\n</body></html>\n";
+        } else {  // md
+            out << "# " << name << "\n\n";
+            for (const auto& ev : chunk) {
+                std::string sender = ev.sender;
+                const auto at = sender.find(':');
+                if (at != std::string::npos) sender = sender.substr(1, at - 1);
+                out << "**" << sender << "**: " << ev.content.value("body", "")
+                    << "\n\n";
+            }
         }
-        out << arr.dump(2) << "\n";
-    } else if (fmt == "txt") {
-        for (const auto& ev : evs) {
-            std::time_t t = ev.origin_server_ts / 1000;
-            char tbuf[24];
-            std::strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M",
-                          std::localtime(&t));
-            std::string sender = ev.sender;
-            const auto at = sender.find(':');
-            if (at != std::string::npos) sender = sender.substr(1, at - 1);
-            out << tbuf << "  " << sender << ": "
-                << ev.content.value("body", "") << "\n";
-        }
-    } else if (fmt == "html") {
-        out << "<!DOCTYPE html>\n<html><body>\n<h1>" << name << "</h1>\n<ul>\n";
-        for (const auto& ev : evs) {
-            out << "  <li><b>" << ev.sender << "</b>: "
-                << ev.content.value("body", "") << "</li>\n";
-        }
-        out << "</ul>\n</body></html>\n";
-    } else {  // md
-        out << "# " << name << "\n\n";
-        for (const auto& ev : evs) {
-            std::string sender = ev.sender;
-            const auto at = sender.find(':');
-            if (at != std::string::npos) sender = sender.substr(1, at - 1);
-            out << "**" << sender << "**: " << ev.content.value("body", "")
-                << "\n\n";
-        }
-    }
+    };
 
-    std::cout << "Dumped " << evs.size() << " events to " << path << std::endl;
+    if (parts <= 1) {
+        const std::string path = outDir + "/" + fileBase + "." + fmt;
+        std::ofstream out(path, std::ios::trunc);
+        if (!out) {
+            std::cerr << "Cannot write " << path << std::endl;
+            return 1;
+        }
+        writeChunk(out, evs);
+        std::cout << "Dumped " << evs.size() << " events to " << path << std::endl;
+    } else {
+        size_t total = evs.size();
+        size_t per = (total + (size_t)parts - 1) / (size_t)parts;  // ceil
+        size_t written = 0;
+        int made = 0;
+        for (int p = 0; p < parts && written < total; ++p) {
+            size_t start = (size_t)p * per;
+            size_t end = std::min(start + per, total);
+            std::string pstr = (p + 1 < 10 ? "0" : "") + std::to_string(p + 1);
+            const std::string path = outDir + "/" + fileBase + ".part" + pstr + "." + fmt;
+            std::ofstream out(path, std::ios::trunc);
+            if (!out) {
+                std::cerr << "Cannot write " << path << std::endl;
+                return 1;
+            }
+            std::vector<matrix::Event> chunk(evs.begin() + start, evs.begin() + end);
+            writeChunk(out, chunk);
+            written += (end - start);
+            ++made;
+            std::cout << "  part " << (p + 1) << ": " << (end - start)
+                      << " events -> " << path << "\n";
+        }
+        std::cout << "Dumped " << total << " events into " << made << " part(s).\n";
+    }
     return 0;
 }
 
@@ -867,7 +899,7 @@ void registerRoomCommands() {
     reg.registerCli("search-public", cmdSearchPublic, "Search public room directory: search-public <query> [--server hs]");
     reg.registerCli("accounts", cmdAccounts, "List logged-in accounts: accounts [--all] [--json] | --hide <mxid> | --show <mxid> | --temporary-hide <mxid>");
     reg.registerCli("markdown", cmdMarkdown, "Render markdown to HTML: markdown <text> | echo <text> | progressive-cli markdown");
-    reg.registerCli("dump", cmdDump, "Export a room from the cache: dump <room> [--format json|txt|html|md] [--out dir] [--limit N]");
+    reg.registerCli("dump", cmdDump, "Export a room from the cache: dump <room> [--format json|txt|html|md] [--out dir] [--limit N] [--parts N]");
     reg.registerCli("invite", cmdInvite, "Invite a user: invite <room> <@user> [--reason r]");
     reg.registerCli("turn", cmdTurn, "Show VoIP TURN credentials: turn");
     reg.registerCli("openid", cmdOpenId, "Request an OpenID token for the current user: openid");

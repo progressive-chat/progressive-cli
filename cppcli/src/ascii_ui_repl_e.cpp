@@ -130,6 +130,11 @@ int asciiReplDispatchE(UiState& st, db::Database& dbi, const cli::Args& a) {
             } else if (a.positional.size() == 1 && !st.currentRoomId.empty()) {
                 roomQ = st.currentRoomId;
                 ref = a.positional[0];
+            } else if (a.positional.empty() && !st.currentRoomId.empty()) {
+                roomQ = st.currentRoomId;
+                ref = "last";
+                std::cout << "permalink → last event of " << st.currentRoomId << "\n"
+                          << "  other forms: permalink [room] last|first|N|-N|<event_id>\n";
             } else {
                 std::cout << "Usage: permalink [room] <event_id|last|first|N|-N>"
                           << std::endl;
