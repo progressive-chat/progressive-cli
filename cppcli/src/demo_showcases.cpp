@@ -16,6 +16,7 @@
 #include "../lib/util/logger.hpp"
 #include "../lib/util/notifications.hpp"
 #include "../lib/util/string_utils.hpp"
+#include "../lib/util/layout_remap.hpp"
 #include "../lib/util/client_utils.hpp"
 #include "../lib/tui/screen.hpp"
 #include "../lib/tui/login.hpp"
@@ -123,7 +124,42 @@ std::string demoPickRoom(db::Database& dbi, bool sortByMembers,
                 return r.value("room_id", "");
         }
     }
+    // Wrong keyboard layout: reinterpret the query under the other layout and
+    // retry, so e.g. a Cyrillic-typed alias still resolves to the room.
+    if (rid.empty() && demoFuzzyLayout()) {
+        std::string rl = matrixcli::util::keyboardLayoutRemap(line);
+        if (!rl.empty() && rl != line) {
+            std::string nrid = matchRoomInCache(all, rl);
+            if (nrid.empty() && !rl.empty() && rl[0] == '#')
+                nrid = matchRoomInCache(all, rl.substr(1));
+            if (nrid.empty()) {
+                for (auto& r : all) {
+                    std::string a = r.value("canonical_alias", "");
+                    std::string n = r.value("name", "");
+                    if ((!a.empty() && a.find(rl) != std::string::npos) ||
+                        (!n.empty() && n.find(rl) != std::string::npos)) {
+                        nrid = r.value("room_id", "");
+                        break;
+                    }
+                }
+            }
+            if (!nrid.empty()) {
+                std::cout << "(interpreting '" << line << "' as the layout-swapped '"
+                          << rl << "')\n";
+                return nrid;
+            }
+        }
+    }
     return rid;
+}
+
+bool demoFuzzyLayout() {
+    try {
+        std::string v = Config::instance().get("fuzzy_layout", "off");
+        return v == "on" || v == "true" || v == "1";
+    } catch (...) {
+        return false;
+    }
 }
 
 // A short human-readable label for any event, used by the message picker so

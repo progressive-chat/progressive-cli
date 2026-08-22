@@ -16,6 +16,7 @@
 #include "../lib/util/logger.hpp"
 #include "../lib/util/notifications.hpp"
 #include "../lib/util/string_utils.hpp"
+#include "../lib/util/layout_remap.hpp"
 #include "../lib/util/client_utils.hpp"
 #include "../lib/tui/screen.hpp"
 #include "../lib/tui/login.hpp"
@@ -82,6 +83,26 @@ static void demoReplParseLine(const std::string& line, matrixcli::cli::Args& out
     while (iss >> w) words.push_back(w);
     if (words.empty()) return;
     out.command = words[0];
+    // Wrong keyboard layout: if the typed command isn't recognized but its
+    // layout-swapped form is, use the swapped form (toggle: fuzzy_layout).
+    if (demoFuzzyLayout()) {
+        static const char* kDemoCmds[] = {
+            "quit", "exit", "help", "clear", "rooms", "view", "info", "power",
+            "perms", "search", "send", "markdown", "md", "vote", "voting",
+            "attach", "send-file", "ui", "ascii", "members", "typing", "edit",
+            "report", "topic", "threads", "config", "backup", "accounts",
+            "tui", "mobile", "cli", "populate", "demo", "status", "profile",
+            nullptr};
+        auto known = [](const std::string& s) {
+            for (int i = 0; kDemoCmds[i]; ++i)
+                if (s == kDemoCmds[i]) return true;
+            return false;
+        };
+        if (!known(out.command)) {
+            std::string r = matrixcli::util::keyboardLayoutRemap(out.command);
+            if (r != out.command && known(r)) out.command = r;
+        }
+    }
     for (size_t i = 1; i < words.size(); ++i) {
         if (words[i].size() >= 2 && words[i][0] == '-' && words[i][1] == '-') {
             std::string key = words[i].substr(2);
@@ -176,7 +197,8 @@ void demoAccountsShowcase() {
 
 int cmdDemoRepl(const matrixcli::cli::Args& args) {
     using namespace matrixcli;
-
+    // Load the user config so demo-local toggles (e.g. fuzzy_layout) apply.
+    try { Config::instance().load("config.json"); } catch (...) {}
     // Pure CLI mode: populate the demo DB and exit — the user then runs the
     // normal one-shot commands (progressive-cli rooms / view / send / search).
     auto runPureCli = []() {
