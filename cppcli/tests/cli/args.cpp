@@ -15,7 +15,7 @@ namespace matrixcli { namespace cli {
 // value and the ui/demo drew the default room.
 static const std::unordered_set<std::string> kNoValueFlags = {
     "static", "once", "print", "json", "confirm", "debug", "ts", "ids",
-    "expand", "verbose", "no-replies", "no-filter", "all", "interactive",
+    "expand", "verbose", "no-replies", "no-filter", "no-time", "all", "interactive",
     "help", "version", "cli", "ui", "ascii", "populate", "mobile",
     "no-mouse", "mouse", "agent", "disable-formatting",
 };

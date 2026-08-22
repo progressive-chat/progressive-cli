@@ -199,6 +199,7 @@ int asciiReplDispatchB(UiState& st, db::Database& dbi, const cli::Args& a) {
                 std::cout << "  --media          download media files (default: no media)\n"
                              "  --limit N        export only the last N events\n"
                              "  --order asc|desc chronological (default asc, oldest first)\n"
+                             "  --no-time        txt without the [HH:MM:SS] timestamps\n"
                              "  --types list     segment by type: messages|media|system"
                              " (comma list, default all)\n"
                              "  --media-max MB   skip media files larger than MB megabytes\n"
@@ -217,6 +218,7 @@ int asciiReplDispatchB(UiState& st, db::Database& dbi, const cli::Args& a) {
                 try { limit = std::stoi(a.options.at("limit")); } catch (...) {}
             }
             bool descOrder = a.options.count("order") && a.options.at("order") == "desc";
+            bool noTime = a.options.count("no-time");
             std::string types = a.options.count("types") ? a.options.at("types") : "all";
             long long mediaMaxBytes = -1;
             if (a.options.count("media-max")) {
@@ -364,6 +366,12 @@ int asciiReplDispatchB(UiState& st, db::Database& dbi, const cli::Args& a) {
                     fout << j.dump(1) << std::endl;
                 } else if (fmt == "txt") {
                     for (const auto& ev : events) {
+                        if (noTime) {
+                            fout << senderShortImpl(ev.sender) << ": "
+                                 << eventBody(ev) << std::endl;
+                            processed++;
+                            continue;
+                        }
                         std::time_t t = static_cast<std::time_t>(ev.origin_server_ts / 1000);
                         std::tm tm{};
                         localtime_r(&t, &tm);

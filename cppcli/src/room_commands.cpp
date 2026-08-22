@@ -617,7 +617,7 @@ int cmdDump(const cli::Args& args) {
     }
     if (args.positional.empty()) {
         std::cerr << "Usage: progressive-cli dump <room> [--format json|txt|html|md]"
-                     " [--out dir] [--limit N] [--parts N]\n"
+                     " [--out dir] [--limit N] [--parts N] [--no-time]\n"
                      "  The export reads the offline cache; the full server-side"
                      " pagination is the ASCII UI's 'dump --server'.\n";
         return 1;
@@ -625,6 +625,7 @@ int cmdDump(const cli::Args& args) {
     const std::string room = resolveRoom(args.positional[0]);
     const std::string fmt = args.options.count("format") ? args.options.at("format") : "json";
     const std::string outDir = args.options.count("out") ? args.options.at("out") : ".";
+    const bool noTime = args.options.count("no-time");
     int limit = 0;
     if (args.options.count("limit")) {
         try { limit = std::stoi(args.options.at("limit")); } catch (...) {}
@@ -665,13 +666,18 @@ int cmdDump(const cli::Args& args) {
             out << arr.dump(2) << "\n";
         } else if (fmt == "txt") {
             for (const auto& ev : chunk) {
+                std::string sender = ev.sender;
+                const auto at = sender.find(':');
+                if (at != std::string::npos) sender = sender.substr(1, at - 1);
+                if (noTime) {
+                    out << sender << ": "
+                        << ev.content.value("body", "") << "\n";
+                    continue;
+                }
                 std::time_t t = ev.origin_server_ts / 1000;
                 char tbuf[24];
                 std::strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M",
                               std::localtime(&t));
-                std::string sender = ev.sender;
-                const auto at = sender.find(':');
-                if (at != std::string::npos) sender = sender.substr(1, at - 1);
                 out << tbuf << "  " << sender << ": "
                     << ev.content.value("body", "") << "\n";
             }
