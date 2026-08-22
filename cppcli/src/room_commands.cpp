@@ -788,8 +788,72 @@ int cmdThirdparty(const cli::Args& args) {
     return 0;
 }
 
+int cmdLink(const cli::Args& args) {
+    if (args.positional.empty()) {
+        std::cerr << "Usage: progressive-cli link <room> [ref|last|first|N|-N] "
+                     "[--last] [--first] [--n N] [--from-end N] [--event $id] [--via N]\n";
+        return 1;
+    }
+    std::string roomQ = args.positional[0];
+    std::string ref;
+    bool hasFlag = false;
+    if (args.options.count("last")) { ref = "last"; hasFlag = true; }
+    else if (args.options.count("first")) { ref = "first"; hasFlag = true; }
+    else if (args.options.count("event")) { ref = args.options.at("event"); hasFlag = true; }
+    else if (args.options.count("n")) { ref = args.options.at("n"); hasFlag = true; }
+    else if (args.options.count("from-end")) { ref = "-" + args.options.at("from-end"); hasFlag = true; }
+    if (!hasFlag && args.positional.size() >= 2) ref = args.positional[1];
+    if (ref.empty()) ref = "last";
+
+    int viaLimit = 3;
+    if (args.options.count("via")) {
+        try { viaLimit = std::stoi(args.options.at("via")); } catch (...) {}
+    }
+
+    db::Database dbi;
+    if (!dbi.open("matrixcli.db")) { std::cerr << "Cannot open database (matrixcli.db)\n"; return 1; }
+    std::string roomId = matchRoomInCache(dbi.listRooms(), roomQ);
+    if (roomId.empty()) roomId = roomQ;
+
+    matrix::Event ev;
+    bool found = false;
+    if (ref == "last") {
+        auto evs = dbi.getEvents(roomId, 500);
+        if (!evs.empty()) { ev = evs.front(); found = true; }
+    } else if (ref == "first") {
+        auto evs = dbi.getEvents(roomId, 100000);
+        if (!evs.empty()) { ev = evs.back(); found = true; }
+    } else if (!ref.empty() && ref[0] == '-') {
+        int n = 0;
+        try { n = -std::stoi(ref); } catch (...) { n = 0; }
+        if (n >= 1) {
+            auto evs = dbi.getEvents(roomId, std::max(n, 500));
+            if ((int)evs.size() >= n) { ev = evs[n - 1]; found = true; }
+        }
+    } else if (!ref.empty() && (ref[0] == '+' || (ref[0] >= '0' && ref[0] <= '9'))) {
+        long n = 0;
+        try { n = (ref[0] == '+') ? std::stol(ref.substr(1)) : std::stol(ref); }
+        catch (...) { n = 0; }
+        if (n >= 1) {
+            auto evs = dbi.getEvents(roomId, 100000);
+            if ((int)evs.size() >= n) { ev = evs[evs.size() - n]; found = true; }
+        }
+    } else {
+        found = dbi.getEventById(ref, ev);
+    }
+    if (!found) {
+        std::cerr << "Event not found in the cache for ref '" << ref << "'.\n";
+        return 1;
+    }
+    std::cout << "https://matrix.to/#/" << roomId << "/" << ev.event_id
+              << viaSuffix(&dbi, roomId, viaLimit) << std::endl;
+    return 0;
+}
+
 void registerRoomCommands() {
     auto& reg = CommandRegistry::instance();
+    reg.registerCli("link", cmdLink,
+                    "Room event permalink: link <room> [last|first|N|-N] [--via N]");
     reg.registerCli("sync", cmdSync, "One-shot sync into the offline cache");
     reg.registerCli("devices", cmdDevices, "Device management: devices delete <id> --password <pw>");
     reg.registerCli("kick", cmdModerate, "Kick a user: kick <room> <@user> [--reason r]");

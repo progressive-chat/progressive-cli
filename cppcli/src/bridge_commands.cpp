@@ -135,7 +135,7 @@ void registerBuiltinCommands() {
         std::string shell = args.positional.size() > 0 ? args.positional[0] : "bash";
         auto cmds = CommandRegistry::instance().cliCommands();
         // Add built-in commands
-        std::vector<std::string> all = {"serve","login","status","rooms","view","send","demo","tui",
+        std::vector<std::string> all = {"serve","login","status","rooms","view","send","demo","tui","link",
             "reply","vote","react","topic","roomname","avatar","poll","config","search",
             "notifications","read","help","version","completion"};
         for (auto& c : cmds) all.push_back(c);
