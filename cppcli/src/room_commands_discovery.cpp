@@ -166,6 +166,22 @@ int cmdLink(const cli::Args& args) {
     if (!linkBase.empty() && linkBase.back() != '/') linkBase += '/';
     linkBase += "#/";
 
+    // How many via servers to include. --via N caps it; 0 (or absent, or the
+    // config key 'link_via') means "all that are available".
+    int viaLimit = 0;
+    {
+        Config::instance().load("config.json");
+        try { viaLimit = std::stoi(Config::instance().get("link_via", "0")); }
+        catch (...) { viaLimit = 0; }
+    }
+    if (args.options.count("via")) {
+        try { viaLimit = std::stoi(args.options.at("via")); } catch (...) {}
+    }
+    // fit_link_to_terminal=on: shrink the via list so the link fits the
+    // terminal width (no line wrap). Default off = use as many as requested.
+    bool fitTerminal = false;
+    if (Config::instance().get("fit_link_to_terminal", "off") == "on") fitTerminal = true;
+
     // Print the link, or copy it to the clipboard with --copy.
     auto outputLink = [&](const std::string& link) {
         if (args.options.count("copy")) {
@@ -213,10 +229,23 @@ int cmdLink(const cli::Args& args) {
         for (const auto& r : rooms)
             if (r.value("room_id", "") == bestRoom) { name = r.value("name", bestRoom); break; }
         int viaMax = viaServerCount(&dbi, bestRoom);
+        int use = (viaLimit <= 0) ? viaMax : std::min(viaLimit, viaMax);
+        if (fitTerminal && use > 0) {
+            int cols = terminalColumns();
+            std::string base = linkBase + bestRoom + "/" + bestEvent;
+            int fit = 0; int len = (int)base.size();
+            auto servers = viaServers(&dbi, bestRoom);
+            for (int i = 0; i < use && i < (int)servers.size(); ++i) {
+                int add = 1 + std::string("via=").size() + (int)servers[(size_t)i].size();
+                if (len + add >= cols) break;
+                len += add; ++fit;
+            }
+            use = fit;
+        }
         std::cout << "Last active room: " << name << "\n";
         outputLink(linkBase + bestRoom + "/" + bestEvent +
-                   viaSuffix(&dbi, bestRoom, 3));
-        std::cout << "Via servers available: " << viaMax << " (use --via N, max " << viaMax << ")\n";
+                   viaSuffix(&dbi, bestRoom, use));
+        std::cout << "Via servers available: " << viaMax << " (use --via N, max " << viaMax << "; 0 = all)\n";
         std::cout << "Other forms: link <room> [last|first|N|-N] [--via N] "
                      "(permalink is an alias; --event $id for a specific event; --copy/--clip)\n";
         return 0;
@@ -232,11 +261,6 @@ int cmdLink(const cli::Args& args) {
     else if (args.options.count("from-end")) { ref = "-" + args.options.at("from-end"); hasFlag = true; }
     if (!hasFlag && args.positional.size() >= 2) ref = args.positional[1];
     if (ref.empty()) ref = "last";
-
-    int viaLimit = 3;
-    if (args.options.count("via")) {
-        try { viaLimit = std::stoi(args.options.at("via")); } catch (...) {}
-    }
 
     db::Database dbi;
     if (!dbi.open("matrixcli.db")) { std::cerr << "Cannot open database (matrixcli.db)\n"; return 1; }
@@ -274,8 +298,21 @@ int cmdLink(const cli::Args& args) {
         return 1;
     }
     int viaMax = viaServerCount(&dbi, roomId);
+    int use = (viaLimit <= 0) ? viaMax : std::min(viaLimit, viaMax);
+    if (fitTerminal && use > 0) {
+        int cols = terminalColumns();
+        std::string base = linkBase + roomId + "/" + ev.event_id;
+        int fit = 0; int len = (int)base.size();
+        auto servers = viaServers(&dbi, roomId);
+        for (int i = 0; i < use && i < (int)servers.size(); ++i) {
+            int add = 1 + std::string("via=").size() + (int)servers[(size_t)i].size();
+            if (len + add >= cols) break;
+            len += add; ++fit;
+        }
+        use = fit;
+    }
     outputLink(linkBase + roomId + "/" + ev.event_id +
-               viaSuffix(&dbi, roomId, viaLimit));
-    std::cout << "Via servers available: " << viaMax << " (use --via N, max " << viaMax << ")\n";
+               viaSuffix(&dbi, roomId, use));
+    std::cout << "Via servers available: " << viaMax << " (use --via N, max " << viaMax << "; 0 = all)\n";
     return 0;
 }

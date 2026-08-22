@@ -749,9 +749,9 @@ int cmdInvite(const cli::Args& args) {
 void registerRoomCommands() {
     auto& reg = CommandRegistry::instance();
     reg.registerCli("link", cmdLink,
-                    "Room event permalink: link <room> [last|first|N|-N] [--via N] [--copy] [--clip] [--domain D] (no args: last active room; config 'link_domain' sets the domain)");
+                    "Room event permalink: link <room> [last|first|N|-N] [--via N] [--copy] [--clip] [--domain D] (no args: last active room; config 'link_domain'; 'link_via'=0 all; 'fit_link_to_terminal'=on)");
     reg.registerCli("permalink", cmdLink,
-                    "Room event permalink (alias of link): permalink <room> [last|first|N|-N] [--via N] [--copy] [--clip] [--domain D] (no args: last active room; config 'link_domain' sets the domain)");
+                    "Room event permalink (alias of link): permalink <room> [last|first|N|-N] [--via N] [--copy] [--clip] [--domain D] (no args: last active room; config 'link_domain'; 'link_via'=0 all; 'fit_link_to_terminal'=on)");
     reg.registerCli("sync", cmdSync, "One-shot sync into the offline cache");
     reg.registerCli("devices", cmdDevices, "Device management: devices delete <id> --password <pw>");
     reg.registerCli("kick", cmdModerate, "Kick a user: kick <room> <@user> [--reason r]");
