@@ -36,6 +36,9 @@ struct TtysSession {
 
     std::unique_ptr<db::Database> dbi;    // ":memory:" cache
     std::unique_ptr<matrix::Client> client;
+    // Per-session proxy ("proxy" in the session/register request), kept
+    // here so re-joining an existing session does not lose it.
+    std::string proxySpec;
     UiState st;
 
     std::atomic<bool> syncing{false};     // a sync pass is running
@@ -67,11 +70,14 @@ public:
     void registerRoutes(api::Router& router);
 
     // Request bodies (JSON):
-    //   POST /api/ttys/register {homeserver,username,password,reg_token?} -> {session,user_id,access_token,device_id}
-    //   POST /api/ttys/session {account:{...}} -> {session, key}
+    //   POST /api/ttys/register {homeserver,username,password,reg_token?,proxy?} -> {session,user_id,access_token,device_id}
+    //   POST /api/ttys/session {account:{...,proxy?}} -> {session, key}
     //   POST /api/ttys/render   {session, term:{cols,rows}, sync:"auto"|"once"|"off", view?...} -> {frame,width,height}
     //   POST /api/ttys/input    {session, input:"..."} -> {frame,...}
     //   POST /api/ttys/sync     {session} -> {synced,error}
+    // The optional per-session "proxy" ("socks5://[u:p@]h:p" | "http://h:p"
+    // | "off") overrides the server-wide `proxy on` default for THAT
+    // session's homeserver traffic only.
     int activeSessionCount();
 
 private:

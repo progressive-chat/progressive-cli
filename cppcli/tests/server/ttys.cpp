@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <chrono>
+#include <regex>
 #include <sstream>
 #include <unordered_set>
 
@@ -31,6 +32,38 @@ static void applyConfiguredProxy(matrix::Client& client) {
     p.username = active.username;
     p.password = active.password;
     client.setProxy(p);
+}
+
+// A per-request "proxy" spec: "socks5://[user:pass@]host:port",
+// "http://host:port" or "off" (= direct; the env-var fallback inside
+// lib/http still applies when nothing else is set).
+static http::ProxyConfig parseProxySpec(const std::string& spec) {
+    http::ProxyConfig p;
+    if (spec.empty() || spec == "off" || spec == "direct" || spec == "none")
+        return p;
+    static const std::regex re(
+        R"(^(socks5h?|http)://(?:([^:@]+):([^@]+)@)?([^:/@]+):(\d+)/?$)");
+    std::smatch m;
+    if (!std::regex_match(spec, m, re)) return p;
+    p.type = m[1].str() == "http" ? http::ProxyType::HTTP
+                                  : http::ProxyType::SOCKS5;
+    try { p.port = std::stoi(m[5].str()); } catch (...) { return {}; }
+    p.host = m[4].str();
+    if (m[2].matched) { p.username = m[2].str(); p.password = m[3].str(); }
+    return p;
+}
+
+// The per-session proxy override: present in the request body -> it wins
+// ("off" clears); absent -> fall back to the server-wide configured proxy.
+static void applySessionProxy(matrix::Client& client, const json& body,
+                              std::string& storedSpec) {
+    auto it = body.find("proxy");
+    if (it == body.end() || !it->is_string()) {
+        applyConfiguredProxy(client);
+        return;
+    }
+    storedSpec = it->get<std::string>();
+    client.setProxy(parseProxySpec(storedSpec));
 }
 
 TtysApi::~TtysApi() {
@@ -92,7 +125,7 @@ TtysSession* TtysApi::createOrGetSession(const std::string& id,
     sess->client->setAccessToken(tok);
     sess->client->setUserId(sess->userId);
     sess->client->setDatabase(sess->dbi.get());
-    applyConfiguredProxy(*sess->client);
+    applySessionProxy(*sess->client, account, sess->proxySpec);
     sess->st.db = sess->dbi.get();
 
     _sessions[id] = std::move(sess);
@@ -171,6 +204,13 @@ api::Response TtysApi::handleRegister(const api::Request& req) {
         return {400, "application/json",
                 R"({"error":"homeserver, username and password required"})"};
     }
+    // Optional per-request proxy for BOTH the registration call and the
+    // session that follows ("socks5://h:p" / "http://h:p" / "off").
+    std::string proxySpec;
+    {
+        auto it = body.find("proxy");
+        if (it != body.end() && it->is_string()) proxySpec = it->get<std::string>();
+    }
     // Registration takes the LOCALPART: strip @ and :server when the
     // caller passed a full Matrix ID.
     if (!username.empty() && username[0] == '@') {
@@ -182,7 +222,10 @@ api::Response TtysApi::handleRegister(const api::Request& req) {
     try {
         matrix::Client client;
         client.setHomeserverURL(hs);
-        applyConfiguredProxy(client);
+        if (!proxySpec.empty() || body.contains("proxy"))
+            client.setProxy(parseProxySpec(proxySpec));   // "" / "off" = direct
+        else
+            applyConfiguredProxy(client);
         creds = client.registerAccount(username, password,
                                        "progressive-ttys", regToken);
     } catch (const std::exception& e) {
@@ -196,6 +239,7 @@ api::Response TtysApi::handleRegister(const api::Request& req) {
         {"user_id", creds.user_id},
         {"device_id", creds.device_id},
     };
+    if (body.contains("proxy")) account["proxy"] = proxySpec;  // inherit
     std::string id = creds.user_id.empty()
                          ? hs + "|" + creds.access_token.substr(0, 8)
                          : creds.user_id;

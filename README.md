@@ -279,8 +279,10 @@ Endpoints (JSON in/out):
 # Register a brand-new account on a homeserver and open its session in one
 # step — a curl-only user needs no client binary at all. The fresh
 # credentials come back in the reply (and stay in the server's RAM).
+# The optional per-request "proxy" ("socks5://h:p" | "http://h:p" | "off")
+# overrides the server-wide `proxy on` default for this session only.
 curl -X POST http://127.0.0.1:29325/api/ttys/register \
-     -d '{"homeserver":"https://example.org","username":"newuser","password":"...","reg_token":"optional"}'
+     -d '{"homeserver":"https://example.org","username":"newuser","password":"...","reg_token":"optional","proxy":"socks5://127.0.0.1:9050"}'
 
 # Open a session (the account is the only thing the server needs)
 curl -X POST http://127.0.0.1:29325/api/ttys/session \
