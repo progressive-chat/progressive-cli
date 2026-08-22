@@ -148,7 +148,7 @@ int main(int argc, char* argv[]) {
         std::string fl = matrixcli::Config::instance().get("fuzzy_layout", "on");
         if (fl != "off" && fl != "false" && fl != "0" && !args.command.empty()) {
             static const char* kTop[] = {
-                "help", "version", "serve", "login", "rooms", "spaces", "view",
+                "help", "version", "serve", "ttys", "login", "rooms", "spaces", "view",
                 "status", "send", "attach", "send-file", "search", "config",
                 "demo", "ui", "ascii", "tui", "td", "irc", "lemmy", "dc",
                 "deltachat", nullptr};
@@ -200,6 +200,10 @@ int main(int argc, char* argv[]) {
 
     if (args.command == "serve") {
         return cmdServe(args);
+    }
+
+    if (args.command == "ttys") {
+        return matrixcli::cmdTtys(args);
     }
 
     if (args.command == "login") {
