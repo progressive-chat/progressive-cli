@@ -141,12 +141,12 @@ int main(int argc, char* argv[]) {
     applyProxyFromConfig();
 
     // Wrong keyboard layout: if the typed command is not recognized but its
-    // layout-swapped form is a known command, reinterpret it. Opt-in via the
-    // config key "fuzzy_layout" (on/true/1); off by default.
+    // layout-swapped form is a known command, reinterpret it. Controlled by the
+    // config key "fuzzy_layout" (off/false/0 disables); ON by default.
     try { matrixcli::Config::instance().load("config.json"); } catch (...) {}
     {
-        std::string fl = matrixcli::Config::instance().get("fuzzy_layout", "off");
-        if ((fl == "on" || fl == "true" || fl == "1") && !args.command.empty()) {
+        std::string fl = matrixcli::Config::instance().get("fuzzy_layout", "on");
+        if (fl != "off" && fl != "false" && fl != "0" && !args.command.empty()) {
             static const char* kTop[] = {
                 "help", "version", "serve", "login", "rooms", "spaces", "view",
                 "status", "send", "attach", "send-file", "search", "config",

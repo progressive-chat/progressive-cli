@@ -36,5 +36,5 @@ void demoMarkdownShowcase();
 void demoVoteShowcase(matrixcli::db::Database& dbi);
 
 // Whether to reinterpret input typed with the wrong keyboard layout (config
-// key "fuzzy_layout" = on/true/1). Off by default.
+// key "fuzzy_layout" = off/false/0 disables). ON by default.
 bool demoFuzzyLayout();

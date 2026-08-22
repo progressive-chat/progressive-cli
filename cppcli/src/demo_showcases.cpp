@@ -155,10 +155,10 @@ std::string demoPickRoom(db::Database& dbi, bool sortByMembers,
 
 bool demoFuzzyLayout() {
     try {
-        std::string v = Config::instance().get("fuzzy_layout", "off");
-        return v == "on" || v == "true" || v == "1";
+        std::string v = Config::instance().get("fuzzy_layout", "on");
+        return !(v == "off" || v == "false" || v == "0");
     } catch (...) {
-        return false;
+        return true;
     }
 }
 
