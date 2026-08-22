@@ -439,9 +439,10 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
                       << std::endl;
         }
         cli::Args uiArgs;
-        if (!args.positional.empty()) {
-            uiArgs.positional.push_back(args.positional[0]);
-        }
+        // Forward every positional: the first is the room, the rest may be
+        // one-shot subcommands like `panel show` / `panel rule …`.
+        for (const auto& p : args.positional)
+            uiArgs.positional.push_back(p);
         if (args.options.count("static") || args.options.count("once")) {
             uiArgs.options["static"] = "true";
         }

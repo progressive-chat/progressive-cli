@@ -116,6 +116,14 @@ struct PanelLayout {
     std::vector<std::string> notes;
 };
 PanelLayout computePanelLayout(const UiState& st, int W, bool trace);
+// The full "panel show" output: the trace of the width computation + the
+// true-to-scale ASCII schematic. Shared by the REPL command and the
+// one-shot `ui --static panel show` form.
+std::string panelShowText(const UiState& st);
+// The rule tokens after the panel name ("min" "80" / "40%" / "off") ->
+// the stored spec ("min:80" / "pct:40" / ""). False + err on bad input.
+bool panelRuleFromTokens(const std::vector<std::string>& toks,
+                         std::string& spec, std::string& err);
 std::string drawFrameImpl(const UiState& st);
 // The chat panel's rows (ascii_ui_draw_center.cpp) — split out of the
 // frame builder so every translation unit stays under ~1000 lines.

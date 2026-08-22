@@ -164,7 +164,7 @@ void printUsage(const Args& args) {
               << "  proxy         The Tor/I2P proxy: on|off|status (--host --port [--type socks5h|socks5|http])\n"
                << "  serve         Start the built-in HTTP API server\n"
                << "  ttys          Thin client for 'serve --ttys': remote ASCII UI\n"
-              << "  setup         The interactive setup wizard\n\n";
+               << "  setup         The interactive setup wizard\n\n";
 
     std::cout << bold << "The bridges (experimental)" << rst << "\n"
               << "  dc            The DeltaChat bridge\n"
@@ -191,6 +191,7 @@ void printUsage(const Args& args) {
               << "  progressive-cli send \"#general:matrix.org\" \"Hello from CLI!\"\n"
               << "  progressive-cli llm \"explain this code\" --rich\n"
               << "  progressive-cli demo                        # the interactive demo session\n"
+              << "  progressive-cli demo ui --static panel show # how the three panel widths are computed\n"
                << "  progressive-cli serve --port=29325\n"
                << "  progressive-cli serve --ttys --port=29325 [--sync auto] [--cache f] [--bind ip] [--token t]\n"
                << "                                        # remote ASCII UI server; sessions in RAM by default\n"

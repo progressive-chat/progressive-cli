@@ -566,52 +566,7 @@ int asciiReplDispatchB(UiState& st, db::Database& dbi, const cli::Args& a) {
         // ---- panel show: how the three panel widths were computed ----
         if (a.command == "panel" && !a.positional.empty() &&
             a.positional[0] == "show") {
-            int W = st.termW > 0 ? st.termW : terminalWidthImpl();
-            PanelLayout L = computePanelLayout(st, W, true);
-            std::cout << "Panel layout at W = " << W << " columns:"
-                      << std::endl;
-            for (const auto& n : L.notes) std::cout << "  " << n << std::endl;
-            std::cout << "rules: left "
-                      << panelRuleText(parsePanelRule(st.ruleLeft))
-                      << ", center "
-                      << panelRuleText(parsePanelRule(st.ruleCenter))
-                      << ", right "
-                      << panelRuleText(parsePanelRule(st.ruleRight))
-                      << "  (panel rule <left|center|right> "
-                         "<min N|max N|N%|off>)" << std::endl;
-            // The ASCII schematic of the computed split (true to scale:
-            // one '-' per column).
-            if (st.mobile) {
-                std::cout << "schematic: smartphone layout — the panels are "
-                             "stacked, each " << W << " columns wide"
-                          << std::endl;
-            } else {
-                auto centered = [](const std::string& t, int w) {
-                    if (w <= 0) return std::string();
-                    if (static_cast<int>(t.size()) > w)
-                        return t.substr(0, static_cast<size_t>(w));
-                    int pad = (w - static_cast<int>(t.size())) / 2;
-                    return std::string(static_cast<size_t>(pad), ' ') + t
-                         + std::string(static_cast<size_t>(w) - t.size()
-                                       - static_cast<size_t>(pad), ' ');
-                };
-                std::vector<std::pair<std::string, int>> segs;
-                if (L.leftW > 0)
-                    segs.push_back({"left " + std::to_string(L.leftW),
-                                    L.leftW});
-                segs.push_back({"center " + std::to_string(L.centerW),
-                                L.centerW});
-                if (L.rightW > 0)
-                    segs.push_back({"right " + std::to_string(L.rightW),
-                                    L.rightW});
-                std::string border = "+", mid = "|";
-                for (const auto& s : segs) {
-                    border += repeat('-', static_cast<size_t>(s.second)) + "+";
-                    mid += centered(s.first, s.second) + "|";
-                }
-                std::cout << "schematic:\n" << border << "\n" << mid << "\n"
-                          << border << std::endl;
-            }
+            std::cout << panelShowText(st);
             return 1;
         }
         // ---- panel rule <left|center|right> <min N|max N|N%|off> ----
@@ -629,35 +584,11 @@ int asciiReplDispatchB(UiState& st, db::Database& dbi, const cli::Args& a) {
                 std::cout << usage << std::endl;
                 return 1;
             }
-            std::string spec;  // the stored form: min:N / max:N / pct:N / ""
-            std::string v = a.positional[2];
-            if (v == "off" || v == "none" || v == "default") {
-                spec = "";
-            } else if (v == "min" || v == "max") {
-                if (a.positional.size() < 4) {
-                    std::cout << usage << std::endl;
-                    return 1;
-                }
-                int n = 0;
-                try { n = std::stoi(a.positional[3]); } catch (...) { n = 0; }
-                if (n <= 0) {
-                    std::cout << "panel rule: N must be a positive number of "
-                                 "columns" << std::endl;
-                    return 1;
-                }
-                spec = v + ":" + std::to_string(n);
-            } else if (v.size() >= 2 && v.back() == '%') {
-                int n = 0;
-                try { n = std::stoi(v.substr(0, v.size() - 1)); }
-                catch (...) { n = 0; }
-                if (n <= 0 || n > 100) {
-                    std::cout << "panel rule: the percent must be 1..100"
-                              << std::endl;
-                    return 1;
-                }
-                spec = "pct:" + std::to_string(n);
-            } else {
-                std::cout << usage << std::endl;
+            std::string spec, err;  // spec: min:N / max:N / pct:N / ""
+            std::vector<std::string> toks(a.positional.begin() + 2,
+                                          a.positional.end());
+            if (!panelRuleFromTokens(toks, spec, err)) {
+                std::cout << "panel rule: " << err << std::endl;
                 return 1;
             }
             if (which == "left") st.ruleLeft = spec;

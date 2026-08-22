@@ -191,6 +191,7 @@ void printUsage(const Args& args) {
               << "  progressive-cli send \"#general:matrix.org\" \"Hello from CLI!\"\n"
               << "  progressive-cli llm \"explain this code\" --rich\n"
               << "  progressive-cli demo                        # the interactive demo session\n"
+              << "  progressive-cli demo ui --static panel show # how the three panel widths are computed\n"
                << "  progressive-cli serve --port=29325\n"
                << "  progressive-cli serve --ttys --port=29325 [--sync auto] [--cache f] [--bind ip] [--token t]\n"
                << "                                        # remote ASCII UI server; sessions in RAM by default\n"

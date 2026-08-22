@@ -220,7 +220,21 @@ int cmdAsciiUi(const cli::Args& args) {
             st.presence[p.short_] = p.letter;
         }
     }
-    std::string initial = args.positional.empty() ? "" : args.positional[0];
+    // One-shot "panel …" tokens on the command line (`ui --static panel
+    // show`) are not room names — lift them out before the room lookup.
+    std::vector<std::string> cliPos = args.positional;
+    std::vector<std::string> panelTokens;
+    if (args.options.count("static") || args.options.count("once") ||
+        args.options.count("print")) {
+        for (size_t i = 0; i < cliPos.size(); ++i) {
+            if (cliPos[i] == "panel") {
+                panelTokens.assign(cliPos.begin() + (long)i + 1, cliPos.end());
+                cliPos.erase(cliPos.begin() + (long)i, cliPos.end());
+                break;
+            }
+        }
+    }
+    std::string initial = cliPos.empty() ? "" : cliPos[0];
     loadRoomIntoStateImpl(st, initial);
     if (st.currentRoomId.empty() && !st.rooms.empty()) {
         loadRoomIntoStateImpl(st, st.rooms.front().value("room_id", ""));
@@ -418,6 +432,43 @@ int cmdAsciiUi(const cli::Args& args) {
     }
     if (args.options.count("scroll-threads")) {
         try { st.threadsScroll = std::stoi(args.options.at("scroll-threads")); } catch (...) {}
+    }
+    // One-shot panel subcommands: `ui --static panel show` prints the
+    // width trace + the schematic and exits; `ui --static panel rule …`
+    // applies the rule to this frame only (the REPL command persists it).
+    if (!panelTokens.empty()) {
+        if (panelTokens[0] == "show") {
+            std::cout << panelShowText(st);
+            return 0;
+        }
+        if (panelTokens[0] == "rule") {
+            if (panelTokens.size() < 3) {
+                std::cout << "Usage: ui --static panel rule "
+                             "<left|center|right> <min N|max N|N%|off>"
+                          << std::endl;
+                return 1;
+            }
+            std::string which = panelTokens[1];
+            if (which == "middle") which = "center";
+            std::string spec, err;
+            std::vector<std::string> toks(panelTokens.begin() + 2,
+                                          panelTokens.end());
+            bool ok = panelRuleFromTokens(toks, spec, err);
+            if (ok) {
+                if (which == "left") st.ruleLeft = spec;
+                else if (which == "center") st.ruleCenter = spec;
+                else if (which == "right") st.ruleRight = spec;
+                else { ok = false; err = "unknown panel '" + which + "'"; }
+            }
+            if (!ok) {
+                std::cout << "panel rule: " << err << std::endl;
+                return 1;
+            }
+        } else {
+            std::cout << "Usage: ui --static panel <show|rule …>"
+                      << std::endl;
+            return 1;
+        }
     }
     std::cout << drawFrameImpl(st) << std::flush;
 

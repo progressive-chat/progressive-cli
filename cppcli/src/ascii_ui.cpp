@@ -70,6 +70,79 @@ std::string panelRuleText(const PanelRule& r) {
     return "off";
 }
 
+bool panelRuleFromTokens(const std::vector<std::string>& toks,
+                         std::string& spec, std::string& err) {
+    spec = "";
+    if (toks.empty()) { err = "missing <min N|max N|N%|off>"; return false; }
+    std::string v = toks[0];
+    if (v == "off" || v == "none" || v == "default") return true;
+    if (v == "min" || v == "max") {
+        if (toks.size() < 2) {
+            err = "missing N after '" + v + "'";
+            return false;
+        }
+        int n = 0;
+        try { n = std::stoi(toks[1]); } catch (...) { n = 0; }
+        if (n <= 0) {
+            err = "N must be a positive number of columns";
+            return false;
+        }
+        spec = v + ":" + std::to_string(n);
+        return true;
+    }
+    if (v.size() >= 2 && v.back() == '%') {
+        int n = 0;
+        try { n = std::stoi(v.substr(0, v.size() - 1)); } catch (...) { n = 0; }
+        if (n <= 0 || n > 100) {
+            err = "the percent must be 1..100";
+            return false;
+        }
+        spec = "pct:" + std::to_string(n);
+        return true;
+    }
+    err = "unknown rule '" + v + "' (use min N, max N, N% or off)";
+    return false;
+}
+
+std::string panelShowText(const UiState& st) {
+    int W = st.termW > 0 ? st.termW : terminalWidthImpl();
+    PanelLayout L = computePanelLayout(st, W, true);
+    std::string out = "Panel layout at W = " + std::to_string(W)
+                    + " columns:\n";
+    for (const auto& n : L.notes) out += "  " + n + "\n";
+    out += "rules: left " + panelRuleText(parsePanelRule(st.ruleLeft))
+         + ", center " + panelRuleText(parsePanelRule(st.ruleCenter))
+         + ", right " + panelRuleText(parsePanelRule(st.ruleRight))
+         + "  (panel rule <left|center|right> <min N|max N|N%|off>)\n";
+    if (st.mobile) {
+        out += "schematic: smartphone layout — the panels are stacked, each "
+             + std::to_string(W) + " columns wide\n";
+        return out;
+    }
+    auto centered = [](const std::string& t, int w) {
+        if (w <= 0) return std::string();
+        if (static_cast<int>(t.size()) > w)
+            return t.substr(0, static_cast<size_t>(w));
+        int pad = (w - static_cast<int>(t.size())) / 2;
+        return std::string(static_cast<size_t>(pad), ' ') + t
+             + std::string(static_cast<size_t>(w) - t.size()
+                           - static_cast<size_t>(pad), ' ');
+    };
+    std::vector<std::pair<std::string, int>> segs;
+    if (L.leftW > 0)
+        segs.push_back({"left " + std::to_string(L.leftW), L.leftW});
+    segs.push_back({"center " + std::to_string(L.centerW), L.centerW});
+    if (L.rightW > 0)
+        segs.push_back({"right " + std::to_string(L.rightW), L.rightW});
+    std::string border = "+", mid = "|";
+    for (const auto& s : segs) {
+        border += repeat('-', static_cast<size_t>(s.second)) + "+";
+        mid += centered(s.first, s.second) + "|";
+    }
+    out += "schematic:\n" + border + "\n" + mid + "\n" + border + "\n";
+    return out;
+}
+
 PanelLayout computePanelLayout(const UiState& st, int W, bool trace) {
     PanelLayout L;
     auto note = [&](const std::string& s) {
