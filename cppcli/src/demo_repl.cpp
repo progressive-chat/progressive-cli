@@ -255,19 +255,29 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
             }
             if (mode == "tui") {
                 cli::Args sub = args; sub.options["tui"] = "true";
+                // Drop the mode tokens (or the recursion below re-handles
+                // them forever and blows the stack).
+                sub.positional.erase(sub.positional.begin(),
+                                     sub.positional.begin() + (long)(i + 1));
                 return cmdDemoRepl(sub);
             }
             if (mode == "ui" || mode == "ascii") {
                 cli::Args sub = args; sub.options["ui"] = "true";
+                sub.positional.erase(sub.positional.begin(),
+                                     sub.positional.begin() + (long)(i + 1));
                 return cmdDemoRepl(sub);
             }
             if (mode == "mobile" || mode == "phone") {
                 cli::Args sub = args; sub.options["ui"] = "true";
                 sub.options["mobile"] = "true";
+                sub.positional.erase(sub.positional.begin(),
+                                     sub.positional.begin() + (long)(i + 1));
                 return cmdDemoRepl(sub);
             }
             if (mode == "cli" || mode == "populate") {
                 cli::Args sub = args; sub.options["cli"] = "true";
+                sub.positional.erase(sub.positional.begin(),
+                                     sub.positional.begin() + (long)(i + 1));
                 return cmdDemoRepl(sub);
             }
             if (mode == "edit") {
@@ -332,8 +342,12 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
 
     // One-shot positional form: `demo <room> <action>` (also `demo <action>
     // <room>`), e.g. `matrixcli demo general info`. Runs the action and
-    // exits — no interactive REPL and no account needed.
-    {
+    // exits — no interactive REPL and no account needed. Skipped when a
+    // takeover mode is active (the room token then belongs to the UI).
+    bool takeover = args.options.count("ui") || args.options.count("ascii")
+                 || args.options.count("tui") || args.options.count("mobile")
+                 || args.options.count("cli");
+    if (!takeover) {
         static const char* kOneShot[] = {"info", "view", "rooms",
                                          "search", "power", nullptr};
         auto inSet = [&](const std::string& s) {
@@ -381,8 +395,9 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
 
     // A bare `demo <room>` (a single room alias/name/id, no action) showcases
     // that room directly — info + recent messages + power levels — instead of
-    // dropping into the interactive REPL. Works for every demo room.
-    if (args.positional.size() == 1) {
+    // dropping into the interactive REPL. Works for every demo room. Skipped
+    // when a takeover mode is active (the room token then belongs to the UI).
+    if (!takeover && args.positional.size() == 1) {
         db::Database dbi;
         if (!dbi.open("matrixcli.db")) return 1;
         if (dbi.listRooms().empty()) populateDemoData(dbi);
