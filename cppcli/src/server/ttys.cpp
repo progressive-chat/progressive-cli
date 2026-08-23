@@ -336,6 +336,15 @@ api::Response TtysApi::handleRender(const api::Request& req) {
     if (rows <= 0) rows = 24 + 5;
 
     std::string frame = renderFrame(*s, cols, rows);
+
+    // Plain-text mode for dumb pipes: Accept: text/plain returns the raw
+    // frame (no JSON wrapper), so a client needs no parser at all.
+    auto acc = req.headers.find("accept");
+    if (acc != req.headers.end() &&
+        acc->second.find("text/plain") != std::string::npos) {
+        return {200, "text/plain; charset=utf-8", frame};
+    }
+
     json out;
     out["frame"] = frame;
     out["width"] = cols;
