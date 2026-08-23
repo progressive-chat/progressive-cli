@@ -87,6 +87,7 @@ private:
     api::Response handleInput(const api::Request& req);
     api::Response handleSync(const api::Request& req);
     api::Response handleProxy(const api::Request& req);
+    api::Response handleLastSession(const api::Request& req);
 
     TtysSession* findSession(const std::string& id);
     TtysSession* createOrGetSession(const std::string& id,
@@ -99,6 +100,9 @@ private:
     std::mutex _mu;
     std::map<std::string, std::unique_ptr<TtysSession>> _sessions;
     std::string _token;          // --token X: require "Authorization: Bearer X"
+    std::string _lastSession;    // id of the most recently created/joined
+                                 // session — RAM-only, for "give me my
+                                 // session back" bootstrapping of thin clients
     std::string _defaultSync;    // "auto" | "once" | "off"
     std::string _persistCachePath; // empty = ":memory:"
 };

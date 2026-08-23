@@ -83,6 +83,7 @@ void TtysApi::registerRoutes(api::Router& router) {
     router.post("/api/ttys/sync",    [this](const api::Request& req) { return handleSync(req); });
     router.post("/api/ttys/proxy",   [this](const api::Request& req) { return handleProxy(req); });
     router.get("/api/ttys/proxy",    [this](const api::Request& req) { return handleProxy(req); });
+    router.get("/api/ttys/session/last", [this](const api::Request& req) { return handleLastSession(req); });
 }
 
 int TtysApi::activeSessionCount() {
@@ -131,6 +132,7 @@ TtysSession* TtysApi::createOrGetSession(const std::string& id,
     sess->st.db = sess->dbi.get();
 
     _sessions[id] = std::move(sess);
+    _lastSession = id;
     return _sessions[id].get();
 }
 
@@ -498,6 +500,26 @@ api::Response TtysApi::handleProxy(const api::Request& req) {
                 "{\"action\":\"on\",\"preset\":\"" + preset + "\"}"};
     }
     return {400, "application/json", R"px({"error":"unknown action (use on/off)"})px"};
+}
+
+// GET /api/ttys/session/last — the RAM-only bootstrap for thin clients
+// (a phone, a dumb pipe): authenticated by the relay token alone, it
+// returns the id of the most recently created/joined session. The client
+// stores nothing; after any restart it asks again. 404 when the relay has
+// no sessions yet.
+api::Response TtysApi::handleLastSession(const api::Request& req) {
+    if (!authorized(req)) {
+        return {401, "application/json", R"({"error":"unauthorized"})"};
+    }
+    std::lock_guard<std::mutex> lock(_mu);
+    if (_lastSession.empty() || !_sessions.count(_lastSession)) {
+        return {404, "application/json", R"({"error":"no sessions"})"};
+    }
+    const TtysSession& s = *_sessions[_lastSession];
+    json out;
+    out["session"] = s.id;
+    if (!s.userId.empty()) out["user_id"] = s.userId;
+    return {200, "application/json", out.dump()};
 }
 
 }} // namespace matrixcli::server
