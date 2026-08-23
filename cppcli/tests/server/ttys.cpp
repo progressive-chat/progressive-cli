@@ -481,14 +481,14 @@ api::Response TtysApi::handleProxy(const api::Request& req) {
                 if (e.value("name", "") == preset) { found = true; break; }
         if (!found)
             return {400, "application/json",
-                    R"({"error":"unknown preset ')" + preset + R"('"})"};
+                    "{\"error\":\"unknown preset '" + preset + "'\"}"};
         Config::instance().set("proxy_active", preset);
         Config::instance().save();
         applyProxyFromConfig();
         return {200, "application/json",
-                R"({"action":"on","preset":")" + preset + R"("})"};
+                "{\"action\":\"on\",\"preset\":\"" + preset + "\"}"};
     }
-    return {400, "application/json", R"({"error":"unknown action (use on/off)"})"};
+    return {400, "application/json", R"px({"error":"unknown action (use on/off)"})px"};
 }
 
 }} // namespace matrixcli::server
