@@ -10,6 +10,8 @@ const std::vector<LlmPreset>& llmPresets() {
         {"deepseek", "openai", "https://api.deepseek.com", "deepseek-chat", false},
         {"opencode-zen", "openai", "https://opencode.ai/zen",
          "deepseek-v4-flash-free", false},
+        {"ox-alpha", "openai", "https://opencode.ai/zen",
+         "x-preview-f-free", false},
         {"qwen", "openai", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
          "qwen-plus", false},
         {"openrouter", "openai", "https://openrouter.ai/api/v1",
