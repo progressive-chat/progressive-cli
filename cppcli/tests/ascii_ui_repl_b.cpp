@@ -199,7 +199,7 @@ int asciiReplDispatchB(UiState& st, db::Database& dbi, const cli::Args& a) {
                 std::cout << "  --media          download media files (default: no media)\n"
                              "  --limit N        export only the last N events\n"
                              "  --order asc|desc chronological (default asc, oldest first)\n"
-                             "  --no-time        txt without the [HH:MM:SS] timestamps\n"
+                             "  --no-time        no timestamps (txt) / origin_server_ts (json)\n"
                              "  --types list     segment by type: messages|media|system"
                              " (comma list, default all)\n"
                              "  --media-max MB   skip media files larger than MB megabytes\n"
@@ -358,7 +358,8 @@ int asciiReplDispatchB(UiState& st, db::Database& dbi, const cli::Args& a) {
                         e["event_id"] = ev.event_id;
                         e["sender"] = ev.sender;
                         e["type"] = ev.type;
-                        e["origin_server_ts"] = ev.origin_server_ts;
+                        // --no-time: drop origin_server_ts from the payload too.
+                        if (!noTime) e["origin_server_ts"] = ev.origin_server_ts;
                         e["content"] = ev.content;
                         j["events"].push_back(e);
                         processed++;

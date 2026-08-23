@@ -617,7 +617,8 @@ int cmdDump(const cli::Args& args) {
     }
     if (args.positional.empty()) {
         std::cerr << "Usage: progressive-cli dump <room> [--format json|txt|html|md]"
-                     " [--out dir] [--limit N] [--parts N] [--no-time]\n"
+                     " [--out dir] [--limit N] [--parts N]"
+                     " [--no-time: no timestamps (txt) / origin_server_ts (json)]\n"
                      "  The export reads the offline cache; the full server-side"
                      " pagination is the ASCII UI's 'dump --server'.\n";
         return 1;
@@ -657,11 +658,13 @@ int cmdDump(const cli::Args& args) {
         if (fmt == "json") {
             nlohmann::json arr = nlohmann::json::array();
             for (const auto& ev : chunk) {
-                arr.push_back({{"event_id", ev.event_id},
-                               {"sender", ev.sender},
-                               {"type", ev.type},
-                               {"origin_server_ts", ev.origin_server_ts},
-                               {"content", ev.content}});
+                nlohmann::json e = {{"event_id", ev.event_id},
+                                    {"sender", ev.sender},
+                                    {"type", ev.type}};
+                // --no-time: drop origin_server_ts from the payload too.
+                if (!noTime) e["origin_server_ts"] = ev.origin_server_ts;
+                e["content"] = ev.content;
+                arr.push_back(e);
             }
             out << arr.dump(2) << "\n";
         } else if (fmt == "txt") {
