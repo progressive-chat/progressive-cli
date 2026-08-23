@@ -81,6 +81,8 @@ void TtysApi::registerRoutes(api::Router& router) {
     router.post("/api/ttys/render",  [this](const api::Request& req) { return handleRender(req); });
     router.post("/api/ttys/input",   [this](const api::Request& req) { return handleInput(req); });
     router.post("/api/ttys/sync",    [this](const api::Request& req) { return handleSync(req); });
+    router.post("/api/ttys/proxy",   [this](const api::Request& req) { return handleProxy(req); });
+    router.get("/api/ttys/proxy",    [this](const api::Request& req) { return handleProxy(req); });
 }
 
 int TtysApi::activeSessionCount() {
@@ -430,6 +432,63 @@ api::Response TtysApi::handleSync(const api::Request& req) {
     if (!s->syncError.empty()) out["error"] = s->syncError;
     out["lastSyncMs"] = s->lastSyncMs;
     return {200, "application/json", out.dump()};
+}
+
+// GET/POST /api/ttys/proxy — manage the server-wide proxy (the full client's
+// `proxy on/off`) so a thin -terminal client can drive it over HTTP.
+//   GET                        -> {enabled, preset, host, port, type}
+//   POST {action:"on",preset}  -> enable a named preset (from config.json)
+//   POST {action:"off"}        -> disable (direct connections)
+api::Response TtysApi::handleProxy(const api::Request& req) {
+    if (!authorized(req)) {
+        return {401, "application/json", R"({"error":"unauthorized"})"};
+    }
+    if (req.method == "GET") {
+        progressive::desktop::ProxyConfig cfg;
+        bool on = activeProxyConfig(&cfg);
+        json out;
+        out["enabled"] = on;
+        out["preset"] = Config::instance().get("proxy_active");
+        if (on) {
+            out["host"] = cfg.host;
+            out["port"] = cfg.port;
+            out["type"] = (cfg.type == progressive::desktop::ProxyConfig::Type::Http)
+                              ? "http"
+                              : (cfg.type == progressive::desktop::ProxyConfig::Type::Socks5)
+                                    ? "socks5"
+                                    : "socks5h";
+        }
+        return {200, "application/json", out.dump()};
+    }
+    json body = json::parse(req.body, nullptr, false);
+    if (body.is_discarded())
+        return {400, "application/json", R"({"error":"bad JSON"})"};
+    std::string action = body.value("action", "");
+    if (action == "off") {
+        Config::instance().set("proxy_active", "");
+        Config::instance().save();
+        applyProxyFromConfig();
+        return {200, "application/json", R"({"action":"off","enabled":false})"};
+    }
+    if (action == "on") {
+        std::string preset = body.value("preset", "");
+        if (preset.empty())
+            return {400, "application/json", R"({"error":"preset required"})"};
+        auto arr = Config::instance().getRaw("proxy_presets");
+        bool found = false;
+        if (arr.is_array())
+            for (auto& e : arr)
+                if (e.value("name", "") == preset) { found = true; break; }
+        if (!found)
+            return {400, "application/json",
+                    R"({"error":"unknown preset ')" + preset + R"('"})"};
+        Config::instance().set("proxy_active", preset);
+        Config::instance().save();
+        applyProxyFromConfig();
+        return {200, "application/json",
+                R"({"action":"on","preset":")" + preset + R"("})"};
+    }
+    return {400, "application/json", R"({"error":"unknown action (use on/off)"})"};
 }
 
 }} // namespace matrixcli::server
