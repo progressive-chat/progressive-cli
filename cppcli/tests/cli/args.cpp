@@ -207,7 +207,7 @@ void printUsage(const Args& args) {
 }
 
 std::string versionString() {
-    return "progressive-cli v0.5.2";
+    return "progressive-cli v0.5.3";
 }
 
 void printVersion() {
