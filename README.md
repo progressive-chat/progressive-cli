@@ -21,6 +21,17 @@ C++ from the ground up — the old Go implementation is retired (the
 > version/commit/build it was generated from, and every feature carries a
 > code anchor (file + line) verified by `docs/check.mjs` in the CI.
 
+## Versioning & release stages
+
+| Version | Stage |
+|---|---|
+| `0.5.x` | development (current line) |
+| `0.6.0+` | pre-alpha |
+| `0.7.0+` | alpha |
+| `0.8.0` | pre-beta |
+| `0.9.0` | beta |
+| `1.0.0` | release |
+
 ## Highlights
 
 - **The full CLI client** — rooms, messages, threads, polls, reactions,
