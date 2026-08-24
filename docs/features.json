@@ -830,6 +830,14 @@
       "category": "ttys",
       "status": "implemented",
       "since": "0.5.4"
+    },
+    {
+      "id": "cli-copy-clipboard",
+      "name": "CLI: copy <room> [N] — last N cached messages to the clipboard",
+      "category": "cli",
+      "status": "implemented",
+      "since": "0.5.4",
+      "note": "plain-text lines; wl-copy/xclip native + OSC 52 fallback; --preview"
     }
   ]
 }

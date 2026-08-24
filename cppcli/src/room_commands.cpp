@@ -607,6 +607,71 @@ int cmdAccounts(const cli::Args& args) {
 }
 
 
+// ---- copy: the last N cached messages -> clipboard (OSC52 / wl-copy / xclip) ----
+static std::string b64(const std::string& in) {
+    static const char* T =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string o;
+    int v = 0, bits = -6;
+    for (unsigned char c : in) {
+        v = (v << 8) + c; bits += 8;
+        while (bits >= 0) { o += T[(v >> bits) & 0x3F]; bits -= 6; }
+    }
+    if (bits > -6) o += T[((v << 8) >> (bits + 8)) & 0x3F];
+    while (o.size() % 4) o += '=';
+    return o;
+}
+
+int cmdCopy(const cli::Args& args) {
+    using namespace matrixcli;
+    db::Database dbi;
+    if (!dbi.open("matrixcli.db")) {
+        std::cerr << "Cannot open matrixcli.db\n"; return 1;
+    }
+    if (args.positional.empty()) {
+        std::cerr << "Usage: progressive-cli copy <room> [N] [--preview]\n"
+                     "Copies the last N cached messages as plain text"
+                     " (default N=20).\n";
+        return 1;
+    }
+    const std::string room = matchRoomInCache(dbi.listRooms(), args.positional[0]);
+    if (room.empty()) { std::cerr << "Room not found in cache\n"; return 1; }
+
+    int limit = 20;
+    if (!args.positional.empty() && args.positional.size() > 1) {
+        try { limit = std::max(1, std::stoi(args.positional[1])); } catch (...) {}
+    }
+
+    const auto evs = dbi.getEvents(room, limit);
+    std::ostringstream out;
+    for (const auto& ev : evs) {
+        std::string sender = ev.sender;
+        const auto at = sender.find(':');
+        if (at != std::string::npos) sender = sender.substr(1, at - 1);
+        out << sender << ": " << ev.content.value("body", "") << "\n";
+    }
+    const std::string payload = out.str();
+    if (args.options.count("preview")) {
+        std::cout << payload; return 0;
+    }
+
+    // Wayland first, then X11; OSC52 always as a last-mile fallback.
+    bool via = false;
+    if (std::getenv("WAYLAND_DISPLAY")) {
+        FILE* p = popen("wl-copy 2>/dev/null", "w");
+        if (p) { fwrite(payload.data(), 1, payload.size(), p); pclose(p); via = true; }
+    } else if (std::system("command -v xclip >/dev/null 2>&1") == 0) {
+        FILE* p = popen("xclip -selection clipboard -in 2>/dev/null", "w");
+        if (p) { fwrite(payload.data(), 1, payload.size(), p); pclose(p); via = true; }
+    }
+#ifdef __unix__
+    std::cout << "\033]52;c;" << b64(payload) << "\a";
+#endif
+    std::cout << "Copied " << evs.size() << " message(s) ("
+              << (via ? "native clipboard" : "OSC 52") << ")\n";
+    return 0;
+}
+
 // ---- dump: the room export from the cache (the ASCII UI parity) ----
 int cmdDump(const cli::Args& args) {
     using namespace matrixcli;
@@ -775,6 +840,7 @@ void registerRoomCommands() {
     reg.registerCli("accounts", cmdAccounts, "List logged-in accounts: accounts [--all] [--json] | --hide <mxid> | --show <mxid> | --temporary-hide <mxid>");
     reg.registerCli("markdown", cmdMarkdown, "Render markdown to HTML: markdown <text> | echo <text> | progressive-cli markdown");
     reg.registerCli("dump", cmdDump, "Export a room from the cache: dump <room> [--format json|txt|html|md] [--out dir] [--limit N] [--parts N]");
+    reg.registerCli("copy", cmdCopy, "Copy the last N cached messages to the clipboard: copy <room> [N] [--preview]");
     reg.registerCli("invite", cmdInvite, "Invite a user: invite <room> <@user> [--reason r]");
     reg.registerCli("turn", cmdTurn, "Show VoIP TURN credentials: turn");
     reg.registerCli("openid", cmdOpenId, "Request an OpenID token for the current user: openid");
