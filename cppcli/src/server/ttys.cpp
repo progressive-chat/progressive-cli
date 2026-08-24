@@ -84,6 +84,7 @@ void TtysApi::registerRoutes(api::Router& router) {
     router.post("/api/ttys/proxy",   [this](const api::Request& req) { return handleProxy(req); });
     router.get("/api/ttys/proxy",    [this](const api::Request& req) { return handleProxy(req); });
     router.get("/api/ttys/session/last", [this](const api::Request& req) { return handleLastSession(req); });
+    router.get("/api/ttys/proxy/presets", [this](const api::Request& req) { return handleProxyPresets(req); });
     router.get("/api/ttys/usage",       [this](const api::Request& req) { return handleUsage(req); });
 }
 
@@ -578,6 +579,39 @@ api::Response TtysApi::handleLastSession(const api::Request& req) {
     out["session"] = s.id;
     if (!s.userId.empty()) out["user_id"] = s.userId;
     return {200, "application/json", out.dump()};
+}
+
+// GET /api/ttys/proxy/presets[?name=X]
+// Without ?name: plain-text list of all proxy_presets.
+// With ?name=X: JSON {type,host,port,user,pass} for that preset.
+api::Response TtysApi::handleProxyPresets(const api::Request& req) {
+    if (!authorized(req)) {
+        return {401, "application/json", R"({"error":"unauthorized"})"};
+    }
+    auto arr = Config::instance().getRaw("proxy_presets");
+    if (!arr.is_array()) arr = nlohmann::json::array();
+
+    // ?name=X → single preset as JSON
+    auto name_it = req.params.find("name");
+    if (name_it != req.params.end()) {
+        for (auto& e : arr) {
+            if (e.value("name","") == name_it->second) {
+                return {200, "application/json", e.dump()};
+            }
+        }
+        return {404, "text/plain", "preset not found"};
+    }
+
+    // No ?name → plain-text numbered list
+    std::string out;
+    for (size_t i = 0; i < arr.size(); ++i) {
+        auto& e = arr[i];
+        out += std::to_string(i+1) + " " + e.value("name","") + ": "
+             + e.value("type","") + "://" + e.value("host","") + ":"
+             + std::to_string(e.value("port",0)) + "\n";
+    }
+    return {200, "text/plain; charset=utf-8", out};
+}
 }
 
 // GET /api/ttys/usage — the full client's own command catalog as plain
