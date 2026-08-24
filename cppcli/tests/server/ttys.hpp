@@ -62,6 +62,7 @@ public:
     // persistCachePath: non-empty = the session cache DB lives on disk (the
     // account still stays in RAM); empty = ":memory:" (default).
     void setPersistCachePath(const std::string& path) { _persistCachePath = path; }
+    void setPersistProxy(bool on);
 
     TtysApi(const TtysApi&) = delete;
     TtysApi& operator=(const TtysApi&) = delete;
@@ -101,9 +102,10 @@ private:
     std::mutex _mu;
     std::map<std::string, std::unique_ptr<TtysSession>> _sessions;
     std::string _token;          // --token X: require "Authorization: Bearer X"
-    std::string _lastSession;    // id of the most recently created/joined
-                                 // session — RAM-only, for "give me my
-                                 // session back" bootstrapping of thin clients
+    std::string _lastSession;        // id of the most recently created/joined
+                                     // session — RAM-only bootstrap for thin
+                                     // clients ("give me my session back")
+    bool persistProxy_ = false;      // false = never write config.json
     std::string _defaultSync;    // "auto" | "once" | "off"
     std::string _persistCachePath; // empty = ":memory:"
 };

@@ -38,6 +38,10 @@
 #include "../lib/util/notifications.hpp"
 #include "../lib/util/string_utils.hpp"
 #include "../lib/util/client_utils.hpp"
+#ifdef __unix__
+#include <sys/resource.h>
+#include <sys/prctl.h>
+#endif
 #ifdef BUILD_TUI
 #include "../lib/tui/screen.hpp"
 #include "../lib/tui/login.hpp"
@@ -77,6 +81,20 @@ int cmdServe(const matrixcli::cli::Args& args) {
         // --cache FILE: persist the session cache on disk; default ":memory:".
         if (args.options.count("cache"))
             ttys.setPersistCachePath(args.options.at("cache"));
+        // RAM-only guarantee: proxy_active stays in memory unless explicitly
+        // opted in, and core dumps are disabled so RAM secrets can't land
+        // in a crash dump.
+        ttys.setPersistProxy(args.options.count("persist-proxy") > 0);
+#ifdef __unix__
+        struct rlimit cl {};
+        cl.rlim_cur = 0; cl.rlim_max = 0;
+        if (setrlimit(RLIMIT_CORE, &cl) != 0)
+            util::Logger::instance().warn("RAM-only: setrlimit(CORE) failed");
+#ifdef __linux__
+        if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0)
+            util::Logger::instance().warn("RAM-only: PR_SET_DUMPABLE failed");
+#endif
+#endif
         api::Server api_server(port, bindAddr);
         api::Router router;
         ttys.registerRoutes(router);
@@ -91,6 +109,11 @@ int cmdServe(const matrixcli::cli::Args& args) {
         }
         std::cout << "ttys server running on http://" << bindAddr << ":" << port
                   << " (sessions: " << ttys.activeSessionCount() << ")" << std::endl;
+        std::cout << "RAM-only: cache=:memory:"
+                  << (args.options.count("cache") ? "(overridden)" : "")
+                  << ", config-writes="
+                  << (args.options.count("persist-proxy") ? "on" : "off")
+                  << ", core-dumps=off" << std::endl;
         std::cout << "Press Ctrl+C to stop" << std::endl;
         while (g_running.load()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(500));

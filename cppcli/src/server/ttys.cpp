@@ -478,7 +478,7 @@ api::Response TtysApi::handleProxy(const api::Request& req) {
     std::string action = body.value("action", "");
     if (action == "off") {
         Config::instance().set("proxy_active", "");
-        Config::instance().save();
+        if (persistProxy_) Config::instance().save();
         applyProxyFromConfig();
         return {200, "application/json", R"({"action":"off","enabled":false})"};
     }
@@ -495,7 +495,7 @@ api::Response TtysApi::handleProxy(const api::Request& req) {
             return {400, "application/json",
                     "{\"error\":\"unknown preset '" + preset + "'\"}"};
         Config::instance().set("proxy_active", preset);
-        Config::instance().save();
+        if (persistProxy_) Config::instance().save();
         applyProxyFromConfig();
         return {200, "application/json",
                 "{\"action\":\"on\",\"preset\":\"" + preset + "\"}"};
@@ -532,5 +532,6 @@ api::Response TtysApi::handleUsage(const api::Request& req) {
     return {200, "text/plain; charset=utf-8",
             cli::usageText(cli::Args{}, /*fmt=*/false)};
 }
+void TtysApi::setPersistProxy(bool on) { persistProxy_ = on; }
 
 }} // namespace matrixcli::server
