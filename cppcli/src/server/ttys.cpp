@@ -612,7 +612,6 @@ api::Response TtysApi::handleProxyPresets(const api::Request& req) {
     }
     return {200, "text/plain; charset=utf-8", out};
 }
-}
 
 // GET /api/ttys/usage — the full client's own command catalog as plain
 // text, so a thin client mirrors its face without storing anything.
