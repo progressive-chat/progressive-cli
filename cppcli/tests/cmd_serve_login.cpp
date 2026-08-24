@@ -51,7 +51,9 @@
 int cmdServe(const matrixcli::cli::Args& args) {
     using namespace matrixcli;
 
-    int port = 8080;
+    // The headless ttys relay lives on the port the whole thin-client
+    // ecosystem expects (scan range, docs); the web UI keeps 8080.
+    int port = args.options.contains("ttys") ? 29325 : 8080;
     auto port_it = args.options.find("port");
     if (port_it == args.options.end()) port_it = args.options.find("p");
     if (port_it != args.options.end()) {

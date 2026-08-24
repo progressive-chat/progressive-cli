@@ -88,6 +88,7 @@ private:
     api::Response handleSync(const api::Request& req);
     api::Response handleProxy(const api::Request& req);
     api::Response handleLastSession(const api::Request& req);
+    api::Response handleUsage(const api::Request& req);
 
     TtysSession* findSession(const std::string& id);
     TtysSession* createOrGetSession(const std::string& id,

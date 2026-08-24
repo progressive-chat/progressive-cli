@@ -84,6 +84,7 @@ void TtysApi::registerRoutes(api::Router& router) {
     router.post("/api/ttys/proxy",   [this](const api::Request& req) { return handleProxy(req); });
     router.get("/api/ttys/proxy",    [this](const api::Request& req) { return handleProxy(req); });
     router.get("/api/ttys/session/last", [this](const api::Request& req) { return handleLastSession(req); });
+    router.get("/api/ttys/usage",       [this](const api::Request& req) { return handleUsage(req); });
 }
 
 int TtysApi::activeSessionCount() {
@@ -520,6 +521,16 @@ api::Response TtysApi::handleLastSession(const api::Request& req) {
     out["session"] = s.id;
     if (!s.userId.empty()) out["user_id"] = s.userId;
     return {200, "application/json", out.dump()};
+}
+
+// GET /api/ttys/usage — the full client's own command catalog as plain
+// text, so a thin client mirrors its face without storing anything.
+api::Response TtysApi::handleUsage(const api::Request& req) {
+    if (!authorized(req)) {
+        return {401, "application/json", R"({"error":"unauthorized"})"};
+    }
+    return {200, "text/plain; charset=utf-8",
+            cli::usageText(cli::Args{}, /*fmt=*/false)};
 }
 
 }} // namespace matrixcli::server

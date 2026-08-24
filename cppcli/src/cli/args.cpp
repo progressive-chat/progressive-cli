@@ -88,8 +88,10 @@ bool wantFormatting(const Args& args) {
     return true;
 }
 
-void printUsage(const Args& args) {
-    const bool fmt = wantFormatting(args);
+std::string usageText(const Args& args, bool fmt) {
+    std::ostringstream oss;
+
+    (void)args;
     // Plain mode renders the exact same bytes as before: the colour
     // tokens reduce to empty strings.
     const std::string head = fmt ? std::string(ANSI_BOLD) + ANSI_CYAN : "";
@@ -99,10 +101,10 @@ void printUsage(const Args& args) {
     const std::string demoCol = fmt ? std::string(ANSI_BOLD) + "\033[37m" : "";
     const std::string rst = fmt ? "\033[0m" : "";
 
-    std::cout << head << "progressive-cli - the Matrix chat client and coding agent, designed to work in the terminal" << rst << "\n\n"
+    oss << head << "progressive-cli - the Matrix chat client and coding agent, designed to work in the terminal" << rst << "\n\n"
               << usage << "Usage: progressive-cli [command] [options]" << rst << "\n\n";
 
-    std::cout << bold << "The Matrix client" << rst << "\n"
+    oss << bold << "The Matrix client" << rst << "\n"
               << "  " << demoCol << "accounts" << rst << "      Logged-in accounts: accounts [--all] [--json] | --hide <mxid> | --show <mxid>\n"
               << "  attach        Send a file: attach <room> <file> [--caption text] [--chunks N]\n"
               << "  avatar        Set the room avatar\n"
@@ -151,12 +153,12 @@ void printUsage(const Args& args) {
               << "  permalink      Alias of link (room event permalink): permalink <room> [last|first|N|-N] [--via N] [--copy] [--clip] [--domain D] (no args: last active room; config 'link_domain'; 'link_via'=0 all; 'fit_link_to_terminal'=on)\n"
               << "  " << demoCol << "vote" << rst << "          Vote in a poll\n\n";
 
-    std::cout << bold << "The LLM and the agents" << rst << "\n"
+    oss << bold << "The LLM and the agents" << rst << "\n"
               << "  llm           The LLM completion / the conversations: llm <prompt> | llm chat | llm continue | llm sessions | llm resume <N>\n"
               << "  agent         The agentic loop with the Matrix tools: agent <task> [--room X]\n"
               << "  agent-code    The local coding agent: agent-code <prompt> [--trust allow|ask|deny]\n\n";
 
-    std::cout << bold << "The setup and the infrastructure" << rst << "\n"
+    oss << bold << "The setup and the infrastructure" << rst << "\n"
               << "  completion    Generate the shell completion (bash/zsh/fish)\n"
               << "  " << demoCol << "config" << rst << "        Show/edit the client config\n"
               << "  help          Show this help\n"
@@ -167,13 +169,13 @@ void printUsage(const Args& args) {
                << "  ttys          Thin client for 'serve --ttys': remote ASCII UI\n"
                << "  setup         The interactive setup wizard\n\n";
 
-    std::cout << bold << "The bridges (experimental)" << rst << "\n"
+    oss << bold << "The bridges (experimental)" << rst << "\n"
               << "  dc            The DeltaChat bridge\n"
               << "  irc           The IRC client (connect/join/msg/leave/whois/names)\n"
               << "  lemmy         The Lemmy client (login/posts/post/upvote/comments)\n"
               << "  td            Telegram via TDLib (login/chats/msg/history)\n\n";
 
-    std::cout << bold << "The markdown rendering (demo markdown)" << rst << "\n"
+    oss << bold << "The markdown rendering (demo markdown)" << rst << "\n"
               << "  bold, italic, inline code and [links](url) as OSC 8 hyperlinks, plus\n"
               << "  headers, lists, - [x] checkboxes, quotes and fenced code. Terminals\n"
               << "  have a fixed cell grid, no font scaling exists: headers render bold.\n"
@@ -185,7 +187,7 @@ void printUsage(const Args& args) {
               << "  Link item for hidden links is an upstream Konsole gap (KDE bug\n"
               << "  520743); bare URLs have it.\n\n";
 
-    std::cout << bold << "Examples:" << rst << "\n"
+    oss << bold << "Examples:" << rst << "\n"
               << "  progressive-cli login --homeserver https://matrix.org --username @me:matrix.org --password s3cret\n"
               << "  progressive-cli register --homeserver https://example.org --username newuser --password s3cret [--reg-token T]\n"
               << "  progressive-cli rooms\n"
@@ -204,6 +206,11 @@ void printUsage(const Args& args) {
               << rst << "\n"
               << dim << "--disable-formatting (or NO_COLOR=1) forces plain text."
               << rst << "\n";
+    return oss.str();
+}
+
+void printUsage(const Args& args) {
+    std::cout << usageText(args, wantFormatting(args));
 }
 
 std::string versionString() {
