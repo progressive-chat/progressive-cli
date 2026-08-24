@@ -799,6 +799,36 @@
     {
       "name": "Thin client: profile export/import bundles",
       "status": "implemented"
+    },
+    {
+      "id": "ttys-default-port-29325",
+      "name": "serve --ttys defaults to port 29325 (was 8080)",
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4",
+      "note": "thin clients scan/expect 29325; web UI keeps 8080"
+    },
+    {
+      "id": "ram-only-guarantee",
+      "name": "RAM-only relay mode: :memory: cache, no config writes, core dumps disabled",
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4",
+      "note": "--cache FILE / --persist-proxy opt out; RLIMIT_CORE=0 + PR_SET_DUMPABLE=0"
+    },
+    {
+      "id": "ttys-proxy-status-plain",
+      "name": "GET /api/ttys/proxy text/plain — full client status block for pipes",
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4"
+    },
+    {
+      "id": "ttys-proxy-preset-index",
+      "name": "proxy on <N> — numeric preset accepted over ttys API",
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4"
     }
   ]
 }
