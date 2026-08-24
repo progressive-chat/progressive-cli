@@ -210,28 +210,41 @@ api::Response TtysApi::handleRegister(const api::Request& req) {
         return {400, "application/json",
                 R"({"error":"homeserver, username and password required"})"};
     }
-    // Optional per-request proxy for BOTH the registration call and the
-    // session that follows ("socks5://h:p" / "http://h:p" / "off").
+    // Normalise homeserver URL: add https:// if no scheme present.
+    if (hs.find("://") == std::string::npos) hs = "https://" + hs;
+
+    // Optional per-request proxy.
     std::string proxySpec;
     {
         auto it = body.find("proxy");
         if (it != body.end() && it->is_string()) proxySpec = it->get<std::string>();
     }
-    // Registration takes the LOCALPART: strip @ and :server when the
-    // caller passed a full Matrix ID.
     if (!username.empty() && username[0] == '@') {
         auto colon = username.find(':');
         username = colon != std::string::npos
                        ? username.substr(1, colon - 1) : username.substr(1);
     }
+
+    // Optional UIA auth passthrough (for thin clients that completed
+    // interactive verification stages).
+    std::string uia_auth;
+    if (body.contains("uia_auth") && body["uia_auth"].is_string())
+        uia_auth = body["uia_auth"].get<std::string>();
+    std::string uia_session;
+    if (body.contains("uia_session") && body["uia_session"].is_string())
+        uia_session = body["uia_session"].get<std::string>();
+
     matrix::Credentials creds;
     try {
         matrix::Client client;
         client.setHomeserverURL(hs);
         if (!proxySpec.empty() || body.contains("proxy"))
-            client.setProxy(parseProxySpec(proxySpec));   // "" / "off" = direct
+            client.setProxy(parseProxySpec(proxySpec));
         else
             applyConfiguredProxy(client);
+
+        // TODO: wire registerAccountWithAuth from progressive-core
+        // (core rebuilt with this method; header integration pending)
         creds = client.registerAccount(username, password,
                                        "progressive-ttys", regToken);
     } catch (const std::exception& e) {
@@ -239,13 +252,14 @@ api::Response TtysApi::handleRegister(const api::Request& req) {
         err["error"] = std::string("registration failed: ") + e.what();
         return {400, "application/json", err.dump()};
     }
+
     json account = {
         {"homeserver", hs},
         {"access_token", creds.access_token},
         {"user_id", creds.user_id},
         {"device_id", creds.device_id},
     };
-    if (body.contains("proxy")) account["proxy"] = proxySpec;  // inherit
+    if (body.contains("proxy")) account["proxy"] = proxySpec;
     std::string id = creds.user_id.empty()
                          ? hs + "|" + creds.access_token.substr(0, 8)
                          : creds.user_id;
