@@ -163,7 +163,8 @@ std::string proxyStatusPlainText() {
     if (!cfg.enabled)
         oss << "proxy: disabled (direct connections)"
                " — to enable: proxy on <name|N>\n"
-            << "  presets: " << psum << "\n";
+            << "  presets: " << psum
+            << " — 'proxy on N', or --host/--port\n";
     else
         oss << "proxy: enabled (proxied connections) — to disable: proxy off\n"
             << "  switch: proxy on <name|N> — presets: " << psum << "\n";
@@ -175,7 +176,10 @@ std::string proxyStatusPlainText() {
         std::string contents((std::istreambuf_iterator<char>(in)),
                              std::istreambuf_iterator<char>());
         oss << contents;
-        if (!contents.empty() && contents.back() != '\n') oss << '\n';
+        // the CLI printer emits a trailing blank segment line when the file
+        // ends with a newline — reproduce for byte-parity
+        if (!contents.empty() && contents.back() == '\n') oss << '\n';
+        else oss << '\n';
     }
     return oss.str();
 }
