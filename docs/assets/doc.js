@@ -2,13 +2,14 @@
 // feature table. Plain DOM, no dependencies.
 
 const STATUS_LABELS = {
+    proven: 'Proven by the owner',
     verified: 'Proved working',
     implemented: 'Implemented',
     awaited: 'Awaited',
     wontadd: "Won't add",
 };
 
-const STATUS_ORDER = ['verified', 'implemented', 'awaited', 'wontadd'];
+const STATUS_ORDER = ['proven', 'verified', 'implemented', 'awaited', 'wontadd'];
 
 const GH = 'https://github.com/progressive-chat/progressive-cli';
 
