@@ -306,6 +306,20 @@ api::Response TtysApi::handleRender(const api::Request& req) {
     std::lock_guard<std::mutex> lock(_mu);
     TtysSession* s = findSession(id);
     if (!s) return {404, "application/json", R"({"error":"no such session"})"};
+    // Thin clients re-assert their profile proxy on every call; applies to
+    // THIS session only — server-global settings are never touched.
+    if (body.contains("proxy")) {
+        const std::string ps = body.value("proxy", "");
+        if (!ps.empty() && ps != s->proxySpec) {
+            s->proxySpec = ps;
+            json acct = {{"homeserver", s->homeserver},
+                         {"access_token", s->accessToken},
+                         {"device_id", s->deviceId},
+                         {"user_id", s->userId},
+                         {"proxy", ps}};
+            applySessionProxy(*s->client, acct, s->proxySpec);
+        }
+    }
 
     // sync: "auto" starts the background thread, "once" does one pass now,
     // "off"/absent leaves the cache as-is. The server default (the --sync
@@ -369,6 +383,20 @@ api::Response TtysApi::handleInput(const api::Request& req) {
     std::lock_guard<std::mutex> lock(_mu);
     TtysSession* s = findSession(id);
     if (!s) return {404, "application/json", R"({"error":"no such session"})"};
+    // Thin clients re-assert their profile proxy on every call; applies to
+    // THIS session only — server-global settings are never touched.
+    if (body.contains("proxy")) {
+        const std::string ps = body.value("proxy", "");
+        if (!ps.empty() && ps != s->proxySpec) {
+            s->proxySpec = ps;
+            json acct = {{"homeserver", s->homeserver},
+                         {"access_token", s->accessToken},
+                         {"device_id", s->deviceId},
+                         {"user_id", s->userId},
+                         {"proxy", ps}};
+            applySessionProxy(*s->client, acct, s->proxySpec);
+        }
+    }
 
     // Parse the input line like the REPL does, then run the same commands.
     cli::Args a;
@@ -438,6 +466,20 @@ api::Response TtysApi::handleSync(const api::Request& req) {
     std::lock_guard<std::mutex> lock(_mu);
     TtysSession* s = findSession(id);
     if (!s) return {404, "application/json", R"({"error":"no such session"})"};
+    // Thin clients re-assert their profile proxy on every call; applies to
+    // THIS session only — server-global settings are never touched.
+    if (body.contains("proxy")) {
+        const std::string ps = body.value("proxy", "");
+        if (!ps.empty() && ps != s->proxySpec) {
+            s->proxySpec = ps;
+            json acct = {{"homeserver", s->homeserver},
+                         {"access_token", s->accessToken},
+                         {"device_id", s->deviceId},
+                         {"user_id", s->userId},
+                         {"proxy", ps}};
+            applySessionProxy(*s->client, acct, s->proxySpec);
+        }
+    }
     runSyncPass(*s);
     json out;
     out["synced"] = !s->syncing.load();
@@ -454,6 +496,12 @@ api::Response TtysApi::handleSync(const api::Request& req) {
 api::Response TtysApi::handleProxy(const api::Request& req) {
     if (!authorized(req)) {
         return {401, "application/json", R"({"error":"unauthorized"})"};
+    }
+    {
+        auto acc = req.headers.find("accept");
+        if (req.method == "GET" && acc != req.headers.end() &&
+            acc->second.find("text/plain") != std::string::npos)
+            return {200, "text/plain; charset=utf-8", proxyStatusPlainText()};
     }
     if (req.method == "GET") {
         progressive::desktop::ProxyConfig cfg;
@@ -484,13 +532,22 @@ api::Response TtysApi::handleProxy(const api::Request& req) {
     }
     if (action == "on") {
         std::string preset = body.value("preset", "");
-        if (preset.empty())
-            return {400, "application/json", R"({"error":"preset required"})"};
         auto arr = Config::instance().getRaw("proxy_presets");
         bool found = false;
-        if (arr.is_array())
-            for (auto& e : arr)
-                if (e.value("name", "") == preset) { found = true; break; }
+        // Accept both the preset name and its 1-based number ('proxy on N').
+        if (!preset.empty() && preset.find_first_not_of("0123456789") == std::string::npos) {
+            int n = std::stoi(preset);
+            if (arr.is_array() && n >= 1 && static_cast<size_t>(n) <= arr.size()) {
+                preset = arr[n - 1].value("name", "");
+                found = true;
+            }
+        } else if (!preset.empty()) {
+            if (arr.is_array())
+                for (auto& e : arr)
+                    if (e.value("name", "") == preset) { found = true; break; }
+        }
+        if (preset.empty())
+            return {400, "application/json", R"({"error":"preset required"})"};
         if (!found)
             return {400, "application/json",
                     "{\"error\":\"unknown preset '" + preset + "'\"}"};

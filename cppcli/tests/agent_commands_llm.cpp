@@ -13,6 +13,7 @@
 #include "globals.hpp"
 #include "../lib/database/db.hpp"
 #include "../lib/util/llm_presets.hpp"
+#include "config.hpp"
 #include "../lib/util/llm_sessions.hpp"
 #include "agent_tools.hpp"
 #include "matrix_agent.hpp"
@@ -194,6 +195,48 @@ static std::vector<agenttools::Message> compactHistory(
     std::vector<agenttools::Message> out;
     out.push_back({"user", "[earlier conversation summary]\n" + cres->text, {}, "", ""});
     for (const auto& m : tail) out.push_back(m);
+    return out;
+}
+
+// Sliding window: drop the OLDEST messages (keeping the system prompt and
+// the last `keep` entries) so the new exchange always fits — no LLM call,
+// no summary loss-aversion. Config (config.json):
+//   agent.history.mode      compact | sliding   (default: compact)
+//   agent.sliding.keep      how many latest messages survive    (default 12)
+//   agent.sliding.trigger   percent of the context window       (default 60)
+static std::vector<agenttools::Message> slidingTrim(
+        const matrixagent::Config& cfg,
+        const std::vector<agenttools::Message>& hist) {
+    int keep = 12;
+    int trigger = 60;
+    int head = 0;
+    try {
+        keep    = std::max(2, std::stoi(
+            matrixcli::Config::instance().get("agent.sliding.keep", "12")));
+        trigger = std::clamp(std::stoi(
+            matrixcli::Config::instance().get("agent.sliding.trigger", "60")),
+            10, 95);
+        head    = std::max(0, std::stoi(
+            matrixcli::Config::instance().get("agent.sliding.head", "0")));
+    } catch (...) {}
+
+    int64_t est = 0;
+    for (const auto& m : hist) est += m.content.size() / 4 + 4;
+    const int ctx = agenttools::contextSizeForModel(cfg.model);
+    if (ctx <= 0 || est * 100 / ctx < trigger) return hist;
+
+    // Three zones: [user-pinned head][drop notice][recent tail].
+    const size_t headN = std::min<size_t>(head, hist.size());
+    const size_t tailN = std::min<size_t>(
+        keep, hist.size() > headN ? hist.size() - headN : 0);
+    if (hist.size() <= headN + tailN + 2) return hist;
+
+    const size_t dropped = hist.size() - headN - tailN;
+    std::vector<agenttools::Message> out(hist.begin(), hist.begin() + headN);
+    out.push_back({"user",
+        "[sliding window] " + std::to_string(dropped) +
+        " older message(s) were dropped to fit the context", {}, "", ""});
+    out.insert(out.end(), hist.end() - tailN, hist.end());
     return out;
 }
 
@@ -384,9 +427,16 @@ static int runLlmTurn(const cli::Args& args, const std::string& prompt) {
     // The auto-compaction keeps the long conversations inside the context
     // (the compacted history is persisted back).
     if (hist.size() > 6) {
-        std::vector<agenttools::Message> compacted =
-            compactHistory(cfg, systemPrompt, hist);
-        if (compacted.size() < hist.size()) hist = compacted;
+        std::string hmode = "compact";
+        try { hmode = matrixcli::Config::instance().get(
+                  "agent.history.mode", "compact"); } catch (...) {}
+        std::vector<agenttools::Message> trimmed =
+            hmode == "sliding" ? slidingTrim(cfg, hist)
+                               : compactHistory(cfg, systemPrompt, hist);
+        if (std::getenv("PROGTERM_DEBUG"))
+            std::cerr << "[history] mode=" << hmode
+                      << " " << hist.size() << "->" << trimmed.size() << "\n";
+        if (trimmed.size() < hist.size()) hist = trimmed;
     }
     std::vector<matrixagent::ChatMessage> msgs;
     for (const auto& m : hist) {

@@ -777,8 +777,9 @@
       "status": "implemented"
     },
     {
-      "name": "Agent history: sliding window (drop-oldest; config agent.sliding.keep/trigger, agent.history.mode)",
-      "status": "implemented"
+      "name": "Agent history: smart sliding — pinned head + drop-notice + recent tail",
+      "status": "implemented",
+      "note": "config: agent.sliding.{keep,trigger,head}; notice message counts dropped entries"
     },
     {
       "name": "Thin client: per-profile proxy container, re-asserted on every request",

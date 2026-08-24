@@ -1,4 +1,4 @@
-// tests/proxy_commands.cpp — Tor/I2P/SOCKS5 proxy configuration for the CLI.
+// src/proxy_commands.cpp — Tor/I2P/SOCKS5 proxy configuration for the CLI.
 //
 // Wraps the progressive-core global proxy (setGlobalProxy/getGlobalProxy,
 // src/core/http_client.{hpp,cpp}): `proxy on --host H --port P [--type ...]`,
@@ -146,6 +146,38 @@ void dumpConfigFile() {
         if (nl == std::string::npos) break;
         start = nl + 1;
     }
+}
+
+// Plain-text mirror of `proxy status` for wire clients (no colours).
+std::string proxyStatusPlainText() {
+    std::ostringstream oss;
+    const auto cfg = progressive::desktop::getGlobalProxy();
+    const auto presets = loadPresets();
+    std::string psum;
+    for (size_t i = 0; i < presets.size(); ++i) {
+        if (i) psum += " · ";
+        psum += std::to_string(i + 1) + " " + presets[i].name + ": "
+              + presets[i].type + "://" + presets[i].host + ":"
+              + std::to_string(presets[i].port);
+    }
+    if (!cfg.enabled)
+        oss << "proxy: disabled (direct connections)"
+               " — to enable: proxy on <name|N>\n"
+            << "  presets: " << psum << "\n";
+    else
+        oss << "proxy: enabled (proxied connections) — to disable: proxy off\n"
+            << "  switch: proxy on <name|N> — presets: " << psum << "\n";
+
+    // config.json verbatim
+    std::ifstream in("config.json");
+    if (in) {
+        oss << "config.json:\n";
+        std::string contents((std::istreambuf_iterator<char>(in)),
+                             std::istreambuf_iterator<char>());
+        oss << contents;
+        if (!contents.empty() && contents.back() != '\n') oss << '\n';
+    }
+    return oss.str();
 }
 
 // Apply the persisted proxy config (config.json) to the core's global proxy.

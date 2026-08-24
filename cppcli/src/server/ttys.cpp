@@ -497,6 +497,12 @@ api::Response TtysApi::handleProxy(const api::Request& req) {
     if (!authorized(req)) {
         return {401, "application/json", R"({"error":"unauthorized"})"};
     }
+    {
+        auto acc = req.headers.find("accept");
+        if (req.method == "GET" && acc != req.headers.end() &&
+            acc->second.find("text/plain") != std::string::npos)
+            return {200, "text/plain; charset=utf-8", proxyStatusPlainText()};
+    }
     if (req.method == "GET") {
         progressive::desktop::ProxyConfig cfg;
         bool on = activeProxyConfig(&cfg);
@@ -526,13 +532,22 @@ api::Response TtysApi::handleProxy(const api::Request& req) {
     }
     if (action == "on") {
         std::string preset = body.value("preset", "");
-        if (preset.empty())
-            return {400, "application/json", R"({"error":"preset required"})"};
         auto arr = Config::instance().getRaw("proxy_presets");
         bool found = false;
-        if (arr.is_array())
-            for (auto& e : arr)
-                if (e.value("name", "") == preset) { found = true; break; }
+        // Accept both the preset name and its 1-based number ('proxy on N').
+        if (!preset.empty() && preset.find_first_not_of("0123456789") == std::string::npos) {
+            int n = std::stoi(preset);
+            if (arr.is_array() && n >= 1 && static_cast<size_t>(n) <= arr.size()) {
+                preset = arr[n - 1].value("name", "");
+                found = true;
+            }
+        } else if (!preset.empty()) {
+            if (arr.is_array())
+                for (auto& e : arr)
+                    if (e.value("name", "") == preset) { found = true; break; }
+        }
+        if (preset.empty())
+            return {400, "application/json", R"({"error":"preset required"})"};
         if (!found)
             return {400, "application/json",
                     "{\"error\":\"unknown preset '" + preset + "'\"}"};
