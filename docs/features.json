@@ -771,6 +771,34 @@
         "file": "src/ascii_ui_draw_center.cpp",
         "pattern": "ev.type == \"m.room.tombstone\""
       }
+    },
+    {
+      "name": "Agent history: auto-compaction (LLM summary at 60% ctx)",
+      "status": "implemented"
+    },
+    {
+      "name": "Agent history: sliding window (drop-oldest; config agent.sliding.keep/trigger, agent.history.mode)",
+      "status": "implemented"
+    },
+    {
+      "name": "Thin client: per-profile proxy container, re-asserted on every request",
+      "status": "implemented"
+    },
+    {
+      "name": "Thin client: offline outbox (auto-delivery) + usage/last-frame caches",
+      "status": "implemented"
+    },
+    {
+      "name": "Thin client: relay endpoints /api/ttys/{usage,session/last} + text/plain frames",
+      "status": "implemented"
+    },
+    {
+      "name": "Thin client: layout-independent typing (PROGTERM_LAYOUT=ru|de|fr|es|it|br|dvorak|colemak)",
+      "status": "implemented"
+    },
+    {
+      "name": "Thin client: profile export/import bundles",
+      "status": "implemented"
     }
   ]
 }
