@@ -306,6 +306,20 @@ api::Response TtysApi::handleRender(const api::Request& req) {
     std::lock_guard<std::mutex> lock(_mu);
     TtysSession* s = findSession(id);
     if (!s) return {404, "application/json", R"({"error":"no such session"})"};
+    // Thin clients re-assert their profile proxy on every call; applies to
+    // THIS session only — server-global settings are never touched.
+    if (body.contains("proxy")) {
+        const std::string ps = body.value("proxy", "");
+        if (!ps.empty() && ps != s->proxySpec) {
+            s->proxySpec = ps;
+            json acct = {{"homeserver", s->homeserver},
+                         {"access_token", s->accessToken},
+                         {"device_id", s->deviceId},
+                         {"user_id", s->userId},
+                         {"proxy", ps}};
+            applySessionProxy(*s->client, acct, s->proxySpec);
+        }
+    }
 
     // sync: "auto" starts the background thread, "once" does one pass now,
     // "off"/absent leaves the cache as-is. The server default (the --sync
@@ -369,6 +383,20 @@ api::Response TtysApi::handleInput(const api::Request& req) {
     std::lock_guard<std::mutex> lock(_mu);
     TtysSession* s = findSession(id);
     if (!s) return {404, "application/json", R"({"error":"no such session"})"};
+    // Thin clients re-assert their profile proxy on every call; applies to
+    // THIS session only — server-global settings are never touched.
+    if (body.contains("proxy")) {
+        const std::string ps = body.value("proxy", "");
+        if (!ps.empty() && ps != s->proxySpec) {
+            s->proxySpec = ps;
+            json acct = {{"homeserver", s->homeserver},
+                         {"access_token", s->accessToken},
+                         {"device_id", s->deviceId},
+                         {"user_id", s->userId},
+                         {"proxy", ps}};
+            applySessionProxy(*s->client, acct, s->proxySpec);
+        }
+    }
 
     // Parse the input line like the REPL does, then run the same commands.
     cli::Args a;
@@ -438,6 +466,20 @@ api::Response TtysApi::handleSync(const api::Request& req) {
     std::lock_guard<std::mutex> lock(_mu);
     TtysSession* s = findSession(id);
     if (!s) return {404, "application/json", R"({"error":"no such session"})"};
+    // Thin clients re-assert their profile proxy on every call; applies to
+    // THIS session only — server-global settings are never touched.
+    if (body.contains("proxy")) {
+        const std::string ps = body.value("proxy", "");
+        if (!ps.empty() && ps != s->proxySpec) {
+            s->proxySpec = ps;
+            json acct = {{"homeserver", s->homeserver},
+                         {"access_token", s->accessToken},
+                         {"device_id", s->deviceId},
+                         {"user_id", s->userId},
+                         {"proxy", ps}};
+            applySessionProxy(*s->client, acct, s->proxySpec);
+        }
+    }
     runSyncPass(*s);
     json out;
     out["synced"] = !s->syncing.load();
