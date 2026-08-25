@@ -18,6 +18,7 @@
 #include "commands.hpp"
 #include "core/http_client.hpp"
 #include "core/crypto/media_crypto.hpp"
+#include "progressive/mas_auth.hpp"
 #include <simdjson.h>
 #include "globals.hpp"
 #include "pcore.hpp"
@@ -437,15 +438,40 @@ int cmdServe(const matrixcli::cli::Args& args) {
         staged.homeserverUrl = resolvedHs;
         core.client->setAccount(staged);
 
-        auto r = core.client->loginWithPassword(username, password, "matrixcli");
-        if (!r.ok) {
-            std::string err = r.error.message.empty() ? "login failed" : r.error.message;
-            if (!r.error.code.empty()) err = "[" + r.error.code + "] " + err;
-            std::cerr << "Login failed: " << err << " (HTTP " << r.httpStatus << ")" << std::endl;
-            return 1;
+        progressive::desktop::AccountInfo acct;
+        if (args.options.count("mas")) {
+            // Native MAS login (m.login.password) — no browser, uses the
+            // progressive-core mas_* helpers. Surfaces a CAPTCHA fallback URL
+            // when the server requires one.
+            auto mr = progressive::masPasswordLogin(resolvedHs, username, password,
+                                                    "matrixcli", true);
+            if (!mr.success) {
+                std::string err = mr.errorMessage.empty() ? "login failed" : mr.errorMessage;
+                if (!mr.errcode.empty()) err = "[" + mr.errcode + "] " + err;
+                std::cerr << "MAS login failed: " << err;
+                if (mr.needsCaptcha)
+                    std::cerr << " (captcha required — open: "
+                              << progressive::masCaptchaFallbackUrl(
+                                     resolvedHs, "m.login.recaptcha", mr.captchaSession)
+                              << ")";
+                std::cerr << std::endl;
+                return 1;
+            }
+            acct.homeserverUrl = resolvedHs;
+            acct.userId = mr.userId;
+            acct.accessToken = mr.accessToken;
+            acct.deviceId = mr.deviceId;
+            core.client->setAccount(acct);
+        } else {
+            auto r = core.client->loginWithPassword(username, password, "matrixcli");
+            if (!r.ok) {
+                std::string err = r.error.message.empty() ? "login failed" : r.error.message;
+                if (!r.error.code.empty()) err = "[" + r.error.code + "] " + err;
+                std::cerr << "Login failed: " << err << " (HTTP " << r.httpStatus << ")" << std::endl;
+                return 1;
+            }
+            acct = core.client->account();
         }
-
-        auto acct = core.client->account();
         core.client->persistSession();
 
         // Compatibility: also record the session in config.json.
@@ -557,18 +583,84 @@ int cmdServe(const matrixcli::cli::Args& args) {
             resolvedHs = disc.data;
         }
 
-        auto r = core.client->registerAccount(username, password, resolvedHs, regToken);
-        if (!r.ok) {
-            std::string err = r.error.message.empty() ? "registration failed" : r.error.message;
-            if (!r.error.code.empty()) err = "[" + r.error.code + "] " + err;
-            std::cerr << "Registration failed: " << err << " (HTTP " << r.httpStatus << ")" << std::endl;
-            return 1;
-        }
+        progressive::desktop::AccountInfo acct;
+        if (args.options.count("mas")) {
+            // Native MAS / generic Matrix UIA registration. Email verification
+            // is done in-process; only the CAPTCHA stage needs a browser.
+            auto begin = progressive::masBeginRegistration(resolvedHs);
+            if (!begin.success) {
+                std::string err = begin.errorMessage.empty() ? "registration failed"
+                                                             : begin.errorMessage;
+                if (!begin.errcode.empty()) err = "[" + begin.errcode + "] " + err;
+                std::cerr << "MAS registration failed: " << err << std::endl;
+                return 1;
+            }
+            if (begin.needsCaptcha) {
+                std::cout << "Open this URL in your browser to solve the CAPTCHA, then return:\n  "
+                          << begin.captchaFallbackUrl << std::endl;
+            }
+            std::string emailSid, emailCs;
+            if (begin.needsEmail) {
+                std::string email;
+                auto em_it = args.options.find("email");
+                if (em_it != args.options.end()) email = em_it->second;
+                else if (args.options.count("interactive")) {
+                    std::cout << "Email: " << std::flush;
+                    std::getline(std::cin, email);
+                }
+                if (email.empty()) {
+                    std::cerr << "Error: --email required for MAS registration" << std::endl;
+                    return 1;
+                }
+                emailCs = progressive::masGenerateClientSecret();
+                auto em = progressive::masRequestRegistrationEmail(resolvedHs, email,
+                                                                   emailCs, 1);
+                if (!em.success) {
+                    std::string err = em.errorMessage.empty() ? "email request failed"
+                                                             : em.errorMessage;
+                    if (!em.errcode.empty()) err = "[" + em.errcode + "] " + err;
+                    std::cerr << "MAS registration failed: " << err << std::endl;
+                    return 1;
+                }
+                emailSid = em.sid;
+                std::cout << "Verification email sent to " << email
+                          << ". Click the link, then press ENTER." << std::endl;
+                std::string dummy;
+                std::getline(std::cin, dummy);
+            }
+            std::cout << "Completing registration..." << std::endl;
+            auto res = progressive::masCompleteRegistration(resolvedHs, username, password,
+                                                            begin.session, emailSid,
+                                                            emailCs, false);
+            if (!res.success) {
+                std::string err = res.errorMessage.empty() ? "registration failed"
+                                                           : res.errorMessage;
+                if (!res.errcode.empty()) err = "[" + res.errcode + "] " + err;
+                std::cerr << "MAS registration failed: " << err;
+                if (res.needsCaptcha) std::cerr << " (captcha still required)";
+                if (res.needsEmail) std::cerr << " (email still required)";
+                std::cerr << std::endl;
+                return 1;
+            }
+            acct.homeserverUrl = resolvedHs;
+            acct.userId = res.userId;
+            acct.accessToken = res.accessToken;
+            acct.deviceId = res.deviceId;
+            core.client->setAccount(acct);
+        } else {
+            auto r = core.client->registerAccount(username, password, resolvedHs, regToken);
+            if (!r.ok) {
+                std::string err = r.error.message.empty() ? "registration failed" : r.error.message;
+                if (!r.error.code.empty()) err = "[" + r.error.code + "] " + err;
+                std::cerr << "Registration failed: " << err << " (HTTP " << r.httpStatus << ")" << std::endl;
+                return 1;
+            }
 
-        // registerAccount returns the account in r.data without installing it —
-        // install, persist (session.db), and bootstrap E2EE like a login.
-        core.client->setAccount(r.data);
-        auto acct = core.client->account();
+            // registerAccount returns the account in r.data without installing it —
+            // install, persist (session.db), and bootstrap E2EE like a login.
+            core.client->setAccount(r.data);
+            acct = core.client->account();
+        }
         core.client->persistSession();
 
         // Compatibility: also record the session in config.json.
