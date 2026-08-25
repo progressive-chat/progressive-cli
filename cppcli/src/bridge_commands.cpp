@@ -140,12 +140,25 @@ void registerBuiltinCommands() {
             "notifications","read","help","version","completion"};
         for (auto& c : cmds) all.push_back(c);
 
+        // De-duplicate (the built-in list overlaps with the registry).
+        {
+            std::vector<std::string> uniq;
+            for (auto& c : all) {
+                bool dup = false;
+                for (auto& u : uniq) if (u == c) { dup = true; break; }
+                if (!dup) uniq.push_back(c);
+            }
+            all = std::move(uniq);
+        }
+
         if (shell == "bash") {
-            std::cout << "_matrixcli() {\n  local cur prev words cword\n"
-                      << "  _init_completion || return\n"
+            std::cout << "_matrixcli() {\n"
+                      << "  local cur=\"${COMP_WORDS[COMP_CWORD]}\"\n"
                       << "  COMPREPLY=($(compgen -W '";
             for (size_t i = 0; i < all.size(); i++) { if (i) std::cout << " "; std::cout << all[i]; }
-            std::cout << "' -- \"$cur\"))\n}\ncomplete -F _matrixcli matrixcli\n";
+            std::cout << "' -- \"$cur\"))\n}\n"
+                      << "complete -F _matrixcli matrixcli\n"
+                      << "complete -F _matrixcli progressive-cli\n";
         } else if (shell == "zsh") {
             std::cout << "#compdef matrixcli\n_arguments '1: :(";
             for (size_t i = 0; i < all.size(); i++) { if (i) std::cout << " "; std::cout << all[i]; }
