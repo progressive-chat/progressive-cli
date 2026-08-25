@@ -1,5 +1,6 @@
 #include "commands.hpp"
 #include "globals.hpp"
+#include "pcore.hpp"
 #include "ascii_ui_impl.hpp"
 #include "../lib/irc/irc_client.hpp"
 #include "../lib/matrix/client.hpp"
@@ -155,7 +156,7 @@ void registerBuiltinCommands() {
 
         auto cmds = CommandRegistry::instance().cliCommands();
         // Add built-in commands
-        std::vector<std::string> all = {"serve","login","status","rooms","view","send","demo","tui","link","permalink",
+        std::vector<std::string> all = {"serve","login","status","rooms","view","send","demo","tui","link","join","permalink",
             "reply","vote","react","topic","roomname","avatar","poll","config","search",
             "notifications","read","help","version","completion"};
         for (auto& c : cmds) all.push_back(c);
@@ -363,16 +364,28 @@ void registerBuiltinCommands() {
     // ── Knock on room ──
     reg.registerCli("knock", [](const cli::Args& args) -> int {
         if (args.positional.empty()) { std::cerr << "Usage: progressive-cli knock <room_id|alias> [reason]" << std::endl; return 1; }
-        using namespace matrixcli;
+        if (!pcore::requireSession()) return 1;
+        auto acc = pcore::core().client->account();
         matrix::Client client;
-        db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
-        auto acc = dbi.loadAccount();
-        if (!acc.is_logged_in()) { std::cerr << "Not logged in" << std::endl; return 1; }
-        client.setHomeserverURL(acc.homeserver_url); client.setAccessToken(acc.access_token);
+        client.setHomeserverURL(acc.homeserverUrl); client.setAccessToken(acc.accessToken);
         std::string reason = args.positional.size() > 1 ? args.positional[1] : "";
         if (client.knockRoom(args.positional[0], reason))
             std::cout << "Knocked on " << args.positional[0] << std::endl;
         else { std::cerr << "Knock failed" << std::endl; return 1; }
+        return 0;
+    });
+
+    // ── Join room ──
+    reg.registerCli("join", [](const cli::Args& args) -> int {
+        if (args.positional.empty()) { std::cerr << "Usage: progressive-cli join <room_id|alias> [reason]" << std::endl; return 1; }
+        if (!pcore::requireSession()) return 1;
+        auto acc = pcore::core().client->account();
+        matrix::Client client;
+        client.setHomeserverURL(acc.homeserverUrl); client.setAccessToken(acc.accessToken);
+        std::string reason = args.positional.size() > 1 ? args.positional[1] : "";
+        if (client.joinRoom(args.positional[0], reason))
+            std::cout << "Joined " << args.positional[0] << std::endl;
+        else { std::cerr << "Join failed (room not found, not public, or no permission)" << std::endl; return 1; }
         return 0;
     });
 

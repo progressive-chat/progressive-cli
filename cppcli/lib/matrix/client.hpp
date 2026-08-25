@@ -72,6 +72,13 @@ public:
                                  const std::string& password,
                                  const std::string& device_name = "",
                                  const std::string& reg_token = "");
+    // Raw registration with pre-built auth JSON (for UIA retry flows).
+    // authJson is the complete "auth" object value from a previous 401
+    // challenge + user interaction (recaptcha response, email token, etc).
+    Credentials registerAccountWithAuth(const std::string& homeserver_url,
+                                         const std::string& username,
+                                         const std::string& password,
+                                         const std::string& auth_json);
     SessionInfo whoAmI();
     bool logout();
     bool logoutAll();

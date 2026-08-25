@@ -544,6 +544,35 @@ Credentials Client::loginSSO(const std::string& token,
     return loginToken(token, device_name);
 }
 
+Credentials Client::registerAccountWithAuth(
+        const std::string& hs_url,
+        const std::string& username,
+        const std::string& password,
+        const std::string& auth_json) {
+    json req = {
+        {"username", username},
+        {"password", password},
+        {"auth", json::parse(auth_json)}
+    };
+    req["initial_device_display_name"] = "progressive-ttys";
+
+    auto url = hs_url.empty()
+        ? buildUrl("/_matrix/client/v3/register")
+        : hs_url + "/_matrix/client/v3/register";
+    auto resp = impl->http.post(url, req.dump(),
+                                {{"Content-Type", "application/json"}});
+
+    Credentials c;
+    c.homeserver_url = hs_url;
+    if (resp.status_code == 200) {
+        auto body = json::parse(resp.body);
+        c.access_token = body.value("access_token", "");
+        c.user_id      = body.value("user_id", "");
+        c.device_id    = body.value("device_id", "");
+    }
+    return c;
+}
+
 Credentials Client::registerAccount(const std::string& username,
                                      const std::string& password,
                                      const std::string& device_name,
@@ -799,19 +828,19 @@ std::string Client::createRoom(const std::string& name,
 bool Client::joinRoom(const std::string& room_id, const std::string& reason) {
     json body;
     if (!reason.empty()) body["reason"] = reason;
-    auto resp = authPost("/_matrix/client/r0/join/" + room_id, body.dump());
+    auto resp = authPost("/_matrix/client/r0/join/" + http::urlEncode(room_id), body.dump());
     return resp.ok();
 }
 
 bool Client::knockRoom(const std::string& room_id, const std::string& reason) {
     json body;
     if (!reason.empty()) body["reason"] = reason;
-    auto resp = authPost("/_matrix/client/r0/knock/" + room_id, body.dump());
+    auto resp = authPost("/_matrix/client/r0/knock/" + http::urlEncode(room_id), body.dump());
     return resp.ok();
 }
 
 bool Client::leaveRoom(const std::string& room_id) {
-    auto resp = authPost("/_matrix/client/r0/rooms/" + room_id + "/leave", "{}");
+    auto resp = authPost("/_matrix/client/r0/rooms/" + http::urlEncode(room_id) + "/leave", "{}");
     return resp.ok();
 }
 
@@ -819,7 +848,7 @@ bool Client::inviteUser(const std::string& room_id, const std::string& user_id,
                          const std::string& reason) {
     json body = {{"user_id", user_id}};
     if (!reason.empty()) body["reason"] = reason;
-    auto resp = authPost("/_matrix/client/r0/rooms/" + room_id + "/invite", body.dump());
+    auto resp = authPost("/_matrix/client/r0/rooms/" + http::urlEncode(room_id) + "/invite", body.dump());
     return resp.ok();
 }
 

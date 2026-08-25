@@ -245,8 +245,14 @@ api::Response TtysApi::handleRegister(const api::Request& req) {
 
         // TODO: wire registerAccountWithAuth from progressive-core
         // (core rebuilt with this method; header integration pending)
-        creds = client.registerAccount(username, password,
-                                       "progressive-ttys", regToken);
+        if (body.contains("uia_auth") && !body["uia_auth"].empty()) {
+            creds = client.registerAccountWithAuth(
+                hs, username, password,
+                body["uia_auth"].dump());
+        } else {
+            creds = client.registerAccount(username, password,
+                                           "progressive-ttys", regToken);
+        }
     } catch (const std::exception& e) {
         json err;
         err["error"] = std::string("registration failed: ") + e.what();
