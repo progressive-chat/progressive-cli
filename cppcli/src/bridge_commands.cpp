@@ -158,7 +158,8 @@ void registerBuiltinCommands() {
             for (size_t i = 0; i < all.size(); i++) { if (i) std::cout << " "; std::cout << all[i]; }
             std::cout << "' -- \"$cur\"))\n}\n"
                       << "complete -F _matrixcli matrixcli\n"
-                      << "complete -F _matrixcli progressive-cli\n";
+                      << "complete -F _matrixcli progressive-cli\n"
+                      << "complete -F _matrixcli ./matrixcli\n";
         } else if (shell == "zsh") {
             std::cout << "#compdef matrixcli\n_arguments '1: :(";
             for (size_t i = 0; i < all.size(); i++) { if (i) std::cout << " "; std::cout << all[i]; }
