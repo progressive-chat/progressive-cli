@@ -11,6 +11,9 @@
 #include <chrono>
 #include <termios.h>
 #include <unistd.h>
+#include <cstdlib>
+#include <fstream>
+#include <filesystem>
 
 using namespace matrixcli;
 
@@ -131,8 +134,25 @@ void registerBuiltinCommands() {
     });
 
     // ── Shell completion ──
-    reg.registerCli("completion", [](const cli::Args& args) -> int {
-        std::string shell = args.positional.size() > 0 ? args.positional[0] : "bash";
+    auto ensureLineInFile = [](const std::string& path, const std::string& line) -> bool {
+        std::ifstream in(path); std::string cur; bool found = false;
+        while (std::getline(in, cur)) if (cur == line) { found = true; break; }
+        in.close();
+        if (found) return false;
+        std::ofstream out(path, std::ios::app); if (!out) return false;
+        out << "\n" << line << "\n"; return true;
+    };
+    auto writeFileCreatingDirs = [](const std::string& path, const std::string& content) -> bool {
+        std::error_code ec; std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
+        std::ofstream out(path); if (!out) return false; out << content; return true;
+    };
+
+    reg.registerCli("completion", [=](const cli::Args& args) -> int {
+        bool install = args.options.count("install") > 0;
+        std::string shell = "bash";
+        for (auto& p : args.positional)
+            if (p == "bash" || p == "zsh" || p == "fish") { shell = p; break; }
+
         auto cmds = CommandRegistry::instance().cliCommands();
         // Add built-in commands
         std::vector<std::string> all = {"serve","login","status","rooms","view","send","demo","tui","link","permalink",
@@ -151,23 +171,48 @@ void registerBuiltinCommands() {
             all = std::move(uniq);
         }
 
+        std::string body;
         if (shell == "bash") {
-            std::cout << "_matrixcli() {\n"
-                      << "  local cur=\"${COMP_WORDS[COMP_CWORD]}\"\n"
-                      << "  COMPREPLY=($(compgen -W '";
-            for (size_t i = 0; i < all.size(); i++) { if (i) std::cout << " "; std::cout << all[i]; }
-            std::cout << "' -- \"$cur\"))\n}\n"
-                      << "complete -F _matrixcli matrixcli\n"
-                      << "complete -F _matrixcli progressive-cli\n"
-                      << "complete -F _matrixcli ./matrixcli\n";
+            body = "_matrixcli() {\n  local cur=\"${COMP_WORDS[COMP_CWORD]}\"\n  COMPREPLY=($(compgen -W '";
+            for (size_t i = 0; i < all.size(); i++) { if (i) body += " "; body += all[i]; }
+            body += "' -- \"$cur\"))\n}\n";
+            body += "complete -F _matrixcli matrixcli\n";
+            body += "complete -F _matrixcli progressive-cli\n";
+            body += "complete -F _matrixcli ./matrixcli\n";
         } else if (shell == "zsh") {
-            std::cout << "#compdef matrixcli\n_arguments '1: :(";
-            for (size_t i = 0; i < all.size(); i++) { if (i) std::cout << " "; std::cout << all[i]; }
-            std::cout << ")'\n";
+            body = "#compdef matrixcli\n_arguments '1: :(";
+            for (size_t i = 0; i < all.size(); i++) { if (i) body += " "; body += all[i]; }
+            body += ")'\n";
         } else if (shell == "fish") {
-            std::cout << "complete -c matrixcli -f -a '";
-            for (size_t i = 0; i < all.size(); i++) { if (i) std::cout << " "; std::cout << all[i]; }
-            std::cout << "'\n";
+            body = "complete -c matrixcli -f -a '";
+            for (size_t i = 0; i < all.size(); i++) { if (i) body += " "; body += all[i]; }
+            body += "'\n";
+        }
+
+        if (!install) { std::cout << body; return 0; }
+
+        std::string home = getenv("HOME") ? getenv("HOME") : ".";
+        std::string file, rcLine;
+        if (shell == "bash") {
+            file = home + "/.local/share/matrixcli/completion.bash";
+            if (!writeFileCreatingDirs(file, body)) { std::cerr << "Failed to write " << file << std::endl; return 1; }
+            rcLine = "[[ -f " + file + " ]] && source " + file;
+            ensureLineInFile(home + "/.bashrc", rcLine);
+            for (auto& rc : { home + "/.bash_profile", home + "/.profile" })
+                if (std::filesystem::exists(rc)) ensureLineInFile(rc, rcLine);
+            std::cout << "Bash completion installed to " << file << "\n";
+            std::cout << "Restart your shell, or run: source " << file << "\n";
+        } else if (shell == "fish") {
+            file = home + "/.config/fish/completions/matrixcli.fish";
+            if (!writeFileCreatingDirs(file, body)) { std::cerr << "Failed to write " << file << std::endl; return 1; }
+            std::cout << "Fish completion installed to " << file << " (auto-loaded by fish)\n";
+        } else if (shell == "zsh") {
+            file = home + "/.zsh/completions/_matrixcli";
+            if (!writeFileCreatingDirs(file, body)) { std::cerr << "Failed to write " << file << std::endl; return 1; }
+            rcLine = "fpath+=(" + home + "/.zsh/completions); autoload -Uz compinit 2>/dev/null";
+            ensureLineInFile(home + "/.zshrc", rcLine);
+            std::cout << "Zsh completion installed to " << file << "\n";
+            std::cout << "Restart your shell, or run: source " << file << "\n";
         }
         return 0;
     });
