@@ -94,7 +94,7 @@ int cmdTUI(const matrixcli::cli::Args& args) {
     matrix::Client client;
 
     db::Database dbi;
-    dbi.open("matrixcli.db");
+    dbi.open("matrixcli-demo.db");
     auto acc = dbi.loadAccount();
     if (acc.is_logged_in()) {
         client.setHomeserverURL(acc.homeserver_url);
@@ -138,7 +138,7 @@ int cmdTUI(const matrixcli::cli::Args& args) {
         login_result.password = "";
     } else if (args.options.count("tui")) {
         db::Database checkDb;
-        if (checkDb.open("matrixcli.db") && checkDb.listRooms().empty()) {
+        if (checkDb.open("matrixcli-demo.db") && checkDb.listRooms().empty()) {
             populateDemoData(checkDb);
         }
         login_result.success = true;

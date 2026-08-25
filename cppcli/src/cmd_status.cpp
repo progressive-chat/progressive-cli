@@ -600,6 +600,6 @@ int cmdStatus(const matrixcli::cli::Args& args) {
 }int cmdDemoPopulate(const matrixcli::cli::Args&) {
     using namespace matrixcli;
     db::Database dbi;
-    if (!dbi.open("matrixcli.db")) return 1;
+    if (!dbi.open("matrixcli-demo.db")) return 1;
     return populateDemoData(dbi);
 }

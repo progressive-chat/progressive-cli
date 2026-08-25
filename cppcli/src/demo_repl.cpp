@@ -126,7 +126,7 @@ static void demoReplSend(const matrixcli::cli::Args& args) {
         return;
     }
     matrixcli::db::Database dbi;
-    if (!dbi.open("matrixcli.db")) {
+    if (!dbi.open("matrixcli-demo.db")) {
         std::cout << "[demo] cannot open matrixcli.db" << std::endl;
         return;
     }
@@ -203,7 +203,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
     // normal one-shot commands (progressive-cli rooms / view / send / search).
     auto runPureCli = []() {
         db::Database dbi;
-        if (!dbi.open("matrixcli.db")) return 1;
+        if (!dbi.open("matrixcli-demo.db")) return 1;
         // Always refresh the demo data (it clears demo-local rooms first), so
         // re-running `demo populate` picks up any demo changes without having
         // to delete matrixcli.db by hand.
@@ -248,7 +248,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
                 ++i; continue;
             }
             if (mode == "vote" || mode == "voting") {
-                db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+                db::Database dbi; if (!dbi.open("matrixcli-demo.db")) return 1;
                 if (dbi.listRooms().empty()) populateDemoData(dbi);
                 demoVoteShowcase(dbi);
                 ++i; continue;
@@ -281,19 +281,19 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
                 return cmdDemoRepl(sub);
             }
             if (mode == "edit") {
-                db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+                db::Database dbi; if (!dbi.open("matrixcli-demo.db")) return 1;
                 if (dbi.listRooms().empty()) populateDemoData(dbi);
                 demoEditShowcase(dbi);
                 ++i; continue;
             }
             if (mode == "report") {
-                db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+                db::Database dbi; if (!dbi.open("matrixcli-demo.db")) return 1;
                 if (dbi.listRooms().empty()) populateDemoData(dbi);
                 demoReportShowcase(dbi);
                 ++i; continue;
             }
             if (mode == "members") {
-                db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+                db::Database dbi; if (!dbi.open("matrixcli-demo.db")) return 1;
                 if (dbi.listRooms().empty()) populateDemoData(dbi);
                 std::string rid;
                 if (i + 1 < args.positional.size() &&
@@ -306,31 +306,31 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
                 ++i; continue;
             }
             if (mode == "typing") {
-                db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+                db::Database dbi; if (!dbi.open("matrixcli-demo.db")) return 1;
                 if (dbi.listRooms().empty()) populateDemoData(dbi);
                 demoTypingShowcase(dbi);
                 ++i; continue;
             }
             if (mode == "topic") {
-                db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+                db::Database dbi; if (!dbi.open("matrixcli-demo.db")) return 1;
                 if (dbi.listRooms().empty()) populateDemoData(dbi);
                 demoTopicShowcase(dbi);
                 ++i; continue;
             }
             if (mode == "threads") {
-                db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+                db::Database dbi; if (!dbi.open("matrixcli-demo.db")) return 1;
                 if (dbi.listRooms().empty()) populateDemoData(dbi);
                 demoThreadsShowcase(dbi);
                 ++i; continue;
             }
             if (mode == "config") {
-                db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+                db::Database dbi; if (!dbi.open("matrixcli-demo.db")) return 1;
                 if (dbi.listRooms().empty()) populateDemoData(dbi);
                 demoConfigShowcase(dbi);
                 ++i; continue;
             }
             if (mode == "backup") {
-                db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+                db::Database dbi; if (!dbi.open("matrixcli-demo.db")) return 1;
                 if (dbi.listRooms().empty()) populateDemoData(dbi);
                 demoBackupShowcase(dbi);
                 ++i; continue;
@@ -365,7 +365,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
         }
         if (!action.empty()) {
             db::Database dbi;
-            if (!dbi.open("matrixcli.db")) return 1;
+            if (!dbi.open("matrixcli-demo.db")) return 1;
             if (dbi.listRooms().empty()) populateDemoData(dbi);
             cli::Args sub;
             sub.command = action;
@@ -399,7 +399,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
     // when a takeover mode is active (the room token then belongs to the UI).
     if (!takeover && args.positional.size() == 1) {
         db::Database dbi;
-        if (!dbi.open("matrixcli.db")) return 1;
+        if (!dbi.open("matrixcli-demo.db")) return 1;
         if (dbi.listRooms().empty()) populateDemoData(dbi);
         const std::string roomArg = args.positional[0];
         std::string roomId = matchRoomInCache(dbi.listRooms(), roomArg);
@@ -497,7 +497,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
     // with the demo database populated.
     if (args.options.count("tui")) {
         db::Database dbi;
-        if (!dbi.open("matrixcli.db")) return 1;
+        if (!dbi.open("matrixcli-demo.db")) return 1;
         if (dbi.listRooms().empty()) populateDemoData(dbi);
 #ifdef BUILD_TUI
         return cmdTUI(args);
@@ -559,7 +559,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
         }
         if (ch == 7) {
             db::Database dbi;
-            if (!dbi.open("matrixcli.db")) return 1;
+            if (!dbi.open("matrixcli-demo.db")) return 1;
             demoVoteShowcase(dbi);
             return 0;
         }
@@ -568,42 +568,42 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
             return 0;
         }
         if (ch == 9) {
-            db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+            db::Database dbi; if (!dbi.open("matrixcli-demo.db")) return 1;
             if (dbi.listRooms().empty()) populateDemoData(dbi);
             return demoMembersShowcase(dbi, "");
         }
         if (ch == 10) {
-            db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+            db::Database dbi; if (!dbi.open("matrixcli-demo.db")) return 1;
             if (dbi.listRooms().empty()) populateDemoData(dbi);
             return demoTypingShowcase(dbi);
         }
         if (ch == 11) {
-            db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+            db::Database dbi; if (!dbi.open("matrixcli-demo.db")) return 1;
             if (dbi.listRooms().empty()) populateDemoData(dbi);
             return demoEditShowcase(dbi);
         }
         if (ch == 12) {
-            db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+            db::Database dbi; if (!dbi.open("matrixcli-demo.db")) return 1;
             if (dbi.listRooms().empty()) populateDemoData(dbi);
             return demoReportShowcase(dbi);
         }
         if (ch == 13) {
-            db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+            db::Database dbi; if (!dbi.open("matrixcli-demo.db")) return 1;
             if (dbi.listRooms().empty()) populateDemoData(dbi);
             return demoTopicShowcase(dbi);
         }
         if (ch == 14) {
-            db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+            db::Database dbi; if (!dbi.open("matrixcli-demo.db")) return 1;
             if (dbi.listRooms().empty()) populateDemoData(dbi);
             return demoThreadsShowcase(dbi);
         }
         if (ch == 15) {
-            db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+            db::Database dbi; if (!dbi.open("matrixcli-demo.db")) return 1;
             if (dbi.listRooms().empty()) populateDemoData(dbi);
             return demoConfigShowcase(dbi);
         }
         if (ch == 16) {
-            db::Database dbi; if (!dbi.open("matrixcli.db")) return 1;
+            db::Database dbi; if (!dbi.open("matrixcli-demo.db")) return 1;
             if (dbi.listRooms().empty()) populateDemoData(dbi);
             return demoBackupShowcase(dbi);
         }
@@ -615,7 +615,7 @@ int cmdDemoRepl(const matrixcli::cli::Args& args) {
     }
 
     db::Database dbi;
-    if (!dbi.open("matrixcli.db")) return 1;
+    if (!dbi.open("matrixcli-demo.db")) return 1;
     if (dbi.listRooms().empty()) {
         std::cout << "Populating demo data..." << std::endl;
         populateDemoData(dbi);
