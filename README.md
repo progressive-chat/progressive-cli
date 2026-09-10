@@ -20,6 +20,9 @@ C++ from the ground up — the old Go implementation is retired (the
 > [feature status table](docs/status.html) is stamped with the
 > version/commit/build it was generated from, and every feature carries a
 > code anchor (file + line) verified by `docs/check.mjs` in the CI.
+>
+> Last tested: commit `04838a09d67d6ca5de044e4ae081dbdc95a9b0b1`
+> (`04838a0`, `v0.5.4-21-g04838a0`, branch `main`, 2026-08-25).
 
 ## Versioning & release stages
 
