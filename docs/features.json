@@ -931,6 +931,18 @@
         "file": "src/matrix_commands.cpp",
         "pattern": "notify_token"
       }
+    },
+    {
+      "id": "gomuks-ws-m1",
+      "name": "Gomuks backend transport M1 (RFC6455 ws/wss + jsoncmd auth/ping/get_state)",
+      "category": "api",
+      "status": "implemented",
+      "since": "0.5.5",
+      "note": "lib/gomuks: masked client frames, ping auto-reply, fragmentation reassembly, wss via OpenSSL; POST /_gomuks/auth?output=json login, Cookie upgrade, request_id correlation; CLI 'gomuks auth|ping|state'; fake-backend CTest; protocol pinned to go.mau.fi/gomuks v0.2608.x",
+      "anchor": {
+        "file": "src/gomuks_commands.cpp",
+        "pattern": "registerGomuksCommands"
+      }
     }
   ]
 }

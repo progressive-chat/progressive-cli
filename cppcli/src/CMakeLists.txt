@@ -18,6 +18,7 @@ set(SOURCES
     config.cpp
     commands.cpp
     bridge_commands.cpp
+    gomuks_commands.cpp
     pcore.cpp
     e2ee_commands.cpp
     room_commands.cpp
@@ -72,6 +73,7 @@ target_link_libraries(progressive-cli PRIVATE
     matrixcli_lemmy
     matrixcli_irc
     matrixcli_deltachat
+    matrixcli_gomuks
     matrixcli_ecore
     Threads::Threads
 )

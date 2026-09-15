@@ -28,6 +28,7 @@ void registerAgentCommands();
 void registerCallCommands();
 void registerProxyCommands();
 void registerAsciiUiCommand();
+void registerGomuksCommands();
 
 void registerBuiltinCommands() {
     auto& reg = CommandRegistry::instance();
@@ -40,6 +41,7 @@ void registerBuiltinCommands() {
     registerCallCommands();
     registerProxyCommands();
     registerAsciiUiCommand();
+    registerGomuksCommands();
 
     // ── Bridge commands ──
     // Single implementation per bridge in cmd_bridges.cpp (cmdTdBridge and
@@ -80,7 +82,7 @@ void registerBuiltinCommands() {
             "members","profile","threads","invite","devices","sync","search","search-public","config","copy","dump",
             "markdown","filter","notifications","notif","notify","read","receipts","open","accounts","call","proxy",
             "llm","agent","agent-code","typing","capabilities","openid","turn","thirdparty",
-            "irc","lemmy","td","dc","deltachat","e2ee","backup","crosssign","ssss","verify","verify-wait",
+            "irc","lemmy","td","dc","deltachat","gomuks","e2ee","backup","crosssign","ssss","verify","verify-wait",
             "passwd","sessions","setup","completion","help","version"};
         for (auto& c : cmds) all.push_back(c);
 

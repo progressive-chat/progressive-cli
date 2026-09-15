@@ -88,3 +88,10 @@ endif()
 add_executable(test_next test_next.cpp)
 target_link_libraries(test_next PRIVATE matrixcli_http)
 add_test(NAME next COMMAND test_next)
+
+# test_gomuks_ws: M1 conformance for the gomuks backend client — a scripted
+# fake backend (loopback TCP, real RFC 6455 handshake + frames) drives the
+# ws/jsoncmd session through ping, get_state, errors and events.
+add_executable(test_gomuks_ws test_gomuks_ws.cpp)
+target_link_libraries(test_gomuks_ws PRIVATE matrixcli_gomuks)
+add_test(NAME gomuks_ws COMMAND test_gomuks_ws)

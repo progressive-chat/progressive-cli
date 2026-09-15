@@ -166,8 +166,9 @@ std::string usageText(const Args& args, bool fmt) {
               << "  register      Register a new account: register --homeserver H --username U --password P [--reg-token T] [--mas] [--interactive] [--json]\n"
               << "  proxy         The Tor/I2P proxy: on|off|status (--host --port [--type socks5h|socks5|http])\n"
                << "  serve         Start the built-in HTTP API server\n"
-               << "  ttys          Thin client for 'serve --ttys': remote ASCII UI\n"
-               << "  setup         The interactive setup wizard\n\n";
+                << "  ttys          Thin client for 'serve --ttys': remote ASCII UI\n"
+                << "  gomuks        Gomuks backend frontend (experimental): gomuks auth|ping|state\n"
+                << "  setup         The interactive setup wizard\n\n";
 
     oss << bold << "The bridges (experimental)" << rst << "\n"
               << "  dc            The DeltaChat bridge\n"

@@ -1,8 +1,8 @@
 {
   "generated": {
-    "version": "v0.5.4-22-g3034f7e-dirty",
-    "commit": "3034f7eac905219314241d4710fd5af9166bc355",
-    "builtAt": "2026-09-10T13:12:17.323Z",
+    "version": "v0.5.4-23-g27f1c2e-dirty",
+    "commit": "27f1c2ea613b870ce16537223ac543040821e5c4",
+    "builtAt": "2026-09-15T17:06:55.234Z",
     "generator": "scripts/regen_status.py"
   },
   "note": "This file is generated. Edit docs/features.json instead.",
@@ -967,7 +967,7 @@
         "file": "src/bridge_commands.cpp",
         "pattern": "registerCli\\(\"join\"",
         "missing": false,
-        "line": 302
+        "line": 304
       }
     },
     {
@@ -995,7 +995,7 @@
         "file": "src/bridge_commands.cpp",
         "pattern": "completion installed to",
         "missing": false,
-        "line": 127
+        "line": 129
       }
     },
     {
@@ -1037,6 +1037,20 @@
         "pattern": "notify_token",
         "missing": false,
         "line": 271
+      }
+    },
+    {
+      "id": "gomuks-ws-m1",
+      "name": "Gomuks backend transport M1 (RFC6455 ws/wss + jsoncmd auth/ping/get_state)",
+      "category": "api",
+      "status": "implemented",
+      "since": "0.5.5",
+      "note": "lib/gomuks: masked client frames, ping auto-reply, fragmentation reassembly, wss via OpenSSL; POST /_gomuks/auth?output=json login, Cookie upgrade, request_id correlation; CLI 'gomuks auth|ping|state'; fake-backend CTest; protocol pinned to go.mau.fi/gomuks v0.2608.x",
+      "anchor": {
+        "file": "src/gomuks_commands.cpp",
+        "pattern": "registerGomuksCommands",
+        "missing": false,
+        "line": 154
       }
     }
   ]
