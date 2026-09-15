@@ -8,6 +8,7 @@
     "voip",
     "transport",
     "api",
+    "ttys",
     "tests",
     "rejected"
   ],
@@ -773,33 +774,54 @@
       }
     },
     {
+      "id": "agent-history-compact",
       "name": "Agent history: auto-compaction (LLM summary at 60% ctx)",
-      "status": "implemented"
+      "category": "agent",
+      "status": "implemented",
+      "since": "0.5.4"
     },
     {
+      "id": "agent-history-sliding",
       "name": "Agent history: smart sliding — pinned head + drop-notice + recent tail",
+      "category": "agent",
       "status": "implemented",
+      "since": "0.5.4",
       "note": "config: agent.sliding.{keep,trigger,head}; notice message counts dropped entries"
     },
     {
+      "id": "ttys-proxy-per-session",
       "name": "Thin client: per-profile proxy container, re-asserted on every request",
-      "status": "implemented"
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4"
     },
     {
+      "id": "ttys-offline-outbox",
       "name": "Thin client: offline outbox (auto-delivery) + usage/last-frame caches",
-      "status": "implemented"
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4"
     },
     {
+      "id": "ttys-relay-endpoints",
       "name": "Thin client: relay endpoints /api/ttys/{usage,session/last} + text/plain frames",
-      "status": "implemented"
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4"
     },
     {
+      "id": "ttys-layout-remap",
       "name": "Thin client: layout-independent typing (PROGTERM_LAYOUT=ru|de|fr|es|it|br|dvorak|colemak)",
-      "status": "implemented"
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4"
     },
     {
+      "id": "ttys-profile-bundles",
       "name": "Thin client: profile export/import bundles",
-      "status": "implemented"
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4"
     },
     {
       "id": "ttys-default-port-29325",
@@ -838,6 +860,77 @@
       "status": "implemented",
       "since": "0.5.4",
       "note": "plain-text lines; wl-copy/xclip native + OSC 52 fallback; --preview"
+    },
+    {
+      "id": "cli-join",
+      "name": "CLI: join <room> [reason] + knock via the live session",
+      "category": "cli",
+      "status": "implemented",
+      "since": "0.5.4",
+      "note": "room aliases are URL-encoded (# is a fragment delimiter); knock uses the pcore session instead of a manual db account load",
+      "anchor": {
+        "file": "src/bridge_commands.cpp",
+        "pattern": "registerCli\\(\"join\""
+      }
+    },
+    {
+      "id": "cli-mas-auth",
+      "name": "CLI: native MAS auth (login --mas / register --mas, incl. email + captcha)",
+      "category": "cli",
+      "status": "implemented",
+      "since": "0.5.4",
+      "note": "no browser for password login; registration surfaces the CAPTCHA fallback URL and in-process email verification",
+      "anchor": {
+        "file": "src/cmd_serve_login.cpp",
+        "pattern": "masPasswordLogin"
+      }
+    },
+    {
+      "id": "cli-completion-install",
+      "name": "CLI: completion --install (bash/zsh/fish)",
+      "category": "cli",
+      "status": "implemented",
+      "since": "0.5.4",
+      "note": "writes the completion file and hooks it into the shell rc; plain 'completion [shell]' prints to stdout",
+      "anchor": {
+        "file": "src/bridge_commands.cpp",
+        "pattern": "completion installed to"
+      }
+    },
+    {
+      "id": "cli-demo-db-isolation",
+      "name": "Demo mode uses its own database (matrixcli-demo.db)",
+      "category": "cli",
+      "status": "implemented",
+      "since": "0.5.4",
+      "note": "demo runs never touch the real matrixcli.db account/cache",
+      "anchor": {
+        "file": "src/demo_repl.cpp",
+        "pattern": "matrixcli-demo.db"
+      }
+    },
+    {
+      "id": "ttys-homeserver-normalise",
+      "name": "serve --ttys: normalise the homeserver URL (add https:// when schemeless)",
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4",
+      "anchor": {
+        "file": "src/server/ttys.cpp",
+        "pattern": "add https:// if no scheme present"
+      }
+    },
+    {
+      "id": "notify-daemon-token",
+      "name": "Notify daemon opt-in token (--token; notify host --token)",
+      "category": "ui",
+      "status": "implemented",
+      "since": "0.5.5",
+      "note": "without --token the wire format stays 'title<TAB>body'; with --token the daemon only shows frames carrying the token (loopback bind is still the default)",
+      "anchor": {
+        "file": "src/matrix_commands.cpp",
+        "pattern": "notify_token"
+      }
     }
   ]
 }

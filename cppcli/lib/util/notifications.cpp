@@ -91,6 +91,13 @@ void Notifications::bell() {
 // listens on a TCP port and shows every received notification in THAT
 // session's notification daemon. The wire format is a single line per
 // notification: "title\tbody\n" (both cleaned, length-capped).
+//
+// Opt-in auth: "notify daemon --token X" only shows frames sent as
+// "X\ttitle\tbody" ("notify host H --token X"). A frame with a missing
+// or wrong token is dropped (fail closed). Without --token the legacy
+// "title\tbody" format is accepted — keep the daemon on loopback
+// (the default) unless you know what you are doing: there is no
+// encryption on the port either way.
 
 #ifndef _WIN32
 
@@ -100,7 +107,8 @@ constexpr int kDefaultNotifyPort = 27430;
 
 } // namespace
 
-void Notifications::runDaemon(const std::string& bind, int port) {
+void Notifications::runDaemon(const std::string& bind, int port,
+                              const std::string& token) {
     const int listenFd = ::socket(AF_INET, SOCK_STREAM, 0);
     if (listenFd < 0) {
         std::printf("notify daemon: socket: %s\n", std::strerror(errno));
@@ -129,9 +137,11 @@ void Notifications::runDaemon(const std::string& bind, int port) {
     }
 
     std::printf("notify daemon: listening on %s:%d — send notifications "
-                "with 'notify host %s:%d' from any machine/user\n",
+                "with 'notify host %s:%d' from any machine/user "
+                "(token %s)\n",
                 bind.empty() ? "127.0.0.1" : bind.c_str(), port,
-                bind.empty() ? "127.0.0.1" : bind.c_str(), port);
+                bind.empty() ? "127.0.0.1" : bind.c_str(), port,
+                token.empty() ? "off" : "on");
     std::fflush(stdout);
 
     for (;;) {
@@ -152,10 +162,23 @@ void Notifications::runDaemon(const std::string& bind, int port) {
 
         const auto nl = line.find('\n');
         if (nl != std::string::npos) line = line.substr(0, nl);
-        const auto tab = line.find('\t');
-        if (tab == std::string::npos) continue;
-        const std::string title = line.substr(0, tab);
-        const std::string body = line.substr(tab + 1);
+        std::string title, body;
+        if (!token.empty()) {
+            // "token\ttitle\tbody" — anything else is dropped.
+            const auto first = line.find('\t');
+            if (first == std::string::npos ||
+                line.substr(0, first) != token)
+                continue;
+            const auto second = line.find('\t', first + 1);
+            if (second == std::string::npos) continue;
+            title = line.substr(first + 1, second - first - 1);
+            body = line.substr(second + 1);
+        } else {
+            const auto tab = line.find('\t');
+            if (tab == std::string::npos) continue;
+            title = line.substr(0, tab);
+            body = line.substr(tab + 1);
+        }
         std::printf("notify daemon: %s: %s\n", title.c_str(), body.c_str());
         std::fflush(stdout);
         send(title, body);
@@ -164,7 +187,8 @@ void Notifications::runDaemon(const std::string& bind, int port) {
 
 bool Notifications::sendToDaemon(const std::string& host, int port,
                                  const std::string& title,
-                                 const std::string& body) {
+                                 const std::string& body,
+                                 const std::string& token) {
     const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) return false;
 
@@ -182,7 +206,9 @@ bool Notifications::sendToDaemon(const std::string& host, int port,
         return false;
     }
 
-    std::string line = clean(title, 120) + "\t" + clean(body, 200) + "\n";
+    std::string line;
+    if (!token.empty()) line += token + "\t";
+    line += clean(title, 120) + "\t" + clean(body, 200) + "\n";
     const bool sent = ::send(fd, line.data(), line.size(), 0) ==
                       static_cast<ssize_t>(line.size());
     ::close(fd);
@@ -191,12 +217,13 @@ bool Notifications::sendToDaemon(const std::string& host, int port,
 
 #else // _WIN32
 
-void Notifications::runDaemon(const std::string&, int) {
+void Notifications::runDaemon(const std::string&, int, const std::string&) {
     std::printf("notify daemon: not supported on Windows\n");
 }
 
 bool Notifications::sendToDaemon(const std::string&, int,
-                                 const std::string&, const std::string&) {
+                                 const std::string&, const std::string&,
+                                 const std::string&) {
     return false;
 }
 

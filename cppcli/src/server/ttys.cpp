@@ -243,8 +243,9 @@ api::Response TtysApi::handleRegister(const api::Request& req) {
         else
             applyConfiguredProxy(client);
 
-        // TODO: wire registerAccountWithAuth from progressive-core
-        // (core rebuilt with this method; header integration pending)
+        // UIA passthrough for thin clients that completed interactive
+        // verification stages: matrix::Client::registerAccountWithAuth
+        // carries the staged auth dict to the homeserver.
         if (body.contains("uia_auth") && !body["uia_auth"].empty()) {
             creds = client.registerAccountWithAuth(
                 hs, username, password,

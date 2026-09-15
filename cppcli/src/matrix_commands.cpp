@@ -262,11 +262,14 @@ int cmdReceipts(const cli::Args& args) {
 // notify test [text]   a test notification
 // notify last          the newest unread notification from the cache
 // notify on|off        the persisted on/off switch (refresh announces new ones)
-// notify daemon [--port N] [--bind IP]   the forwarding service: run it in
-//   the desktop-owning session (possibly as another user); it listens on a
-//   TCP port and shows every received notification in that session.
-// notify host <ip[:port]> | off   route notify test|last (and the refresh
-//   announcements) through a notify daemon instead of the local session.
+// notify daemon [--port N] [--bind IP] [--token X]   the forwarding service:
+//   run it in the desktop-owning session (possibly as another user); it
+//   listens on a TCP port and shows every received notification in that
+//   session. With --token X only frames carrying X are shown.
+// notify host <ip[:port]> [--token X] | off   route notify test|last (and the
+//   refresh announcements) through a notify daemon instead of the local
+//   session. The token is persisted as notify_token (only overwritten when
+//   --token is passed); 'notify host off' clears the host and the token.
 int cmdNotify(const cli::Args& args) {
         using namespace matrixcli;
 
@@ -287,26 +290,32 @@ int cmdNotify(const cli::Args& args) {
             std::string bind = args.options.count("bind")
                                    ? args.options.at("bind")
                                    : "127.0.0.1";
+            std::string token = args.options.count("token")
+                                    ? args.options.at("token")
+                                    : "";
             std::cout << "starting the notify daemon (Ctrl+C to stop)..."
                       << std::endl;
-            util::Notifications::runDaemon(bind, port);
+            util::Notifications::runDaemon(bind, port, token);
             return 0;
         }
 
         if (sub == "host") {
             if (args.positional.size() < 2) {
-                std::cout << "Usage: notify host <ip[:port]> | notify host off"
+                std::cout << "Usage: notify host <ip[:port]> [--token X] | notify host off"
                           << std::endl;
                 return 0;
             }
             std::string addr = args.positional[1];
             if (addr == "off") {
                 dbi.setSetting("notify_host", "");
+                dbi.setSetting("notify_token", "");
                 std::cout << "notify daemon: off — notifications go to "
                              "this session directly"
                           << std::endl;
             } else {
                 dbi.setSetting("notify_host", addr);
+                if (args.options.count("token"))
+                    dbi.setSetting("notify_token", args.options.at("token"));
                 std::cout << "notify daemon: " << addr
                           << " — test/last and refresh announcements go "
                              "through it"
@@ -316,8 +325,10 @@ int cmdNotify(const cli::Args& args) {
         }
 
         // Where the notification goes: the configured daemon (host
-        // [port]) or this session directly.
+        // [port]) or this session directly. The daemon token persists as
+        // notify_token (set via 'notify host H --token X').
         std::string host = dbi.getSetting("notify_host", "");
+        std::string notify_token = dbi.getSetting("notify_token", "");
         auto sendIt = [&](const std::string& title,
                           const std::string& body) -> int {
             if (!host.empty()) {
@@ -329,7 +340,8 @@ int cmdNotify(const cli::Args& args) {
                     port = std::atoi(host.substr(colon + 1).c_str());
                     if (port <= 0) port = 27430;
                 }
-                if (util::Notifications::sendToDaemon(ip, port, title, body)) {
+                if (util::Notifications::sendToDaemon(ip, port, title, body,
+                                                      notify_token)) {
                     std::cout << "sent via notify daemon " << host << std::endl;
                     return 0;
                 }
@@ -378,8 +390,8 @@ int cmdNotify(const cli::Args& args) {
         }
 
         std::cout << "Usage: notify test [text] | notify last | notify on|off | "
-                     "notify daemon [--port N] [--bind IP] | notify host "
-                     "<ip[:port]>|off"
+                     "notify daemon [--port N] [--bind IP] [--token X] | notify host "
+                     "<ip[:port]> [--token X]|off"
                   << std::endl;
         return 0;
 }
@@ -526,5 +538,5 @@ void registerMatrixCommands() {
     reg.registerCli("read", cmdRead, "Mark room read: read <room>");
     reg.registerCli("receipts", cmdReceipts, "Per-room read receipts: receipts [<room>] [on|off]");    reg.registerCli("notifications", cmdNotifications, "Notification settings: notifications (on|off)");
     reg.registerCli("notif", cmdNotifications, "Notification settings (alias)");
-    reg.registerCli("notify", cmdNotify, "Native desktop notification (KDE Plasma etc): notify test [text] | notify last | notify on|off");
+    reg.registerCli("notify", cmdNotify, "Native desktop notification (KDE Plasma etc): notify test [text] | notify last | notify on|off | notify daemon [--token X] | notify host <ip[:port]> [--token X]|off");
 }

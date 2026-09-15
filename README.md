@@ -40,7 +40,10 @@ C++ from the ground up — the old Go implementation is retired (the
 - **The full CLI client** — rooms, messages, threads, polls, reactions,
   E2EE (Olm/Megolm, the SAS device verification, key backup), spaces,
   the per-room read receipts, the last-read markers, the media send
-  presets (`attach` + `sendpreset original|compact|full`)
+  presets (`attach` + `sendpreset original|compact|full`), `join`/`knock`
+  with alias URL-encoding, native MAS login/register (`--mas`),
+  `copy <room> [N]` to the clipboard, shell completion
+  (`completion --install`)
 - **Multi-format REST API** — JSON, plain text, Markdown, Gemtext
   (Gemini protocol), or HTML (`matrixcli serve`)
 - **Remote ASCII UI (`serve --ttys`)** — the server draws the ASCII
@@ -313,20 +316,34 @@ curl -X POST http://127.0.0.1:29325/api/ttys/input \
 
 ## C++ build (cppcli/)
 
-Requires: CMake 3.20+, a C++23 compiler, OpenSSL, ncurses. The rest
-(libolm, nlohmann/json, simdjson, the E2EE core) is fetched by
-FetchContent.
+Requires: CMake 3.20+, a C++23 compiler, OpenSSL, ncurses, sqlite3,
+libcurl. The rest (libolm, nlohmann/json, simdjson, the E2EE core) is
+fetched by FetchContent.
 
 ```bash
-cd cppcli
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
-./matrixcli serve   # Start API server
-./matrixcli login   # Interactive login
-./matrixcli tui     # Terminal UI
-./matrixcli call    # VoIP signaling: call <@user> | answer | hangup | status | wait
+cmake -S cppcli -B /tmp/opencode/build-home \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+cmake --build /tmp/opencode/build-home -j3
+/tmp/opencode/build-home/src/progressive-cli serve   # Start API server
+/tmp/opencode/build-home/src/progressive-cli login   # Interactive login
+/tmp/opencode/build-home/src/progressive-cli tui     # Terminal UI
+/tmp/opencode/build-home/src/progressive-cli call    # VoIP signaling: call <@user> | answer | hangup | status | wait
 ```
+
+Notes:
+
+- Keep at most `-j3`: small build boxes freeze when oversubscribed.
+  Packaging/CI with more cores can raise the limit via `MAKEFLAGS`.
+- Do not use the in-repo `cppcli/build/` directory (stale, ignored).
+- The binary is `progressive-cli`; `matrixcli` stays as a compat symlink.
+- Demo mode keeps its own database (`matrixcli-demo.db`) and never
+  touches the real `matrixcli.db` cache.
+- Security scope: the notify forwarding daemon (`notify daemon`) binds
+  loopback without auth by default — pass `--token X` (and
+  `notify host H --token X`) when other users can reach the port.
+  Cross-signing helpers currently emit a placeholder signature and the
+  VoIP commands cover signaling only (no WebRTC media yet).
 
 ## The LLM / agent CLI
 

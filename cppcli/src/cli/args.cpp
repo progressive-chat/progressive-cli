@@ -125,7 +125,7 @@ std::string usageText(const Args& args, bool fmt) {
               << "  " << demoCol << "members" << rst << "       The room members: members <room>\n"
               << "  power         Room power levels / permissions: power <room>\n"
               << "  notifications Notification settings: notifications (on|off)\n"
-              << "  notify        Native desktop notification (KDE Plasma etc): notify test [text] | notify last | notify on|off | notify daemon [--port N] | notify host <ip[:port]>|off\n"
+              << "  notify        Native desktop notification (KDE Plasma etc): notify test [text] | notify last | notify on|off | notify daemon [--port N] [--token X] | notify host <ip[:port]> [--token X]|off\n"
               << "  profile       The user profile: profile <@user>\n"
               << "  react         Add a reaction to a message\n"
               << "  read          Mark the room as read\n"

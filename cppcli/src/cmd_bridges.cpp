@@ -51,7 +51,8 @@ int cmdTdBridge(const matrixcli::cli::Args& args) {
         if (sub == "login" || sub == "start") {
             if (!g_tdlib.isAvailable()) g_tdlib.initialize();
             if (!g_tdlib.isAvailable()) { std::cerr << "TDLib not available" << std::endl; return 1; }
-            g_tdlib.setTdlibParams(94575, "a3406de8d171bb422bb6ddf3bbd8f4e2");
+            auto creds = tdlibApiCredentials();
+            g_tdlib.setTdlibParams(creds.first, creds.second);
             std::cout << "TDLib initialized. Run: matrixcli td phone +123****7890" << std::endl;
         } else if (sub == "phone") {
             if (args.positional.size() < 2) { std::cerr << "Usage: progressive-cli td phone +123****7890" << std::endl; return 1; }
@@ -210,3 +211,22 @@ int cmdDcBridge(const matrixcli::cli::Args& args) {
         }
         return 0;
     }
+
+namespace matrixcli {
+
+std::pair<int, std::string> tdlibApiCredentials() {
+    int apiId = 94575;
+    std::string apiHash = "a3406de8d171bb422bb6ddf3bbd8f4e2";
+    try {
+        Config::instance().load("config.json");
+        const std::string id = Config::instance().get("tdlib_api_id", "");
+        const std::string hash = Config::instance().get("tdlib_api_hash", "");
+        if (!id.empty()) {
+            try { apiId = std::stoi(id); } catch (...) {}
+        }
+        if (!hash.empty()) apiHash = hash;
+    } catch (...) {}
+    return {apiId, apiHash};
+}
+
+} // namespace matrixcli

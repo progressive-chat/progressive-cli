@@ -53,7 +53,7 @@ package() {
     # The compat symlink for the pre-rebrand scripts.
     ln -s progressive-cli "${pkgdir}/usr/bin/matrixcli"
 
-    install -Dm644 gomuks/LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+    install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
     install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
 
     # Optional systemd user unit for the notification forwarding daemon
@@ -65,35 +65,39 @@ package() {
     install -dm755 "${pkgdir}/usr/share/applications"
     cat > "${pkgdir}/usr/share/applications/${pkgname}.desktop" << 'EOF'
 [Desktop Entry]
-Name=matrixcli
+Name=progressive-cli
 Comment=Terminal Matrix client with E2EE
-Exec=matrixcli tui
+Exec=progressive-cli tui
 Terminal=true
 Type=Application
 Categories=Network;InstantMessaging;Chat;
 Keywords=matrix;chat;terminal;cli;e2ee;
 EOF
 
-    # Bash completion
+    # Bash completion (kept in sync with the 'completion' command word list;
+    # for the full generated list run: progressive-cli completion bash)
     install -dm755 "${pkgdir}/usr/share/bash-completion/completions"
-    cat > "${pkgdir}/usr/share/bash-completion/completions/matrixcli" << 'EOF'
+    cat > "${pkgdir}/usr/share/bash-completion/completions/progressive-cli" << 'EOF'
 _matrixcli() {
     local cur prev
     _init_completion || return
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     if [[ $COMP_CWORD -eq 1 ]]; then
-        COMPREPLY=($(compgen -W "serve login status tui demo version help" -- "$cur"))
+        COMPREPLY=($(compgen -W "serve ttys login register status rooms spaces view send attach demo ui tui link join knock permalink info invite copy dump power members threads vote react notify proxy call llm agent agent-code e2ee backup crosssign ssss verify config completion help version" -- "$cur"))
     fi
     case $prev in
         serve|demo)
-            COMPREPLY=($(compgen -W "--port --host --demo --help" -- "$cur"))
+            COMPREPLY=($(compgen -W "--port --host --demo --ttys --token --bind --sync --cache --help" -- "$cur"))
             ;;
-        login)
-            COMPREPLY=($(compgen -W "--homeserver --username --password --token --help" -- "$cur"))
+        login|register)
+            COMPREPLY=($(compgen -W "--homeserver --username --mxid --password --token --reg-token --email --mas --interactive --json --help" -- "$cur"))
             ;;
     esac
 }
+complete -F _matrixcli progressive-cli
 complete -F _matrixcli matrixcli
 EOF
+    # Compat symlink for the pre-rebrand completion name.
+    ln -s progressive-cli "${pkgdir}/usr/share/bash-completion/completions/matrixcli"
 }

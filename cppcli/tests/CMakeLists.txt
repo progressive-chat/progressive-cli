@@ -80,3 +80,11 @@ if(BUILD_TUI)
     target_link_libraries(progressive-cli-tests PRIVATE matrixcli_tui)
     target_compile_definitions(progressive-cli-tests PRIVATE BUILD_TUI=1)
 endif()
+
+# test_next: standalone regression tests for the "next" branch (room-alias
+# URL encoding behind join/knock/leave, proxy config validation). Linked
+# only against matrixcli_http so it stays fast to build. Unlike the
+# test_*.cpp above (not yet wired into CTest), this one is registered.
+add_executable(test_next test_next.cpp)
+target_link_libraries(test_next PRIVATE matrixcli_http)
+add_test(NAME next COMMAND test_next)

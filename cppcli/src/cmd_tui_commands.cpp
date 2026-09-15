@@ -2,6 +2,7 @@
 // (split out of main.cpp so the compilation stays incremental-friendly).
 #include "commands.hpp"
 #include "config.hpp"
+#include "main_commands.hpp"
 #include "cli/args.hpp"
 #include "core/http_client.hpp"
 #include "globals.hpp"
@@ -683,8 +684,10 @@ void tuiHandleCommand(matrixcli::tui::ChatView& chat,
                     if (sub == "login" || sub == "start") {
                         if (!g_tdlib.isAvailable()) { g_tdlib.initialize(); }
                         if (g_tdlib.isAvailable()) {
-                            // Use test API credentials (you need real ones for production)
-                            g_tdlib.setTdlibParams(94575, "a3406de8d171bb422bb6ddf3bbd8f4e2");
+                            // The test defaults apply unless config.json
+                            // "tdlib_api_id" / "tdlib_api_hash" override them.
+                            auto creds = tdlibApiCredentials();
+                            g_tdlib.setTdlibParams(creds.first, creds.second);
                             chat.setConnectionStatus("TDLib initialized. Send /td phone +123****7890");
                         } else chat.setConnectionStatus("TDLib not available (install libtdjson)");
                     } else if (sub == "phone") {

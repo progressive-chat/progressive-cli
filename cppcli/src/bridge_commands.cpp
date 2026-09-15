@@ -1,5 +1,6 @@
 #include "commands.hpp"
 #include "globals.hpp"
+#include "main_commands.hpp"
 #include "pcore.hpp"
 #include "ascii_ui_impl.hpp"
 #include "../lib/irc/irc_client.hpp"
@@ -28,9 +29,6 @@ void registerCallCommands();
 void registerProxyCommands();
 void registerAsciiUiCommand();
 
-static irc::IrcClient g_ircClient;
-static bool g_ircSetup = false;
-
 void registerBuiltinCommands() {
     auto& reg = CommandRegistry::instance();
 
@@ -43,96 +41,16 @@ void registerBuiltinCommands() {
     registerProxyCommands();
     registerAsciiUiCommand();
 
-    // ── IRC CLI commands ──
-    reg.registerCli("irc", [](const cli::Args& args) -> int {
-        if (args.positional.empty()) { std::cerr << "irc: connect|join|msg|leave|whois|names" << std::endl; return 1; }
-        std::string sub = args.positional[0];
-        if (sub == "connect") {
-            irc::IrcServerConfig cfg;
-            cfg.host = args.positional.size() > 1 ? args.positional[1] : "irc.libera.chat";
-            cfg.port = args.positional.size() > 2 ? std::stoi(args.positional[2]) : 6667;
-            cfg.nick = args.positional.size() > 3 ? args.positional[3] : "matrixcli";
-            g_ircClient.setConfig(cfg);
-            if (!g_ircSetup) {
-                g_ircClient.onMessage([](const irc::IrcMessage& msg) {
-                    std::cout << "[" << msg.target << "] <" << msg.prefix << "> " << msg.body << std::endl;
-                });
-                g_ircSetup = true;
-            }
-            g_ircClient.connect();
-            std::this_thread::sleep_for(std::chrono::seconds(3));
-        } else if (sub == "join" && args.positional.size() >= 2) g_ircClient.join(args.positional[1]);
-        else if (sub == "msg" && args.positional.size() >= 3) {
-            std::string t; for (size_t i = 2; i < args.positional.size(); i++) { if (i > 2) t += " "; t += args.positional[i]; }
-            g_ircClient.privmsg(args.positional[1], t);
-        } else if (sub == "leave" && args.positional.size() >= 2) g_ircClient.part(args.positional[1]);
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        return 0;
-    });
-
-    // ── Lemmy CLI commands ──
-    reg.registerCli("lemmy", [](const cli::Args& args) -> int {
-        if (args.positional.empty()) { std::cerr << "lemmy: login|posts|post|upvote|comments" << std::endl; return 1; }
-        std::string sub = args.positional[0];
-        if (sub == "login" && args.positional.size() >= 4) {
-            g_lemmy.setInstance(args.positional[1]);
-            if (g_lemmy.login(args.positional[2], args.positional[3])) std::cout << "OK" << std::endl;
-            else { std::cerr << "Fail" << std::endl; return 1; }
-        } else if (sub == "posts") {
-            auto posts = g_lemmy.listPosts(args.positional.size() > 1 ? args.positional[1] : "", "Hot");
-            for (auto& p : posts) std::cout << "[" << p.id << "] " << p.title << " ↑" << p.upvotes << " 💬" << p.comment_count << " " << p.community_name << std::endl;
-        } else if (sub == "comments" && args.positional.size() >= 2) {
-            for (auto& c : g_lemmy.listComments(std::stoi(args.positional[1])))
-                std::cout << c.creator_name << ": " << c.content.substr(0, 100) << std::endl;
-        } else if (sub == "post" && args.positional.size() >= 3) {
-            std::string b; for (size_t i = 3; i < args.positional.size(); i++) { if (i > 3) b += " "; b += args.positional[i]; }
-            std::cout << g_lemmy.createPost(args.positional[1], args.positional[2], b) << std::endl;
-        } else if (sub == "upvote" && args.positional.size() >= 2) g_lemmy.likePost(std::stoi(args.positional[1]), 1);
-        else if (sub == "downvote" && args.positional.size() >= 2) g_lemmy.likePost(std::stoi(args.positional[1]), -1);
-        return 0;
-    });
-
-    // ── TDLib CLI commands ──
-    reg.registerCli("td", [](const cli::Args& args) -> int {
-        if (args.positional.empty()) { std::cerr << "td: login|phone|code|password|chats|msg|history" << std::endl; return 1; }
-        std::string sub = args.positional[0];
-        if (sub == "login") {
-            if (!g_tdlib.isAvailable()) g_tdlib.initialize();
-            if (g_tdlib.isAvailable()) g_tdlib.setTdlibParams(94575, "a3406de8d171bb422bb6ddf3bbd8f4e2");
-        } else if (sub == "phone" && args.positional.size() >= 2) g_tdlib.sendPhoneNumber(args.positional[1]);
-        else if (sub == "code" && args.positional.size() >= 2) g_tdlib.sendAuthCode(args.positional[1]);
-        else if (sub == "chats") {
-            auto chats = g_tdlib.getChats(20);
-            for (auto& c : chats) std::cout << "[" << c.id << "] " << c.title << " (" << c.type << ")" << std::endl;
-        } else if (sub == "msg" && args.positional.size() >= 3) {
-            std::string t; for (size_t i = 2; i < args.positional.size(); i++) { if (i > 2) t += " "; t += args.positional[i]; }
-            g_tdlib.sendMessage(std::stoll(args.positional[1]), t);
-        } else if (sub == "history" && args.positional.size() >= 2) {
-            for (auto& m : g_tdlib.getChatHistory(std::stoll(args.positional[1])))
-                std::cout << (m.is_outgoing ? "→ " : "← ") << m.text.substr(0, 100) << std::endl;
-        }
-        return 0;
-    });
-
-    // ── DeltaChat CLI commands ──
-    reg.registerCli("dc", [](const cli::Args& args) -> int {
-        if (args.positional.empty()) { std::cerr << "dc: login|chats|msg|history" << std::endl; return 1; }
-        std::string sub = args.positional[0];
-        if (sub == "login") {
-            if (!g_dc.isAvailable()) g_dc.initialize();
-            if (args.positional.size() >= 3) { g_dc.setConfig("addr", args.positional[1]); g_dc.setConfig("mail_pw", args.positional[2]); }
-            g_dc.configure();
-        } else if (sub == "chats") {
-            for (auto& c : g_dc.getChatList()) std::cout << "[" << c.id << "] " << c.name << std::endl;
-        } else if (sub == "msg" && args.positional.size() >= 3) {
-            std::string t; for (size_t i = 2; i < args.positional.size(); i++) { if (i > 2) t += " "; t += args.positional[i]; }
-            g_dc.sendMessage(std::stoi(args.positional[1]), t);
-        } else if (sub == "history" && args.positional.size() >= 2) {
-            for (auto& m : g_dc.getChatMessages(std::stoi(args.positional[1])))
-                std::cout << (m.is_outgoing ? "→ " : "← ") << m.sender_name << ": " << m.text.substr(0, 100) << std::endl;
-        }
-        return 0;
-    });
+    // ── Bridge commands ──
+    // Single implementation per bridge in cmd_bridges.cpp (cmdTdBridge and
+    // friends); main.cpp dispatches there directly and the registry below
+    // delegates to the same handlers, so the CLI, the help and the shell
+    // completion can never drift apart again.
+    reg.registerCli("irc", [](const cli::Args& args) -> int { return cmdIrcBridge(args); });
+    reg.registerCli("lemmy", [](const cli::Args& args) -> int { return cmdLemmyBridge(args); });
+    reg.registerCli("td", [](const cli::Args& args) -> int { return cmdTdBridge(args); });
+    reg.registerCli("dc", [](const cli::Args& args) -> int { return cmdDcBridge(args); });
+    reg.registerCli("deltachat", [](const cli::Args& args) -> int { return cmdDcBridge(args); });
 
     // ── Shell completion ──
     auto ensureLineInFile = [](const std::string& path, const std::string& line) -> bool {
@@ -155,10 +73,15 @@ void registerBuiltinCommands() {
             if (p == "bash" || p == "zsh" || p == "fish") { shell = p; break; }
 
         auto cmds = CommandRegistry::instance().cliCommands();
-        // Add built-in commands
-        std::vector<std::string> all = {"serve","login","status","rooms","view","send","demo","tui","link","join","permalink",
-            "reply","vote","react","topic","roomname","avatar","poll","config","search",
-            "notifications","read","help","version","completion"};
+        // Built-in commands handled before the registry in main.cpp.
+        std::vector<std::string> all = {"serve","login","register","status","rooms","spaces","view","send","attach","send-file",
+            "demo","ui","ascii","mobile","tui","ttys","link","join","knock","permalink",
+            "info","reply","edit","redact","report","vote","react","topic","roomname","avatar","poll","power","perms",
+            "members","profile","threads","invite","devices","sync","search","search-public","config","copy","dump",
+            "markdown","filter","notifications","notif","notify","read","receipts","open","accounts","call","proxy",
+            "llm","agent","agent-code","typing","capabilities","openid","turn","thirdparty",
+            "irc","lemmy","td","dc","deltachat","e2ee","backup","crosssign","ssss","verify","verify-wait",
+            "passwd","sessions","setup","completion","help","version"};
         for (auto& c : cmds) all.push_back(c);
 
         // De-duplicate (the built-in list overlaps with the registry).

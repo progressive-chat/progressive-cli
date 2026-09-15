@@ -52,6 +52,9 @@ cli-sessions/
 
 # The local state (never commit)
 matrixcli.db
+matrixcli-demo.db
+*.db-shm
+*.db-wal
 session.db
 config.json
 matrixcli.toml

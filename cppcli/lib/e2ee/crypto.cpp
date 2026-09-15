@@ -414,15 +414,17 @@ void CryptoManager::setCrossSigningKeys(const std::string& masterKey,
 
 bool CryptoManager::verifyDeviceSignature(const std::string& deviceId,
                                            const std::string& signatures) {
-    // In production: verify ed25519 signature using _masterKey
-    // For now: trust the server's signature validation
+    // WARNING — stub, not real verification: there is no ed25519 check
+    // against _masterKey here, the server's signature validation is trusted
+    // instead. Do not present cross-signing as secure until this is real
+    // (see docs/features.json: key backup / SSSS are transport, not trust).
     (void)deviceId; (void)signatures;
     return _crossSigningReady;
 }
 
 std::string CryptoManager::signDevice(const std::string& deviceId, const nlohmann::json& deviceKeys) {
-    // In production: sign with _selfSignKey using ed25519
-    // For now: return placeholder
+    // WARNING — stub: emits a placeholder instead of an ed25519 signature
+    // with _selfSignKey. Other clients will NOT accept this signature.
     json sig;
     sig[deviceId] = {{"ed25519:" + _deviceId, "placeholder_signature"}};
     (void)deviceKeys;

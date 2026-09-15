@@ -1,9 +1,9 @@
 {
   "generated": {
-    "version": "v0.5.2-61-gf2f7f55-dirty",
-    "commit": "f2f7f55bc96a9a48e109f94afa1d500a49199da4",
-    "builtAt": "2026-08-20T09:23:39.491Z",
-    "generator": "docs/gen.mjs"
+    "version": "v0.5.4-22-g3034f7e-dirty",
+    "commit": "3034f7eac905219314241d4710fd5af9166bc355",
+    "builtAt": "2026-09-10T13:12:17.323Z",
+    "generator": "scripts/regen_status.py"
   },
   "note": "This file is generated. Edit docs/features.json instead.",
   "categories": [
@@ -15,6 +15,7 @@
     "voip",
     "transport",
     "api",
+    "ttys",
     "tests",
     "rejected"
   ],
@@ -31,7 +32,7 @@
         "file": "src/proxy_commands.cpp",
         "pattern": "proxy: disabled",
         "missing": false,
-        "line": 401
+        "line": 164
       }
     },
     {
@@ -46,7 +47,7 @@
         "file": "src/proxy_commands.cpp",
         "pattern": "proxy: enabled \\(proxied connections\\)",
         "missing": false,
-        "line": 408
+        "line": 169
       }
     },
     {
@@ -60,7 +61,7 @@
         "file": "src/proxy_commands.cpp",
         "pattern": "j\\[\"enabled\"\\]",
         "missing": false,
-        "line": 392
+        "line": 428
       }
     },
     {
@@ -74,7 +75,7 @@
         "file": "src/proxy_commands.cpp",
         "pattern": "j\\[\"enabled\"\\]",
         "missing": false,
-        "line": 392
+        "line": 428
       }
     },
     {
@@ -88,7 +89,7 @@
         "file": "src/cmd_view_attach.cpp",
         "pattern": "progressive-cli login",
         "missing": false,
-        "line": 474
+        "line": 478
       }
     },
     {
@@ -150,7 +151,7 @@
         "file": "src/ascii_settings.cpp",
         "pattern": "receipts on",
         "missing": false,
-        "line": 43
+        "line": 44
       }
     },
     {
@@ -203,7 +204,7 @@
         "file": "src/ascii_settings.cpp",
         "pattern": "sendpreset original",
         "missing": false,
-        "line": 255
+        "line": 256
       }
     },
     {
@@ -216,7 +217,7 @@
         "file": "src/cmd_view_attach.cpp",
         "pattern": "uploadMedia",
         "missing": false,
-        "line": 527
+        "line": 546
       }
     },
     {
@@ -242,7 +243,7 @@
         "file": "src/ascii_settings.cpp",
         "pattern": "mod_redact",
         "missing": false,
-        "line": 247
+        "line": 248
       }
     },
     {
@@ -255,7 +256,7 @@
         "file": "src/cmd_tui_commands.cpp",
         "pattern": "queueUrlPreview",
         "missing": false,
-        "line": 44
+        "line": 45
       }
     },
     {
@@ -317,7 +318,7 @@
         "file": "src/demo_repl.cpp",
         "pattern": "cmdDemoRepl",
         "missing": false,
-        "line": 274
+        "line": 198
       }
     },
     {
@@ -343,7 +344,7 @@
         "file": "src/demo_repl.cpp",
         "pattern": "mode == \"ui\"",
         "missing": false,
-        "line": 310
+        "line": 264
       }
     },
     {
@@ -356,7 +357,7 @@
         "file": "src/demo_repl.cpp",
         "pattern": "mode == \"mobile\"",
         "missing": false,
-        "line": 314
+        "line": 270
       }
     },
     {
@@ -369,7 +370,7 @@
         "file": "src/demo_repl.cpp",
         "pattern": "mode == \"cli\"",
         "missing": false,
-        "line": 319
+        "line": 277
       }
     },
     {
@@ -383,7 +384,7 @@
         "file": "src/matrix_commands.cpp",
         "pattern": "cmdNotify",
         "missing": false,
-        "line": 270
+        "line": 273
       }
     },
     {
@@ -397,7 +398,7 @@
         "file": "src/demo_repl.cpp",
         "pattern": "demoMarkdownShowcase",
         "missing": false,
-        "line": 107
+        "line": 243
       }
     },
     {
@@ -410,7 +411,7 @@
         "file": "src/demo_repl.cpp",
         "pattern": "demoVoteShowcase",
         "missing": false,
-        "line": 150
+        "line": 253
       }
     },
     {
@@ -423,7 +424,7 @@
         "file": "src/ascii_ui_repl_b.cpp",
         "pattern": "notifications on",
         "missing": false,
-        "line": 631
+        "line": 680
       }
     },
     {
@@ -436,7 +437,7 @@
         "file": "src/ascii_ui_repl_b.cpp",
         "pattern": "monitor <room>",
         "missing": false,
-        "line": 641
+        "line": 690
       }
     },
     {
@@ -462,7 +463,7 @@
         "file": "src/ascii_ui.cpp",
         "pattern": "showEmoji \\? \" \ud83d\udce5 \"",
         "missing": false,
-        "line": 295
+        "line": 485
       }
     },
     {
@@ -501,7 +502,7 @@
         "file": "src/ascii_ui_helpers.cpp",
         "pattern": "st.notifications.clear",
         "missing": false,
-        "line": 372
+        "line": 399
       }
     },
     {
@@ -514,7 +515,7 @@
         "file": "src/ascii_ui_repl_b.cpp",
         "pattern": "show_invites",
         "missing": false,
-        "line": 618
+        "line": 667
       }
     },
     {
@@ -527,7 +528,7 @@
         "file": "src/ascii_ui_helpers.cpp",
         "pattern": "Power levels first",
         "missing": false,
-        "line": 285
+        "line": 312
       }
     },
     {
@@ -541,7 +542,7 @@
         "file": "src/ascii_ui_repl.cpp",
         "pattern": "readLineWithHistory",
         "missing": false,
-        "line": 549
+        "line": 603
       }
     },
     {
@@ -598,7 +599,7 @@
         "file": "src/cmd_view_attach.cpp",
         "pattern": "aesCtrCrypt",
         "missing": false,
-        "line": 554
+        "line": 582
       }
     },
     {
@@ -865,6 +866,177 @@
         "pattern": "ev.type == \"m.room.tombstone\"",
         "missing": false,
         "line": 477
+      }
+    },
+    {
+      "id": "agent-history-compact",
+      "name": "Agent history: auto-compaction (LLM summary at 60% ctx)",
+      "category": "agent",
+      "status": "implemented",
+      "since": "0.5.4"
+    },
+    {
+      "id": "agent-history-sliding",
+      "name": "Agent history: smart sliding \u2014 pinned head + drop-notice + recent tail",
+      "category": "agent",
+      "status": "implemented",
+      "since": "0.5.4",
+      "note": "config: agent.sliding.{keep,trigger,head}; notice message counts dropped entries"
+    },
+    {
+      "id": "ttys-proxy-per-session",
+      "name": "Thin client: per-profile proxy container, re-asserted on every request",
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4"
+    },
+    {
+      "id": "ttys-offline-outbox",
+      "name": "Thin client: offline outbox (auto-delivery) + usage/last-frame caches",
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4"
+    },
+    {
+      "id": "ttys-relay-endpoints",
+      "name": "Thin client: relay endpoints /api/ttys/{usage,session/last} + text/plain frames",
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4"
+    },
+    {
+      "id": "ttys-layout-remap",
+      "name": "Thin client: layout-independent typing (PROGTERM_LAYOUT=ru|de|fr|es|it|br|dvorak|colemak)",
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4"
+    },
+    {
+      "id": "ttys-profile-bundles",
+      "name": "Thin client: profile export/import bundles",
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4"
+    },
+    {
+      "id": "ttys-default-port-29325",
+      "name": "serve --ttys defaults to port 29325 (was 8080)",
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4",
+      "note": "thin clients scan/expect 29325; web UI keeps 8080"
+    },
+    {
+      "id": "ram-only-guarantee",
+      "name": "RAM-only relay mode: :memory: cache, no config writes, core dumps disabled",
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4",
+      "note": "--cache FILE / --persist-proxy opt out; RLIMIT_CORE=0 + PR_SET_DUMPABLE=0"
+    },
+    {
+      "id": "ttys-proxy-status-plain",
+      "name": "GET /api/ttys/proxy text/plain \u2014 full client status block for pipes",
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4"
+    },
+    {
+      "id": "ttys-proxy-preset-index",
+      "name": "proxy on <N> \u2014 numeric preset accepted over ttys API",
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4"
+    },
+    {
+      "id": "cli-copy-clipboard",
+      "name": "CLI: copy <room> [N] \u2014 last N cached messages to the clipboard",
+      "category": "cli",
+      "status": "implemented",
+      "since": "0.5.4",
+      "note": "plain-text lines; wl-copy/xclip native + OSC 52 fallback; --preview"
+    },
+    {
+      "id": "cli-join",
+      "name": "CLI: join <room> [reason] + knock via the live session",
+      "category": "cli",
+      "status": "implemented",
+      "since": "0.5.4",
+      "note": "room aliases are URL-encoded (# is a fragment delimiter); knock uses the pcore session instead of a manual db account load",
+      "anchor": {
+        "file": "src/bridge_commands.cpp",
+        "pattern": "registerCli\\(\"join\"",
+        "missing": false,
+        "line": 302
+      }
+    },
+    {
+      "id": "cli-mas-auth",
+      "name": "CLI: native MAS auth (login --mas / register --mas, incl. email + captcha)",
+      "category": "cli",
+      "status": "implemented",
+      "since": "0.5.4",
+      "note": "no browser for password login; registration surfaces the CAPTCHA fallback URL and in-process email verification",
+      "anchor": {
+        "file": "src/cmd_serve_login.cpp",
+        "pattern": "masPasswordLogin",
+        "missing": false,
+        "line": 446
+      }
+    },
+    {
+      "id": "cli-completion-install",
+      "name": "CLI: completion --install (bash/zsh/fish)",
+      "category": "cli",
+      "status": "implemented",
+      "since": "0.5.4",
+      "note": "writes the completion file and hooks it into the shell rc; plain 'completion [shell]' prints to stdout",
+      "anchor": {
+        "file": "src/bridge_commands.cpp",
+        "pattern": "completion installed to",
+        "missing": false,
+        "line": 127
+      }
+    },
+    {
+      "id": "cli-demo-db-isolation",
+      "name": "Demo mode uses its own database (matrixcli-demo.db)",
+      "category": "cli",
+      "status": "implemented",
+      "since": "0.5.4",
+      "note": "demo runs never touch the real matrixcli.db account/cache",
+      "anchor": {
+        "file": "src/demo_repl.cpp",
+        "pattern": "matrixcli-demo.db",
+        "missing": false,
+        "line": 129
+      }
+    },
+    {
+      "id": "ttys-homeserver-normalise",
+      "name": "serve --ttys: normalise the homeserver URL (add https:// when schemeless)",
+      "category": "ttys",
+      "status": "implemented",
+      "since": "0.5.4",
+      "anchor": {
+        "file": "src/server/ttys.cpp",
+        "pattern": "add https:// if no scheme present",
+        "missing": false,
+        "line": 213
+      }
+    },
+    {
+      "id": "notify-daemon-token",
+      "name": "Notify daemon opt-in token (--token; notify host --token)",
+      "category": "ui",
+      "status": "implemented",
+      "since": "0.5.5",
+      "note": "without --token the wire format stays 'title<TAB>body'; with --token the daemon only shows frames carrying the token (loopback bind is still the default)",
+      "anchor": {
+        "file": "src/matrix_commands.cpp",
+        "pattern": "notify_token",
+        "missing": false,
+        "line": 271
       }
     }
   ]
