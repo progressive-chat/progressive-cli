@@ -1,5 +1,8 @@
-set(SOURCES
-    main.cpp
+# Split sources: everything except main.cpp goes into a shared library
+# so both the main executable and the test executable can link it
+# without recompiling.
+
+set(SRC_SOURCES
     main_commands.hpp
     cmd_serve_login.cpp
     cmd_ttys_client.cpp
@@ -58,9 +61,9 @@ set(SOURCES
     server/web_proxy.cpp
 )
 
-add_executable(progressive-cli ${SOURCES})
-target_include_directories(progressive-cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(progressive-cli PRIVATE
+add_library(matrixcli_main SHARED ${SRC_SOURCES})
+target_include_directories(matrixcli_main PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(matrixcli_main PUBLIC
     matrixcli_util
     matrixcli_json
     matrixcli_http
@@ -79,6 +82,10 @@ target_link_libraries(progressive-cli PRIVATE
 )
 
 if(BUILD_TUI)
-    target_link_libraries(progressive-cli PRIVATE matrixcli_tui)
-    target_compile_definitions(progressive-cli PRIVATE BUILD_TUI=1)
+    target_link_libraries(matrixcli_main PUBLIC matrixcli_tui)
+    target_compile_definitions(matrixcli_main PUBLIC BUILD_TUI=1)
 endif()
+
+# Main executable: just main.cpp + the shared library
+add_executable(progressive-cli main.cpp)
+target_link_libraries(progressive-cli PRIVATE matrixcli_main)
