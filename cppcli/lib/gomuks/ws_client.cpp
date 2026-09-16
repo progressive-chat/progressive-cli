@@ -442,7 +442,15 @@ bool WsClient::connect(const std::string& url,
         close();
         return false;
     }
-    auto it = headers.find("Sec-WebSocket-Accept");
+    auto it = headers.end();
+    for (const auto& [name, value] : headers) {
+        std::string lower = name;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        if (lower == "sec-websocket-accept") {
+            it = headers.find(name);
+            break;
+        }
+    }
     if (it == headers.end()) {
         error = "websocket upgrade reply misses Sec-WebSocket-Accept";
         _lastError = error;

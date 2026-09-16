@@ -1,0 +1,313 @@
+// gomuks - A Matrix client written in Go.
+// Copyright (C) 2024 Tulir Asokan
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+import type { ContentURI, RoomType } from "../../types"
+import { Preference, anyContext, anyGlobalContext, globalDeviceSpecific, roomSpecific } from "./types.ts"
+
+export const codeBlockStyles = [
+	"auto", "abap", "algol_nu", "algol", "arduino", "autumn", "average", "base16-snazzy", "borland", "bw",
+	"catppuccin-frappe", "catppuccin-latte", "catppuccin-macchiato", "catppuccin-mocha", "colorful", "doom-one2",
+	"doom-one", "dracula", "emacs", "friendly", "fruity", "github-dark", "github", "gruvbox-light", "gruvbox",
+	"hrdark", "hr_high_contrast", "igor", "lovelace", "manni", "modus-operandi", "modus-vivendi", "monokailight",
+	"monokai", "murphy", "native", "nord", "onedark", "onesenterprise", "paraiso-dark", "paraiso-light", "pastie",
+	"perldoc", "pygments", "rainbow_dash", "rose-pine-dawn", "rose-pine-moon", "rose-pine", "rrt", "solarized-dark256",
+	"solarized-dark", "solarized-light", "swapoff", "tango", "tokyonight-day", "tokyonight-moon", "tokyonight-night",
+	"tokyonight-storm", "trac", "vim", "vs", "vulcan", "witchhazel", "xcode-dark", "xcode",
+] as const
+export const mapProviders = ["leaflet", "google", "none"] as const
+export const gifProviders = ["giphy", "tenor", "klipy"] as const
+
+export type CodeBlockStyle = typeof codeBlockStyles[number]
+export type MapProvider = typeof mapProviders[number]
+export type GIFProvider = typeof gifProviders[number]
+
+/* eslint-disable max-len */
+export const preferences = {
+	send_read_receipts: new Preference<boolean>({
+		displayName: "Send read receipts",
+		description: "Should read receipts be sent to other users? If disabled, read receipts will use the `m.read.private` type, which only syncs to your own devices.",
+		allowedContexts: anyContext,
+		defaultValue: true,
+	}),
+	send_typing_notifications: new Preference<boolean>({
+		displayName: "Send typing notifications",
+		description: "Should typing notifications be sent to other users?",
+		allowedContexts: anyContext,
+		defaultValue: true,
+	}),
+	send_bundled_url_previews: new Preference<boolean>({
+		displayName: "Send bundled URL previews",
+		description: "Should the composer offer fetching URL previews to bundle in outgoing messages?",
+		allowedContexts: anyContext,
+		defaultValue: true,
+	}),
+	display_read_receipts: new Preference<boolean>({
+		displayName: "Display read receipts",
+		description: "Should read receipts be rendered in the timeline?",
+		allowedContexts: anyContext,
+		defaultValue: true,
+	}),
+	show_media_previews: new Preference<boolean>({
+		displayName: "Show image and video previews",
+		description: "If disabled, images and videos will only be visible after clicking and will not be downloaded automatically. This will also disable images in URL previews.",
+		allowedContexts: anyContext,
+		defaultValue: false,
+	}),
+	autoplay_gifs: new Preference<boolean>({
+		displayName: "Autoplay video GIFs",
+		description: "Whether GIF-like videos (animated stickers) should autoplay in a loop instead of requiring hover.",
+		allowedContexts: anyContext,
+		defaultValue: false,
+	}),
+	show_inline_images: new Preference<boolean>({
+		displayName: "Show inline images",
+		description: "If disabled, custom emojis and other inline images will not be rendered and the alt attribute will be shown instead.",
+		allowedContexts: anyContext,
+		defaultValue: true,
+	}),
+	show_invite_avatars: new Preference<boolean>({
+		displayName: "Show avatars in invites",
+		description: "If disabled, the avatar of the room or inviter will not be shown in the invite view.",
+		allowedContexts: anyGlobalContext,
+		defaultValue: false,
+	}),
+	code_block_line_wrap: new Preference<boolean>({
+		displayName: "Code block line wrap",
+		description: "Whether to wrap long lines in code blocks instead of scrolling horizontally.",
+		allowedContexts: anyContext,
+		defaultValue: false,
+	}),
+	code_block_theme: new Preference<CodeBlockStyle>({
+		displayName: "Code block theme",
+		description: "The syntax highlighting theme to use for code blocks.",
+		allowedContexts: anyContext,
+		defaultValue: "auto",
+		allowedValues: codeBlockStyles,
+	}),
+	pointer_cursor: new Preference<boolean>({
+		displayName: "Use pointer cursor",
+		description: "Whether to use a pointer cursor for clickable elements.",
+		allowedContexts: anyContext,
+		defaultValue: false,
+	}),
+	custom_css: new Preference<string>({
+		displayName: "Custom CSS",
+		description: "Arbitrary custom CSS to apply to the client.",
+		allowedContexts: anyContext,
+		defaultValue: "",
+	}),
+	show_hidden_events: new Preference<boolean>({
+		displayName: "Show hidden events",
+		description: "Whether hidden events should be visible in the room timeline.",
+		allowedContexts: anyContext,
+		defaultValue: true,
+	}),
+	show_redacted_events: new Preference<boolean>({
+		displayName: "Show redacted event placeholders",
+		description: "Whether redacted events should leave a placeholder behind in the room timeline.",
+		allowedContexts: anyContext,
+		defaultValue: true,
+	}),
+	show_membership_events: new Preference<boolean>({
+		displayName: "Show membership events",
+		description: "Whether any membership events should be visible in the room timeline.",
+		allowedContexts: anyContext,
+		defaultValue: true,
+	}),
+	show_profile_changes: new Preference<boolean>({
+		displayName: "Show profile change events",
+		description: "Whether profile changes should be visible in the room timeline.",
+		allowedContexts: anyContext,
+		defaultValue: true,
+	}),
+	render_url_previews: new Preference<boolean>({
+		displayName: "Render URL previews",
+		description: "Whether to render MSC4095 URL previews in the room timeline.",
+		allowedContexts: anyContext,
+		defaultValue: true,
+	}),
+	small_replies: new Preference<boolean>({
+		displayName: "Compact reply style",
+		description: "Whether to use a Discord-like compact style for replies instead of the traditional style.",
+		allowedContexts: anyContext,
+		defaultValue: false,
+	}),
+	small_threads: new Preference<boolean>({
+		displayName: "Compact thread messages",
+		description: "Whether thread messages should only be shown as a single line in the main timeline.",
+		allowedContexts: anyContext,
+		defaultValue: true,
+	}),
+	show_date_separators: new Preference<boolean>({
+		displayName: "Show date separators",
+		description: "Whether messages in different days should have a date separator between them in the room timeline.",
+		allowedContexts: anyContext,
+		defaultValue: true,
+	}),
+	show_room_emoji_packs: new Preference<boolean>({
+		displayName: "Show room emoji packs",
+		description: "Whether to show custom emoji packs provided by the room. If disabled, only your personal packs are shown in all rooms.",
+		allowedContexts: anyContext,
+		defaultValue: true,
+	}),
+	upload_dialog: new Preference<boolean>({
+		displayName: "Show upload dialog",
+		description: "Whether to show the dialog that allows adjusting the media before upload (re-encoding, resizing, etc)",
+		allowedContexts: anyContext,
+		defaultValue: true,
+	}),
+	map_provider: new Preference<MapProvider>({
+		displayName: "Map provider",
+		description: "The map provider to use for location messages.",
+		allowedValues: mapProviders,
+		allowedContexts: anyContext,
+		defaultValue: "leaflet",
+	}),
+	leaflet_tile_template: new Preference<string>({
+		displayName: "Leaflet tile URL template",
+		description: "When using Leaflet for maps, the URL template for map tile images.",
+		allowedContexts: anyContext,
+		defaultValue: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+	}),
+	element_call_base_url: new Preference<string>({
+		displayName: "Element call base URL",
+		description: "The widget base URL for Element calls.",
+		allowedContexts: anyContext,
+		defaultValue: "",
+	}),
+	gif_provider: new Preference<GIFProvider>({
+		displayName: "GIF provider",
+		description: "The service to use to search for GIFs",
+		allowedValues: gifProviders,
+		allowedContexts: anyContext,
+		defaultValue: "klipy",
+	}),
+	// TODO implement
+	// reupload_gifs: new Preference<boolean>({
+	// 	displayName: "Reupload GIFs",
+	// 	description: "Should GIFs be reuploaded to your server's media repo instead of using the proxy?",
+	// 	allowedContexts: anyContext,
+	// 	defaultValue: false,
+	// }),
+	max_image_width: new Preference<number>({
+		displayName: "Max image width",
+		description: "Maximum width of images in the timeline.",
+		allowedContexts: anyContext,
+		defaultValue: 320,
+		minValue: 80,
+		maxValue: 1920,
+	}),
+	message_context_menu: new Preference<boolean>({
+		displayName: "Right-click menu on messages",
+		description: "Show a context menu when right-clicking on messages.",
+		allowedContexts: anyContext,
+		defaultValue: true,
+	}),
+	ctrl_enter_send: new Preference<boolean>({
+		displayName: "Use Ctrl+Enter to send",
+		description: "Disable sending on enter and use Ctrl+Enter for sending instead",
+		allowedContexts: anyContext,
+		defaultValue: false,
+	}),
+	refocus_input_after_send: new Preference<boolean>({
+		displayName: "Re-focus composer after send",
+		description: "Should the composer text area be immediately focused again after the send button is clicked?",
+		allowedContexts: anyContext,
+		defaultValue: true,
+	}),
+	ctrl_arrow_reply: new Preference<boolean>({
+		displayName: "Use Ctrl+Arrow to reply",
+		description: "Should Ctrl+Arrow Up/Down change the message you're replying to?",
+		allowedContexts: anyContext,
+		defaultValue: true,
+	}),
+	pin_favorites: new Preference<boolean>({
+		displayName: "Pin favorites to top",
+		description: "Always keep favorited rooms at the top of the room list, ignoring recent activity.",
+		allowedContexts: anyGlobalContext,
+		defaultValue: false,
+	}),
+	alphabetical_order: new Preference<boolean>({
+		displayName: "Alphabetical room list",
+		description: "Sort rooms by name instead of recent activity.",
+		allowedContexts: anyGlobalContext,
+		defaultValue: false,
+	}),
+	notification_sound: new Preference<ContentURI>({
+		displayName: "Notification sound",
+		description: "The mxc:// URI to a custom notification sound.",
+		allowedContexts: anyContext,
+		defaultValue: "sounds/bright.flac",
+	}),
+	notification_sound_volume: new Preference<number>({
+		displayName: "Notification sound volume",
+		description: "The volume at which to play notification sounds.",
+		allowedContexts: anyContext,
+		defaultValue: 100,
+		minValue: 0,
+		maxValue: 100,
+		numberType: "range",
+	}),
+	room_window_title: new Preference<string>({
+		displayName: "In-room window title",
+		description: "The title to use for the window when viewing a room. $room will be replaced with the room name",
+		allowedContexts: anyContext,
+		defaultValue: "$room - gomuks web",
+	}),
+	window_title: new Preference<string>({
+		displayName: "Default window title",
+		description: "The title to use for the window when not in a room.",
+		allowedContexts: anyGlobalContext,
+		defaultValue: "gomuks web",
+	}),
+	favicon: new Preference<string>({
+		displayName: "Favicon",
+		description: "The URL to use for the favicon.",
+		allowedContexts: anyContext,
+		defaultValue: "gomuks.png",
+	}),
+	room_view_type: new Preference<RoomType | null>({
+		displayName: "Room type override",
+		description: "Use a specific view for this room instead of the default based on its type.",
+		allowedValues: [null, "", "m.space", "org.matrix.msc3417.call", "fi.mau.msc2545.image_pack"] as const,
+		valueLabels: ["None", "Timeline", "Space view", "Element Call", "Image pack editor"] as const,
+		allowedContexts: roomSpecific,
+		defaultValue: null,
+	}),
+	low_bandwidth: new Preference<boolean>({
+		displayName: "Low bandwidth mode",
+		description: "Whether to enable bandwidth saving features. Refresh to apply changes.",
+		allowedContexts: globalDeviceSpecific,
+		defaultValue: false,
+		hidden: window.gomuksDesktop || window.gomuksWebWasm,
+	}),
+	web_push: new Preference<boolean>({
+		displayName: "Web push notifications",
+		description: "Whether to enable web push for background notifications. Refresh to apply changes.",
+		allowedContexts: globalDeviceSpecific,
+		defaultValue: false,
+		hidden: window.gomuksAndroid || window.gomuksDesktop || window.gomuksWebWasm,
+	}),
+} as const
+
+export const existingPreferenceKeys = new Set(Object.keys(preferences))
+
+export type Preferences = {
+	-readonly [name in keyof typeof preferences]?: typeof preferences[name]["defaultValue"]
+}
+
+export function isValidPreferenceKey(key: unknown): key is keyof Preferences {
+	return typeof key === "string" && existingPreferenceKeys.has(key)
+}

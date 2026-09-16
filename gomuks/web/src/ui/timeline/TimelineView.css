@@ -1,0 +1,28 @@
+div.timeline-view {
+	overflow-y: scroll;
+
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+
+	> div.timeline-edge {
+		display: flex;
+		justify-content: space-around;
+		flex-shrink: 0;
+		height: 2.5rem;
+
+		&.beginning {
+			margin-top: 1rem;
+		}
+
+		> button {
+			display: flex;
+			padding: 0 1rem;
+			gap: .5rem;
+		}
+	}
+
+	> div.timeline-list {
+		padding-bottom: 2rem;
+	}
+}

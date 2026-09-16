@@ -1,0 +1,13 @@
+ARG DOCKER_HUB="docker.io"
+
+FROM ${DOCKER_HUB}/alpine:3.23
+
+RUN apk add --no-cache ca-certificates jq curl ffmpeg
+
+ARG EXECUTABLE=./gomuks
+COPY $EXECUTABLE /usr/bin/gomuks
+VOLUME /data
+WORKDIR /data
+ENV GOMUKS_ROOT=/data
+
+CMD ["/usr/bin/gomuks"]
